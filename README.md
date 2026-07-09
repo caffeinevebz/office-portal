@@ -17,7 +17,7 @@ billing, team and documents — into a single dashboard.
 | **Dashboard** | KPIs (active clients, open tasks, overdue deadlines, receivables), a 6-month billing vs. collections chart, task-status breakdown, upcoming deadlines and a compliance-mix view. |
 | **Clients** | Full client register (Individual / Proprietorship / Partnership / LLP / Pvt Ltd / HUF / Trust …) with PAN, GSTIN and contacts. Search, filter, create, edit, delete, and a per-client detail page showing their tasks, invoices and documents. |
 | **Compliance & Tasks** | Track engagements by category (GST, Income Tax, TDS, ROC/MCA, Audit, Accounting, Registration). Priorities, due dates with overdue highlighting, assignee, and inline status changes. |
-| **Invoices** | Raise professional-fee invoices with GST, track Draft → Sent → Paid → Overdue, and see billed / collected / outstanding totals. |
+| **Invoices** | Raise professional-fee invoices with GST, track Draft → Sent → Paid → Overdue, and see billed / collected / outstanding totals. Download a **GST tax-invoice PDF** for any invoice (CGST/SGST vs IGST split by GSTIN state, SAC code, round-off, amount in words, bank details, PAID/DRAFT/OVERDUE watermark) and a **payment-receipt PDF** for paid ones. |
 | **Team** | Manage partners, managers, accountants and article assistants, with their open-task load. |
 | **Documents** | A register of statutory documents (PAN, GST, ITR, financials, agreements) linked to clients. |
 | **DSC Register** | Digital Signature Certificates per client signatory: class, authority, serial, validity with expiry countdowns, and a physical-token custody in/out register stamped with the acting user. DSC expiries feed the reminders engine. |
@@ -33,7 +33,11 @@ billing, team and documents — into a single dashboard.
 - **Tailwind CSS v4** for styling
 - **Prisma 6** ORM with a **SQLite** database (zero external services)
 - **Recharts** for dashboard charts, **lucide-react** icons, **Zod** for API validation
+- **pdf-lib** for server-generated invoice & receipt PDFs (pure JS, no headless browser)
 - Session auth with signed cookies + `scrypt` password hashing (no auth service)
+
+> Invoice PDFs use the firm identity in `src/lib/firm.ts` (name, address, PAN,
+> GSTIN, bank details) — edit that one file to change the letterhead.
 
 ## Getting started
 
@@ -176,7 +180,8 @@ src/
 ## Notes & next steps
 
 The database is a local SQLite file, so all data lives on your machine.
-Authentication & roles, a statutory calendar of recurring obligations, and
-email/WhatsApp deadline reminders are already built. Natural extensions from
-here: real file uploads for documents, PDF invoice generation, an audit log of
-who changed what, and self-service password changes.
+Authentication & roles, a statutory calendar of recurring obligations,
+email/WhatsApp deadline reminders, DSC and inward/outward registers, and
+invoice/receipt PDFs are already built. Natural extensions from here: real
+file uploads for documents, an audit log of who changed what, and self-service
+password changes.

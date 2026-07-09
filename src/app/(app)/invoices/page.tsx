@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Plus, Pencil, Trash2, Receipt } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Receipt, FileDown, FileCheck2 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
 import type { Invoice, Client } from "@/lib/types";
@@ -164,7 +164,27 @@ export default function InvoicesPage() {
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        {canManage ? (
+                        <a
+                          href={`/api/invoices/${i.id}/pdf`}
+                          target="_blank"
+                          rel="noopener"
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
+                          title="Invoice PDF"
+                        >
+                          <FileDown className="h-4 w-4" />
+                        </a>
+                        {i.status === "Paid" && (
+                          <a
+                            href={`/api/invoices/${i.id}/receipt`}
+                            target="_blank"
+                            rel="noopener"
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                            title="Payment receipt PDF"
+                          >
+                            <FileCheck2 className="h-4 w-4" />
+                          </a>
+                        )}
+                        {canManage && (
                           <>
                             <button
                               onClick={() => {
@@ -184,8 +204,6 @@ export default function InvoicesPage() {
                               <Trash2 className="h-4 w-4" />
                             </button>
                           </>
-                        ) : (
-                          <span className="text-xs text-slate-300">—</span>
                         )}
                       </div>
                     </td>
