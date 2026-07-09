@@ -1,0 +1,94 @@
+// Prisma schema for the CA Firm Office Management Portal
+// Domain: Clients, Staff, Compliance Tasks, Invoices, Documents
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// A client of the CA firm (individual or business entity).
+model Client {
+  id            String   @id @default(cuid())
+  name          String
+  type          String // Individual, Proprietorship, Partnership, LLP, Private Limited, Public Limited, HUF, Trust
+  pan           String?
+  gstin         String?
+  email         String?
+  phone         String?
+  address       String?
+  contactPerson String?
+  status        String   @default("Active") // Active, Inactive
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tasks     Task[]
+  invoices  Invoice[]
+  documents Document[]
+}
+
+/// A member of the firm's team.
+model Staff {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  role      String // Partner, Manager, Article Assistant, Accountant, Admin
+  phone     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tasks Task[]
+}
+
+/// A compliance / engagement task for a client.
+model Task {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  category    String    @default("Other") // GST, Income Tax, TDS, ROC/MCA, Audit, Accounting, Registration, Other
+  status      String    @default("Pending") // Pending, In Progress, Under Review, Completed
+  priority    String    @default("Medium") // Low, Medium, High
+  dueDate     DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  clientId   String?
+  client     Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  assigneeId String?
+  assignee   Staff?  @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+}
+
+/// A billing invoice raised to a client.
+model Invoice {
+  id            String    @id @default(cuid())
+  invoiceNumber String    @unique
+  description   String?
+  amount        Float     @default(0) // pre-tax professional fee
+  taxRate       Float     @default(18) // GST %
+  status        String    @default("Draft") // Draft, Sent, Paid, Overdue
+  issueDate     DateTime  @default(now())
+  dueDate       DateTime?
+  paidDate      DateTime?
+  createdAt     DateTime  @default(now())
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+/// A document record tracked for a client.
+model Document {
+  id            String   @id @default(cuid())
+  name          String
+  category      String   @default("Other") // PAN, GST, ITR, Financial Statement, Agreement, Other
+  financialYear String?
+  note          String?
+  uploadedAt    DateTime @default(now())
+
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
