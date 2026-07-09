@@ -8,6 +8,7 @@ import {
   STAFF_ROLES,
   INVOICE_STATUSES,
   DOC_CATEGORIES,
+  SCHEDULE_FREQUENCIES,
 } from "./constants";
 
 // Accept only one of the allowed domain values.
@@ -87,6 +88,20 @@ export const documentCreateSchema = z.object({
   note: optionalText,
 });
 export const documentUpdateSchema = documentCreateSchema.partial();
+
+export const scheduleCreateSchema = z.object({
+  title: z.string().trim().min(1, "Title is required"),
+  category: oneOf(TASK_CATEGORIES, "category").default("Other"),
+  frequency: oneOf(SCHEDULE_FREQUENCIES, "frequency").default("Monthly"),
+  dueDay: z.coerce.number().int().min(1).max(31).default(10),
+  anchorMonth: z.coerce.number().int().min(1).max(12).default(4),
+  priority: oneOf(TASK_PRIORITIES, "priority").default("Medium"),
+  active: z.boolean().default(true),
+  clientId: optionalText,
+  assigneeId: optionalText,
+  notes: optionalText,
+});
+export const scheduleUpdateSchema = scheduleCreateSchema.partial();
 
 // Turn a ZodError into a single readable message.
 export function zodMessage(error: z.ZodError): string {

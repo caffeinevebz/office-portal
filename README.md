@@ -21,6 +21,7 @@ billing, team and documents — into a single dashboard.
 | **Team** | Manage partners, managers, accountants and article assistants, with their open-task load. |
 | **Documents** | A register of statutory documents (PAN, GST, ITR, financials, agreements) linked to clients. |
 | **Calendar** | A month view of every statutory due date across all clients, colour-coded by category. |
+| **Recurring compliance** | A statutory calendar of recurring obligations (monthly GST, quarterly TDS/advance tax, annual ITR/ROC…) that auto-generates the upcoming deadline tasks — idempotently. |
 | **Login & roles** | Session-based sign-in with role-based access (Partner / Manager / Accountant / Article Assistant), enforced on both the API and the UI. |
 
 ## Tech stack
@@ -47,6 +48,23 @@ npm run dev
 
 Then open <http://localhost:3000> — you'll be taken to the sign-in screen.
 
+## Recurring compliance (statutory calendar)
+
+The **Recurring** page lets the firm define recurring statutory obligations
+per client — e.g. *GSTR-3B, monthly, due 20th* or *Advance Tax, quarterly,
+15 Jun/Sep/Dec/Mar*. A built-in library of common Indian obligations (GSTR-1/3B,
+CMP-08, TDS, advance tax, PF/ESI, ITR, tax audit, ROC AOC-4/MGT-7, DIR-3 KYC)
+pre-fills the form.
+
+Clicking **Generate tasks** creates the actual deadline tasks for the next
+3 / 6 / 12 months, with correct due dates and period labels (e.g. "GSTR-3B —
+Jun 2026", "Advance Tax — Q2 FY 2026-27", "Tax Audit — FY 2025-26"). Generation
+is **idempotent**: each occurrence is keyed by schedule + period, so re-running
+never creates duplicates. Generated tasks show a ↻ marker on the Compliance page
+and flow through to the dashboard and calendar like any other task. Managing
+obligations and generating tasks requires the `manageSchedules` permission
+(Partner / Admin / Manager).
+
 ## Authentication & roles
 
 Sign-in is session-based (an HTTP-only, HMAC-signed cookie; passwords hashed
@@ -72,6 +90,7 @@ users: each `Staff` record can have a login password.
 | Delete tasks | ✓ | ✓ | ✓ | — |
 | Manage invoices (billing) | ✓ | ✓ | — | — |
 | Manage documents | ✓ | ✓ | ✓ | ✓ |
+| Manage recurring obligations & generate | ✓ | ✓ | — | — |
 | Manage the team & roles | ✓ | — | — | — |
 
 Permissions are enforced server-side on every API route (a denied action returns

@@ -40,8 +40,27 @@ export type Task = {
   createdAt: string;
   clientId: string | null;
   assigneeId: string | null;
+  scheduleId: string | null;
   client?: Client | null;
   assignee?: Staff | null;
+};
+
+export type ComplianceSchedule = {
+  id: string;
+  title: string;
+  category: string;
+  frequency: string;
+  dueDay: number;
+  anchorMonth: number;
+  priority: string;
+  active: boolean;
+  notes: string | null;
+  createdAt: string;
+  clientId: string | null;
+  assigneeId: string | null;
+  client?: Client | null;
+  assignee?: Staff | null;
+  _count?: { tasks: number };
 };
 
 export type Invoice = {

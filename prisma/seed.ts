@@ -16,6 +16,7 @@ async function main() {
   await prisma.invoice.deleteMany();
   await prisma.document.deleteMany();
   await prisma.task.deleteMany();
+  await prisma.complianceSchedule.deleteMany();
   await prisma.client.deleteMany();
   await prisma.staff.deleteMany();
 
@@ -178,12 +179,29 @@ async function main() {
     await prisma.document.create({ data: d });
   }
 
+  console.log("Seeding recurring compliance schedules...");
+  const scheduleData = [
+    { title: "GSTR-1", category: "GST", frequency: "Monthly", dueDay: 11, anchorMonth: 4, priority: "Medium", clientId: nimbus.id, assigneeId: senior.id },
+    { title: "GSTR-3B", category: "GST", frequency: "Monthly", dueDay: 20, anchorMonth: 4, priority: "High", clientId: nimbus.id, assigneeId: senior.id },
+    { title: "TDS Payment", category: "TDS", frequency: "Monthly", dueDay: 7, anchorMonth: 4, priority: "Medium", clientId: nimbus.id, assigneeId: accountant.id },
+    { title: "GSTR-3B", category: "GST", frequency: "Monthly", dueDay: 20, anchorMonth: 4, priority: "High", clientId: greenleaf.id, assigneeId: senior.id },
+    { title: "GSTR-3B", category: "GST", frequency: "Monthly", dueDay: 20, anchorMonth: 4, priority: "High", clientId: apex.id, assigneeId: accountant.id },
+    { title: "Advance Tax", category: "Income Tax", frequency: "Quarterly", dueDay: 15, anchorMonth: 6, priority: "Medium", clientId: apex.id, assigneeId: manager.id },
+    { title: "CMP-08", category: "GST", frequency: "Quarterly", dueDay: 18, anchorMonth: 7, priority: "Low", clientId: sunrise.id, assigneeId: accountant.id },
+    { title: "Tax Audit u/s 44AB", category: "Audit", frequency: "Annually", dueDay: 30, anchorMonth: 9, priority: "High", clientId: vasudha.id, assigneeId: manager.id },
+    { title: "GSTR-1", category: "GST", frequency: "Monthly", dueDay: 11, anchorMonth: 4, priority: "Medium", clientId: coastal.id, assigneeId: article.id },
+  ];
+  for (const s of scheduleData) {
+    await prisma.complianceSchedule.create({ data: s });
+  }
+
   const counts = {
     staff: await prisma.staff.count(),
     clients: await prisma.client.count(),
     tasks: await prisma.task.count(),
     invoices: await prisma.invoice.count(),
     documents: await prisma.document.count(),
+    schedules: await prisma.complianceSchedule.count(),
   };
   console.log("Seed complete:", counts);
 }

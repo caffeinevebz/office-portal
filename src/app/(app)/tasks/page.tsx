@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Plus, Pencil, Trash2, ClipboardList } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, ClipboardList, Repeat } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
 import type { Task, Client, Staff } from "@/lib/types";
@@ -129,6 +129,12 @@ export default function TasksPage() {
                     <tr key={t.id} className="hover:bg-slate-50">
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2">
+                          {t.scheduleId && (
+                            <Repeat
+                              className="h-3.5 w-3.5 shrink-0 text-indigo-400"
+                              aria-label="Recurring"
+                            />
+                          )}
                           <span className="font-medium text-slate-800">{t.title}</span>
                           <Badge tone={CATEGORY_TONE[t.category]}>{t.category}</Badge>
                         </div>
