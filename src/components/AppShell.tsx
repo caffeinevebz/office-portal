@@ -13,6 +13,7 @@ import {
   CalendarClock,
   FolderClosed,
   BellRing,
+  KeyRound,
   Building2,
   Menu,
   X,
@@ -31,6 +32,7 @@ const NAV = [
   { href: "/invoices", label: "Invoices", icon: Receipt },
   { href: "/staff", label: "Team", icon: UsersRound },
   { href: "/documents", label: "Documents", icon: FolderClosed },
+  { href: "/dsc", label: "DSC Register", icon: KeyRound },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/reminders", label: "Reminders", icon: BellRing },
 ];

@@ -17,6 +17,8 @@ async function main() {
   await prisma.document.deleteMany();
   await prisma.task.deleteMany();
   await prisma.complianceSchedule.deleteMany();
+  await prisma.dscMovement.deleteMany();
+  await prisma.dsc.deleteMany();
   await prisma.client.deleteMany();
   await prisma.staff.deleteMany();
 
@@ -195,6 +197,28 @@ async function main() {
     await prisma.complianceSchedule.create({ data: s });
   }
 
+  console.log("Seeding DSC register...");
+  const dscData = [
+    { holderName: "Rohan Mehta", class: "Class 3", authority: "eMudhra", serialNumber: "EM-4471-8823", email: "rohan.mehta@nimbustech.in", phone: "+91 98200 90011", issueDate: daysFromNow(-700), expiryDate: daysFromNow(30 + 335), custody: "With Firm", location: "Locker A, Tray 2", clientId: nimbus.id },
+    { holderName: "Nikhil Joshi", class: "Class 3", authority: "Sify SafeScrypt", serialNumber: "SF-9032-1156", email: "nikhil.joshi@apexconstructions.in", phone: "+91 98200 33445", issueDate: daysFromNow(-1050), expiryDate: daysFromNow(18), custody: "With Firm", location: "Locker A, Tray 1", clientId: apex.id, notes: "Renewal quote requested from Sify." },
+    { holderName: "Ananya Krishnan", class: "Class 3", authority: "Capricorn", serialNumber: "CP-2288-7741", email: "ananya@greenleaf.co.in", issueDate: daysFromNow(-745), expiryDate: daysFromNow(-12), custody: "With Firm", location: "Locker B", clientId: greenleaf.id, notes: "EXPIRED — renewal documents awaited from client." },
+    { holderName: "Suresh Patel", class: "Class 3", authority: "eMudhra", serialNumber: "EM-5521-0098", phone: "+91 98790 11223", issueDate: daysFromNow(-400), expiryDate: daysFromNow(330), custody: "With Client", clientId: sunrise.id },
+    { holderName: "Lakshmi Reddy", class: "Class 3", authority: "VSign", serialNumber: "VS-7710-3390", email: "lakshmi@vasudhahandlooms.in", issueDate: daysFromNow(-300), expiryDate: daysFromNow(430), custody: "With Firm", location: "Locker A, Tray 3", clientId: vasudha.id },
+    { holderName: "Thomas Kurian", class: "DGFT", authority: "PantaSign", serialNumber: "PS-1120-6634", email: "exports@coastalseafoods.in", issueDate: daysFromNow(-500), expiryDate: daysFromNow(230), custody: "With Firm", location: "Locker B", clientId: coastal.id, notes: "DGFT DSC used for export licence filings." },
+    { holderName: "Rhea Kapoor", class: "Class 3", authority: "eMudhra", serialNumber: "EM-8873-4412", issueDate: daysFromNow(-900), expiryDate: daysFromNow(-150), status: "Surrendered", custody: "With Client", clientId: zephyr.id, notes: "Surrendered on company dormancy." },
+  ];
+  const dscs = [];
+  for (const d of dscData) {
+    dscs.push(await prisma.dsc.create({ data: d }));
+  }
+  await prisma.dscMovement.createMany({
+    data: [
+      { dscId: dscs[0].id, direction: "In", byName: "Sneha Iyer", note: "Received for GSTR-9 filing season", createdAt: daysFromNow(-40) },
+      { dscId: dscs[1].id, direction: "In", byName: "Amit Deshpande", note: "Received for statutory audit sign-off", createdAt: daysFromNow(-15) },
+      { dscId: dscs[3].id, direction: "Out", byName: "Vikram Rao", note: "Returned after CMP-08 filing", createdAt: daysFromNow(-20) },
+    ],
+  });
+
   console.log("Seeding reminder settings...");
   await prisma.notificationLog.deleteMany();
   await prisma.reminderSettings.deleteMany();
@@ -223,6 +247,7 @@ async function main() {
     invoices: await prisma.invoice.count(),
     documents: await prisma.document.count(),
     schedules: await prisma.complianceSchedule.count(),
+    dscs: await prisma.dsc.count(),
   };
   console.log("Seed complete:", counts);
 }

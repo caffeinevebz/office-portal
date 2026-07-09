@@ -102,11 +102,42 @@ export type ReminderSettings = {
   notifyClient: boolean;
   channelEmail: boolean;
   channelWhatsapp: boolean;
+  notifyDscExpiry: boolean;
+  dscLeadDays: number;
   updatedAt: string;
 };
 
+export type DscMovement = {
+  id: string;
+  direction: string;
+  note: string | null;
+  byName: string;
+  createdAt: string;
+  dscId: string;
+};
+
+export type Dsc = {
+  id: string;
+  holderName: string;
+  class: string;
+  authority: string;
+  serialNumber: string | null;
+  email: string | null;
+  phone: string | null;
+  issueDate: string | null;
+  expiryDate: string;
+  status: string;
+  custody: string;
+  location: string | null;
+  notes: string | null;
+  createdAt: string;
+  clientId: string | null;
+  client?: Client | null;
+  movements?: DscMovement[];
+};
+
 export type ReminderCandidate = {
-  taskId: string;
+  taskId: string | null;
   taskTitle: string;
   clientName: string | null;
   channel: "Email" | "WhatsApp";

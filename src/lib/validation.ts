@@ -9,6 +9,9 @@ import {
   INVOICE_STATUSES,
   DOC_CATEGORIES,
   SCHEDULE_FREQUENCIES,
+  DSC_CLASSES,
+  DSC_AUTHORITIES,
+  DSC_STATUSES,
 } from "./constants";
 
 // Accept only one of the allowed domain values.
@@ -111,8 +114,26 @@ export const reminderSettingsSchema = z
     notifyClient: z.boolean(),
     channelEmail: z.boolean(),
     channelWhatsapp: z.boolean(),
+    notifyDscExpiry: z.boolean(),
+    dscLeadDays: z.coerce.number().int().min(0).max(180),
   })
   .partial();
+
+export const dscCreateSchema = z.object({
+  holderName: z.string().trim().min(1, "Holder name is required"),
+  class: oneOf(DSC_CLASSES, "class").default("Class 3"),
+  authority: oneOf(DSC_AUTHORITIES, "authority").default("eMudhra"),
+  serialNumber: optionalText,
+  email: optionalText,
+  phone: optionalText,
+  issueDate: optionalDate,
+  expiryDate: z.string().min(1, "Expiry date is required").transform((v) => new Date(v)),
+  status: oneOf(DSC_STATUSES, "status").default("Active"),
+  location: optionalText,
+  notes: optionalText,
+  clientId: optionalText,
+});
+export const dscUpdateSchema = dscCreateSchema.partial();
 
 // Turn a ZodError into a single readable message.
 export function zodMessage(error: z.ZodError): string {

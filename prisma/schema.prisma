@@ -30,6 +30,7 @@ model Client {
   invoices  Invoice[]
   documents Document[]
   schedules ComplianceSchedule[]
+  dscs      Dsc[]
 }
 
 /// A member of the firm's team.
@@ -82,7 +83,44 @@ model ReminderSettings {
   notifyClient    Boolean  @default(false)
   channelEmail    Boolean  @default(true)
   channelWhatsapp Boolean  @default(false)
+  notifyDscExpiry Boolean  @default(true) // include DSC expiry reminders in runs
+  dscLeadDays     Int      @default(30) // remind when a DSC expires within N days
   updatedAt       DateTime @updatedAt
+}
+
+/// A Digital Signature Certificate held for a client's signatory.
+model Dsc {
+  id           String   @id @default(cuid())
+  holderName   String // the person the DSC belongs to (director/partner/proprietor)
+  class        String   @default("Class 3") // Class 3, Class 2 (legacy), DGFT
+  authority    String   @default("eMudhra") // issuing certifying authority
+  serialNumber String?
+  email        String? // holder contact for expiry reminders (falls back to client)
+  phone        String?
+  issueDate    DateTime?
+  expiryDate   DateTime
+  status       String   @default("Active") // Active, Revoked, Surrendered ("Expired" is derived)
+  custody      String   @default("With Firm") // With Firm, With Client
+  location     String? // where the token is kept when with the firm
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  clientId  String?
+  client    Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  movements DscMovement[]
+}
+
+/// In/out register entry for a DSC token's physical custody.
+model DscMovement {
+  id        String   @id @default(cuid())
+  direction String // In (received by firm), Out (handed to client)
+  note      String?
+  byName    String // portal user who recorded the movement
+  createdAt DateTime @default(now())
+
+  dscId String
+  dsc   Dsc    @relation(fields: [dscId], references: [id], onDelete: Cascade)
 }
 
 /// A record of a reminder that was sent (or simulated).

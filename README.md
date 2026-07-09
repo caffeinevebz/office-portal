@@ -20,6 +20,7 @@ billing, team and documents — into a single dashboard.
 | **Invoices** | Raise professional-fee invoices with GST, track Draft → Sent → Paid → Overdue, and see billed / collected / outstanding totals. |
 | **Team** | Manage partners, managers, accountants and article assistants, with their open-task load. |
 | **Documents** | A register of statutory documents (PAN, GST, ITR, financials, agreements) linked to clients. |
+| **DSC Register** | Digital Signature Certificates per client signatory: class, authority, serial, validity with expiry countdowns, and a physical-token custody in/out register stamped with the acting user. DSC expiries feed the reminders engine. |
 | **Calendar** | A month view of every statutory due date across all clients, colour-coded by category. |
 | **Recurring compliance** | A statutory calendar of recurring obligations (monthly GST, quarterly TDS/advance tax, annual ITR/ROC…) that auto-generates the upcoming deadline tasks — idempotently. |
 | **Deadline reminders** | Email & WhatsApp nudges for tasks that are due soon or overdue, to the assignee and/or client, with a preview, a delivery log and configurable lead time. |
@@ -88,6 +89,10 @@ server. To automate reminders, point a daily scheduler (cron) at
 running reminders requires the `manageReminders` permission (Partner / Admin /
 Manager).
 
+Reminder runs also cover **DSC expiries**: certificate holders (falling back to
+the client's contact details) are nudged when their DSC expires within a
+configurable window (default 30 days) or has already lapsed.
+
 ## Authentication & roles
 
 Sign-in is session-based (an HTTP-only, HMAC-signed cookie; passwords hashed
@@ -115,6 +120,8 @@ users: each `Staff` record can have a login password.
 | Manage documents | ✓ | ✓ | ✓ | ✓ |
 | Manage recurring obligations & generate | ✓ | ✓ | — | — |
 | Configure & send reminders | ✓ | ✓ | — | — |
+| Manage DSCs & record custody | ✓ | ✓ | ✓ | — |
+| Delete DSCs | ✓ | ✓ | — | — |
 | Manage the team & roles | ✓ | — | — | — |
 
 Permissions are enforced server-side on every API route (a denied action returns

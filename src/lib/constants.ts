@@ -52,6 +52,23 @@ export const DOC_CATEGORIES = [
   "Other",
 ] as const;
 
+export const DSC_CLASSES = ["Class 3", "Class 2 (legacy)", "DGFT"] as const;
+
+export const DSC_AUTHORITIES = [
+  "eMudhra",
+  "Sify SafeScrypt",
+  "Capricorn",
+  "VSign",
+  "PantaSign",
+  "XtraTrust",
+  "IDSign",
+  "Other",
+] as const;
+
+export const DSC_STATUSES = ["Active", "Revoked", "Surrendered"] as const;
+
+export const DSC_CUSTODY = ["With Firm", "With Client"] as const;
+
 export const SCHEDULE_FREQUENCIES = [
   "Monthly",
   "Quarterly",

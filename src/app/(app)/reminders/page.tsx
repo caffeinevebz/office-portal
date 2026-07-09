@@ -337,6 +337,8 @@ function SettingsCard({
         notifyClient: s.notifyClient,
         channelEmail: s.channelEmail,
         channelWhatsapp: s.channelWhatsapp,
+        notifyDscExpiry: s.notifyDscExpiry,
+        dscLeadDays: s.dscLeadDays,
       });
       setSaved(true);
       onSaved();
@@ -384,6 +386,34 @@ function SettingsCard({
           <div className="space-y-2.5">
             <Toggle label="Email" checked={s.channelEmail} disabled={!canManage} onChange={(v) => set("channelEmail", v)} />
             <Toggle label="WhatsApp" checked={s.channelWhatsapp} disabled={!canManage} onChange={(v) => set("channelWhatsapp", v)} />
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 pt-3">
+          <p className="mb-2 text-xs font-medium text-slate-500">DSC expiry</p>
+          <div className="space-y-2.5">
+            <Toggle
+              label="DSC expiry reminders"
+              hint="Nudge holders when their certificate is about to lapse"
+              checked={s.notifyDscExpiry}
+              disabled={!canManage}
+              onChange={(v) => set("notifyDscExpiry", v)}
+            />
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-slate-700">Remind when expiring within</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={180}
+                  value={s.dscLeadDays}
+                  disabled={!canManage}
+                  onChange={(e) => set("dscLeadDays", Number(e.target.value))}
+                  className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-sm disabled:bg-slate-50"
+                />
+                <span className="text-sm text-slate-500">days</span>
+              </div>
+            </div>
           </div>
         </div>
 

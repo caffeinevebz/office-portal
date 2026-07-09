@@ -17,6 +17,8 @@ export type Permission =
   | "deleteDocuments"
   | "manageSchedules"
   | "manageReminders"
+  | "manageDsc"
+  | "deleteDsc"
   | "manageTeam";
 
 // Which roles are granted each permission. Every authenticated user can *read*
@@ -31,6 +33,8 @@ const MATRIX: Record<Permission, Role[]> = {
   deleteDocuments: ["Partner", "Admin", "Manager", "Accountant"],
   manageSchedules: ["Partner", "Admin", "Manager"],
   manageReminders: ["Partner", "Admin", "Manager"],
+  manageDsc: ["Partner", "Admin", "Manager", "Accountant"],
+  deleteDsc: ["Partner", "Admin", "Manager"],
   manageTeam: ["Partner", "Admin"],
 };
 

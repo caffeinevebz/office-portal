@@ -5,8 +5,8 @@ import { formatDate, dueLabel } from "@/lib/format";
 import { deliver } from "@/lib/notify";
 
 export type ReminderCandidate = {
-  taskId: string;
-  taskTitle: string;
+  taskId: string | null;
+  taskTitle: string; // task title, or a "DSC: …" label for expiry reminders
   clientName: string | null;
   channel: "Email" | "WhatsApp";
   recipientType: "Staff" | "Client";
@@ -64,6 +64,56 @@ function render(
   return { subject, body };
 }
 
+/** DSC expiry reminders: to the holder (or client contact) for certificates
+ *  expiring within the DSC lead window, or already expired but still Active. */
+async function computeDscCandidates(
+  settings: Awaited<ReturnType<typeof getSettings>>,
+  channels: ("Email" | "WhatsApp")[],
+  todayIso: string,
+): Promise<ReminderCandidate[]> {
+  if (!settings.notifyDscExpiry) return [];
+  const horizon = addDays(startOfDay(new Date()), settings.dscLeadDays);
+
+  const dscs = await prisma.dsc.findMany({
+    where: { status: "Active", expiryDate: { lte: horizon } },
+    include: { client: true },
+    orderBy: { expiryDate: "asc" },
+  });
+
+  const out: ReminderCandidate[] = [];
+  for (const d of dscs) {
+    const name = d.holderName;
+    const firstName = name.split(" ")[0];
+    const email = d.email || d.client?.email || null;
+    const phone = d.phone || d.client?.phone || null;
+    const expired = d.expiryDate < startOfDay(new Date());
+    const subject = `Reminder: DSC of ${name} ${expired ? "has expired" : `expires ${formatDate(d.expiryDate)}`}`;
+
+    for (const channel of channels) {
+      const to = channel === "Email" ? email : phone;
+      if (!to) continue;
+      const body =
+        channel === "WhatsApp"
+          ? `Dear ${firstName}, your ${d.class} DSC${d.client ? ` (${d.client.name})` : ""} ${expired ? `expired on ${formatDate(d.expiryDate)}` : `expires on ${formatDate(d.expiryDate)}`}. Please arrange renewal to avoid filing delays. — Sharma & Associates`
+          : `Dear ${firstName},\n\nYour ${d.class} Digital Signature Certificate${d.client ? ` associated with ${d.client.name}` : ""} ${expired ? `expired on ${formatDate(d.expiryDate)}` : `expires on ${formatDate(d.expiryDate)}`}.\n\nPlease arrange its renewal at the earliest so statutory filings are not delayed. We can assist with the renewal process.\n\nWarm regards,\nSharma & Associates, Chartered Accountants`;
+      out.push({
+        taskId: null,
+        taskTitle: `DSC expiry: ${name} (${d.class})`,
+        clientName: d.client?.name ?? null,
+        channel,
+        recipientType: "Client",
+        recipientName: name,
+        to,
+        subject,
+        body,
+        dueDate: d.expiryDate,
+        dedupeKey: `dsc:${d.id}:${channel}:${to}:${todayIso}`,
+      });
+    }
+  }
+  return out;
+}
+
 /** Compute every reminder that would be sent right now, given settings. */
 export async function computeCandidates(
   settings: Awaited<ReturnType<typeof getSettings>>,
@@ -80,7 +130,7 @@ export async function computeCandidates(
   if (channels.length === 0) return [];
 
   const tasks = await loadDueTasks(horizon);
-  const out: ReminderCandidate[] = [];
+  const out: ReminderCandidate[] = await computeDscCandidates(settings, channels, todayIso);
 
   for (const t of tasks) {
     const due = t.dueDate!;
