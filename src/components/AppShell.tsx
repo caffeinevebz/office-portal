@@ -12,6 +12,7 @@ import {
   CalendarDays,
   CalendarClock,
   FolderClosed,
+  BellRing,
   Building2,
   Menu,
   X,
@@ -31,6 +32,7 @@ const NAV = [
   { href: "/staff", label: "Team", icon: UsersRound },
   { href: "/documents", label: "Documents", icon: FolderClosed },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
+  { href: "/reminders", label: "Reminders", icon: BellRing },
 ];
 
 function isActive(pathname: string, href: string) {

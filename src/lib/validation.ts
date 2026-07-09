@@ -103,6 +103,17 @@ export const scheduleCreateSchema = z.object({
 });
 export const scheduleUpdateSchema = scheduleCreateSchema.partial();
 
+export const reminderSettingsSchema = z
+  .object({
+    enabled: z.boolean(),
+    leadDays: z.coerce.number().int().min(0).max(60),
+    notifyAssignee: z.boolean(),
+    notifyClient: z.boolean(),
+    channelEmail: z.boolean(),
+    channelWhatsapp: z.boolean(),
+  })
+  .partial();
+
 // Turn a ZodError into a single readable message.
 export function zodMessage(error: z.ZodError): string {
   return error.issues.map((i) => i.message).join(", ");

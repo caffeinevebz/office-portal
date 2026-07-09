@@ -22,6 +22,7 @@ billing, team and documents — into a single dashboard.
 | **Documents** | A register of statutory documents (PAN, GST, ITR, financials, agreements) linked to clients. |
 | **Calendar** | A month view of every statutory due date across all clients, colour-coded by category. |
 | **Recurring compliance** | A statutory calendar of recurring obligations (monthly GST, quarterly TDS/advance tax, annual ITR/ROC…) that auto-generates the upcoming deadline tasks — idempotently. |
+| **Deadline reminders** | Email & WhatsApp nudges for tasks that are due soon or overdue, to the assignee and/or client, with a preview, a delivery log and configurable lead time. |
 | **Login & roles** | Session-based sign-in with role-based access (Partner / Manager / Accountant / Article Assistant), enforced on both the API and the UI. |
 
 ## Tech stack
@@ -65,6 +66,28 @@ and flow through to the dashboard and calendar like any other task. Managing
 obligations and generating tasks requires the `manageSchedules` permission
 (Partner / Admin / Manager).
 
+## Deadline reminders (email & WhatsApp)
+
+The **Reminders** page sends nudges for open tasks that are **due within N days
+or overdue**. Configure who is notified (the assigned staff member and/or the
+client) and on which channels (email, WhatsApp), preview exactly what will go
+out, and run it. Each recipient/channel is deduplicated per day, so running it
+repeatedly never double-sends. Every send is written to a **delivery log**.
+
+Delivery is **pluggable and dependency-free**:
+
+| Channel | Goes live when you set | Otherwise |
+| --- | --- | --- |
+| Email | `RESEND_API_KEY` (+ optional `REMINDER_FROM_EMAIL`) | Simulated |
+| WhatsApp | `WHATSAPP_TOKEN` + `WHATSAPP_PHONE_ID` (Meta Cloud API) | Simulated |
+
+In **simulation mode** (the default, and what runs without credentials) messages
+are fully rendered and logged but not actually delivered — nothing leaves the
+server. To automate reminders, point a daily scheduler (cron) at
+`POST /api/reminders/run`; it is safe to call repeatedly. Configuring and
+running reminders requires the `manageReminders` permission (Partner / Admin /
+Manager).
+
 ## Authentication & roles
 
 Sign-in is session-based (an HTTP-only, HMAC-signed cookie; passwords hashed
@@ -91,6 +114,7 @@ users: each `Staff` record can have a login password.
 | Manage invoices (billing) | ✓ | ✓ | — | — |
 | Manage documents | ✓ | ✓ | ✓ | ✓ |
 | Manage recurring obligations & generate | ✓ | ✓ | — | — |
+| Configure & send reminders | ✓ | ✓ | — | — |
 | Manage the team & roles | ✓ | — | — | — |
 
 Permissions are enforced server-side on every API route (a denied action returns
@@ -141,7 +165,8 @@ src/
 
 ## Notes & next steps
 
-The database is a local SQLite file, so all data lives on your machine. Natural
-extensions from here: user authentication & roles, real file uploads for
-documents, PDF invoice generation, email/WhatsApp deadline reminders, and a
-statutory-calendar template that auto-creates recurring compliance tasks.
+The database is a local SQLite file, so all data lives on your machine.
+Authentication & roles, a statutory calendar of recurring obligations, and
+email/WhatsApp deadline reminders are already built. Natural extensions from
+here: real file uploads for documents, PDF invoice generation, an audit log of
+who changed what, and self-service password changes.

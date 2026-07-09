@@ -195,6 +195,27 @@ async function main() {
     await prisma.complianceSchedule.create({ data: s });
   }
 
+  console.log("Seeding reminder settings...");
+  await prisma.notificationLog.deleteMany();
+  await prisma.reminderSettings.deleteMany();
+  await prisma.reminderSettings.create({
+    data: {
+      id: "default",
+      enabled: true,
+      leadDays: 7,
+      notifyAssignee: true,
+      notifyClient: true,
+      channelEmail: true,
+      channelWhatsapp: true,
+    },
+  });
+  await prisma.notificationLog.createMany({
+    data: [
+      { channel: "Email", recipientType: "Staff", recipientName: "Amit Deshpande", to: "amit@sharmaassociates.in", subject: "Reminder: GSTR-3B – June 2026 (due 20 Jul 2026)", body: "Hi Amit,\n\nReminder: GSTR-3B – June 2026 for Nimbus Technologies is due in 11 days.\n\n— Sharma & Associates", status: "Simulated", dedupeKey: "seed-1" },
+      { channel: "WhatsApp", recipientType: "Client", recipientName: "Ananya Krishnan", to: "+91 80 2345 6677", subject: "Reminder: GSTR-1 – June 2026", body: "Dear Ananya, a reminder from Sharma & Associates: GSTR-1 is due on 11 Jul 2026. Please share the required details.", status: "Simulated", dedupeKey: "seed-2" },
+    ],
+  });
+
   const counts = {
     staff: await prisma.staff.count(),
     clients: await prisma.client.count(),

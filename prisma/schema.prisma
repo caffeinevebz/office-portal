@@ -73,6 +73,33 @@ model Task {
   @@unique([scheduleId, periodKey])
 }
 
+/// Firm-wide reminder configuration (single row, id = "default").
+model ReminderSettings {
+  id              String   @id @default("default")
+  enabled         Boolean  @default(true)
+  leadDays        Int      @default(3) // remind when a task is due within N days (and while overdue)
+  notifyAssignee  Boolean  @default(true)
+  notifyClient    Boolean  @default(false)
+  channelEmail    Boolean  @default(true)
+  channelWhatsapp Boolean  @default(false)
+  updatedAt       DateTime @updatedAt
+}
+
+/// A record of a reminder that was sent (or simulated).
+model NotificationLog {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  channel       String // Email, WhatsApp
+  recipientType String // Staff, Client
+  recipientName String
+  to            String
+  subject       String
+  body          String
+  status        String // Sent, Simulated, Failed
+  taskId        String?
+  dedupeKey     String   @unique
+}
+
 /// A recurring statutory obligation for a client, used to auto-generate tasks.
 model ComplianceSchedule {
   id          String   @id @default(cuid())

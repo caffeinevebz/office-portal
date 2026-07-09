@@ -93,3 +93,41 @@ export type ClientDetail = Client & {
   invoices: Invoice[];
   documents: DocumentRecord[];
 };
+
+export type ReminderSettings = {
+  id: string;
+  enabled: boolean;
+  leadDays: number;
+  notifyAssignee: boolean;
+  notifyClient: boolean;
+  channelEmail: boolean;
+  channelWhatsapp: boolean;
+  updatedAt: string;
+};
+
+export type ReminderCandidate = {
+  taskId: string;
+  taskTitle: string;
+  clientName: string | null;
+  channel: "Email" | "WhatsApp";
+  recipientType: "Staff" | "Client";
+  recipientName: string;
+  to: string;
+  subject: string;
+  body: string;
+  dueDate: string;
+  dedupeKey: string;
+};
+
+export type NotificationLog = {
+  id: string;
+  createdAt: string;
+  channel: string;
+  recipientType: string;
+  recipientName: string;
+  to: string;
+  subject: string;
+  body: string;
+  status: string;
+  taskId: string | null;
+};
