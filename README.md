@@ -21,6 +21,7 @@ billing, team and documents — into a single dashboard.
 | **Team** | Manage partners, managers, accountants and article assistants, with their open-task load. |
 | **Documents** | A register of statutory documents (PAN, GST, ITR, financials, agreements) linked to clients. |
 | **DSC Register** | Digital Signature Certificates per client signatory: class, authority, serial, validity with expiry countdowns, and a physical-token custody in/out register stamped with the acting user. DSC expiries feed the reminders engine. |
+| **Inward/Outward Register** | The office's physical-document register, digitized: every packet of originals received gets an auto-issued inward number (IN-2627-001…) with contents, deliverer, mode/courier docket and storage location; returns/dispatches get outward numbers, and a full movement trail shows who handled what. Long-held packets (90+ days) are flagged. |
 | **Calendar** | A month view of every statutory due date across all clients, colour-coded by category. |
 | **Recurring compliance** | A statutory calendar of recurring obligations (monthly GST, quarterly TDS/advance tax, annual ITR/ROC…) that auto-generates the upcoming deadline tasks — idempotently. |
 | **Deadline reminders** | Email & WhatsApp nudges for tasks that are due soon or overdue, to the assignee and/or client, with a preview, a delivery log and configurable lead time. |
@@ -122,6 +123,8 @@ users: each `Staff` record can have a login password.
 | Configure & send reminders | ✓ | ✓ | — | — |
 | Manage DSCs & record custody | ✓ | ✓ | ✓ | — |
 | Delete DSCs | ✓ | ✓ | — | — |
+| Maintain the inward/outward register | ✓ | ✓ | ✓ | ✓ |
+| Delete inward register entries | ✓ | ✓ | — | — |
 | Manage the team & roles | ✓ | — | — | — |
 
 Permissions are enforced server-side on every API route (a denied action returns

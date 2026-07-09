@@ -107,6 +107,38 @@ export type ReminderSettings = {
   updatedAt: string;
 };
 
+export type PacketMovement = {
+  id: string;
+  direction: string;
+  outwardNumber: string | null;
+  person: string;
+  mode: string;
+  courierRef: string | null;
+  note: string | null;
+  byName: string;
+  createdAt: string;
+  packetId: string;
+};
+
+export type DocPacket = {
+  id: string;
+  inwardNumber: string;
+  receivedFrom: string;
+  contents: string;
+  purpose: string | null;
+  mode: string;
+  courierRef: string | null;
+  location: string | null;
+  notes: string | null;
+  status: string;
+  receivedByName: string;
+  receivedAt: string;
+  createdAt: string;
+  clientId: string | null;
+  client?: Client | null;
+  movements?: PacketMovement[];
+};
+
 export type DscMovement = {
   id: string;
   direction: string;

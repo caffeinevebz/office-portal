@@ -19,6 +19,8 @@ export type Permission =
   | "manageReminders"
   | "manageDsc"
   | "deleteDsc"
+  | "manageInward"
+  | "deleteInward"
   | "manageTeam";
 
 // Which roles are granted each permission. Every authenticated user can *read*
@@ -35,6 +37,9 @@ const MATRIX: Record<Permission, Role[]> = {
   manageReminders: ["Partner", "Admin", "Manager"],
   manageDsc: ["Partner", "Admin", "Manager", "Accountant"],
   deleteDsc: ["Partner", "Admin", "Manager"],
+  // The inward register is maintained by the whole office, including articles.
+  manageInward: ["Partner", "Admin", "Manager", "Accountant", "Article Assistant"],
+  deleteInward: ["Partner", "Admin", "Manager"],
   manageTeam: ["Partner", "Admin"],
 };
 

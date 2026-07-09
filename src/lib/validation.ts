@@ -12,6 +12,7 @@ import {
   DSC_CLASSES,
   DSC_AUTHORITIES,
   DSC_STATUSES,
+  PACKET_MODES,
 } from "./constants";
 
 // Accept only one of the allowed domain values.
@@ -134,6 +135,29 @@ export const dscCreateSchema = z.object({
   clientId: optionalText,
 });
 export const dscUpdateSchema = dscCreateSchema.partial();
+
+export const packetCreateSchema = z.object({
+  receivedFrom: z.string().trim().min(1, "Delivered-by person is required"),
+  contents: z.string().trim().min(1, "Contents description is required"),
+  purpose: optionalText,
+  mode: oneOf(PACKET_MODES, "mode").default("Hand Delivery"),
+  courierRef: optionalText,
+  location: optionalText,
+  notes: optionalText,
+  receivedAt: optionalDate,
+  clientId: optionalText,
+});
+export const packetUpdateSchema = packetCreateSchema.partial();
+
+export const packetMovementSchema = z.object({
+  direction: z.string().refine((v) => v === "In" || v === "Out", {
+    message: 'direction must be "In" or "Out"',
+  }),
+  person: z.string().trim().min(1, "Person is required"),
+  mode: oneOf(PACKET_MODES, "mode").default("Hand Delivery"),
+  courierRef: optionalText,
+  note: optionalText,
+});
 
 // Turn a ZodError into a single readable message.
 export function zodMessage(error: z.ZodError): string {

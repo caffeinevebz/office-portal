@@ -19,6 +19,8 @@ async function main() {
   await prisma.complianceSchedule.deleteMany();
   await prisma.dscMovement.deleteMany();
   await prisma.dsc.deleteMany();
+  await prisma.packetMovement.deleteMany();
+  await prisma.docPacket.deleteMany();
   await prisma.client.deleteMany();
   await prisma.staff.deleteMany();
 
@@ -219,6 +221,24 @@ async function main() {
     ],
   });
 
+  console.log("Seeding inward/outward register...");
+  const packetData = [
+    { inwardNumber: "IN-2627-001", receivedFrom: "Rohan Mehta", contents: "Signed financial statements FY25-26 (3 sets), board resolution originals", purpose: "Statutory audit", mode: "Hand Delivery", location: "Almirah 1, Shelf B", status: "In Custody", receivedByName: "Sneha Iyer", receivedAt: daysFromNow(-18), clientId: nimbus.id },
+    { inwardNumber: "IN-2627-002", receivedFrom: "Office boy of Suresh Patel", contents: "Purchase bills Apr-Jun 2026 (1 file), bank statement originals", purpose: "CMP-08 & accounting", mode: "Hand Delivery", location: "Almirah 2, Shelf A", status: "Returned", receivedByName: "Vikram Rao", receivedAt: daysFromNow(-30), clientId: sunrise.id },
+    { inwardNumber: "IN-2627-003", receivedFrom: "Kavita Singh", contents: "Original 12A registration order, donation receipts FY25-26 (2 folders)", purpose: "Form 10B audit", mode: "Courier", courierRef: "BlueDart 4491022837", location: "Almirah 1, Shelf D", status: "In Custody", receivedByName: "Amit Deshpande", receivedAt: daysFromNow(-10), clientId: trust.id },
+    { inwardNumber: "IN-2627-004", receivedFrom: "Nikhil Joshi", contents: "Original property sale deed + TDS challans (26QB)", purpose: "Capital gains computation", mode: "Hand Delivery", location: "Safe locker", status: "In Custody", receivedByName: "CA Priya Nair", receivedAt: daysFromNow(-95), clientId: apex.id, notes: "High-value originals — partner approval needed for release." },
+    { inwardNumber: "IN-2627-005", receivedFrom: "Dr. Meera Bhat", contents: "Form 16, capital gains statements, LIC premium receipts", purpose: "ITR AY 2026-27", mode: "Post", location: "Tray – current filings", status: "In Custody", receivedByName: "Sneha Iyer", receivedAt: daysFromNow(-5), clientId: meera.id },
+  ];
+  const packets = [];
+  for (const p of packetData) {
+    packets.push(await prisma.docPacket.create({ data: p }));
+  }
+  await prisma.packetMovement.createMany({
+    data: [
+      { packetId: packets[1].id, direction: "Out", outwardNumber: "OUT-2627-001", person: "Suresh Patel", mode: "Hand Delivery", note: "All bills returned after data entry; acknowledgement taken.", byName: "Vikram Rao", createdAt: daysFromNow(-8) },
+    ],
+  });
+
   console.log("Seeding reminder settings...");
   await prisma.notificationLog.deleteMany();
   await prisma.reminderSettings.deleteMany();
@@ -248,6 +268,7 @@ async function main() {
     documents: await prisma.document.count(),
     schedules: await prisma.complianceSchedule.count(),
     dscs: await prisma.dsc.count(),
+    packets: await prisma.docPacket.count(),
   };
   console.log("Seed complete:", counts);
 }

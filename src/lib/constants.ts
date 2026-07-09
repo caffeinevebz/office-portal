@@ -52,6 +52,10 @@ export const DOC_CATEGORIES = [
   "Other",
 ] as const;
 
+export const PACKET_MODES = ["Hand Delivery", "Courier", "Post", "Other"] as const;
+
+export const PACKET_STATUSES = ["In Custody", "Returned"] as const;
+
 export const DSC_CLASSES = ["Class 3", "Class 2 (legacy)", "DGFT"] as const;
 
 export const DSC_AUTHORITIES = [
