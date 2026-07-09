@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Search, Plus, Pencil, Trash2, Eye, Users } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
+import { useAuth } from "@/lib/auth/context";
 import type { Client } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -20,6 +21,9 @@ type FormState = Partial<Client>;
 const EMPTY: FormState = { type: "Private Limited", status: "Active" };
 
 export default function ClientsPage() {
+  const { can } = useAuth();
+  const canManage = can("manageClients");
+  const canDelete = can("deleteClients");
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("All");
   const url = `/api/clients?q=${encodeURIComponent(q)}&status=${status}`;
@@ -44,9 +48,11 @@ export default function ClientsPage() {
         title="Clients"
         subtitle="Individuals and businesses managed by the firm"
         actions={
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Add Client
-          </Button>
+          canManage ? (
+            <Button onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Add Client
+            </Button>
+          ) : undefined
         }
       />
 
@@ -85,9 +91,11 @@ export default function ClientsPage() {
             title="No clients found"
             message="Try adjusting your search, or add your first client."
             action={
-              <Button onClick={openCreate} size="sm">
-                <Plus className="h-4 w-4" /> Add Client
-              </Button>
+              canManage ? (
+                <Button onClick={openCreate} size="sm">
+                  <Plus className="h-4 w-4" /> Add Client
+                </Button>
+              ) : undefined
             }
           />
         ) : (
@@ -143,20 +151,24 @@ export default function ClientsPage() {
                         >
                           <Eye className="h-4 w-4" />
                         </Link>
-                        <button
-                          onClick={() => openEdit(c)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                          title="Edit"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => setToDelete(c)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        {canManage && (
+                          <button
+                            onClick={() => openEdit(c)}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                            title="Edit"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            onClick={() => setToDelete(c)}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                            title="Delete"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

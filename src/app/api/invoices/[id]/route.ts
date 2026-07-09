@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ok, fail, parse, route } from "@/lib/api";
+import { requirePermission } from "@/lib/auth/session";
 import { invoiceUpdateSchema } from "@/lib/validation";
 import type { Prisma } from "@prisma/client";
 
@@ -23,6 +24,7 @@ async function applyUpdate(id: string, data: Prisma.InvoiceUncheckedUpdateInput)
 }
 
 export const PUT = route(async (req, ctx: Ctx) => {
+  await requirePermission("manageInvoices");
   const { id } = await ctx.params;
   const data = await parse(req, invoiceUpdateSchema);
   const invoice = await applyUpdate(id, data as Prisma.InvoiceUncheckedUpdateInput);
@@ -30,6 +32,7 @@ export const PUT = route(async (req, ctx: Ctx) => {
 });
 
 export const PATCH = route(async (req, ctx: Ctx) => {
+  await requirePermission("manageInvoices");
   const { id } = await ctx.params;
   const body = (await req.json().catch(() => ({}))) as { status?: string };
   if (!body.status) return fail("status is required");
@@ -38,6 +41,7 @@ export const PATCH = route(async (req, ctx: Ctx) => {
 });
 
 export const DELETE = route(async (_req, ctx: Ctx) => {
+  await requirePermission("manageInvoices");
   const { id } = await ctx.params;
   await prisma.invoice.delete({ where: { id } });
   return ok({ ok: true });

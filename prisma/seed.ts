@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { hashPassword } from "../src/lib/auth/password";
 
 const prisma = new PrismaClient();
 
@@ -21,19 +22,19 @@ async function main() {
   console.log("Seeding staff...");
   const [partner, manager, senior, article, accountant] = await Promise.all([
     prisma.staff.create({
-      data: { name: "CA Rajesh Sharma", email: "rajesh@sharmaassociates.in", role: "Partner", phone: "+91 98200 11223" },
+      data: { name: "CA Rajesh Sharma", email: "rajesh@sharmaassociates.in", role: "Partner", phone: "+91 98200 11223", passwordHash: hashPassword("partner@123") },
     }),
     prisma.staff.create({
-      data: { name: "CA Priya Nair", email: "priya@sharmaassociates.in", role: "Manager", phone: "+91 98200 44556" },
+      data: { name: "CA Priya Nair", email: "priya@sharmaassociates.in", role: "Manager", phone: "+91 98200 44556", passwordHash: hashPassword("manager@123") },
     }),
     prisma.staff.create({
-      data: { name: "Amit Deshpande", email: "amit@sharmaassociates.in", role: "Accountant", phone: "+91 99300 77889" },
+      data: { name: "Amit Deshpande", email: "amit@sharmaassociates.in", role: "Accountant", phone: "+91 99300 77889", passwordHash: hashPassword("staff@123") },
     }),
     prisma.staff.create({
-      data: { name: "Sneha Iyer", email: "sneha@sharmaassociates.in", role: "Article Assistant", phone: "+91 90040 33221" },
+      data: { name: "Sneha Iyer", email: "sneha@sharmaassociates.in", role: "Article Assistant", phone: "+91 90040 33221", passwordHash: hashPassword("staff@123") },
     }),
     prisma.staff.create({
-      data: { name: "Vikram Rao", email: "vikram@sharmaassociates.in", role: "Accountant", phone: "+91 98860 55447" },
+      data: { name: "Vikram Rao", email: "vikram@sharmaassociates.in", role: "Accountant", phone: "+91 98860 55447", passwordHash: hashPassword("staff@123") },
     }),
   ]);
 

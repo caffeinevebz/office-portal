@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Search, Plus, Pencil, Trash2, ClipboardList } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
+import { useAuth } from "@/lib/auth/context";
 import type { Task, Client, Staff } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -24,6 +25,9 @@ import { dueLabel, daysUntil, toDateInput, cn } from "@/lib/format";
 type FormState = Partial<Task>;
 
 export default function TasksPage() {
+  const { can } = useAuth();
+  const canManage = can("manageTasks");
+  const canDelete = can("deleteTasks");
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("All");
   const [category, setCategory] = useState("All");
@@ -51,14 +55,16 @@ export default function TasksPage() {
         title="Compliance & Tasks"
         subtitle="Track GST, income-tax, audit, ROC and other engagements"
         actions={
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setFormOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" /> New Task
-          </Button>
+          canManage ? (
+            <Button
+              onClick={() => {
+                setEditing(null);
+                setFormOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4" /> New Task
+            </Button>
+          ) : undefined
         }
       />
 
@@ -147,38 +153,56 @@ export default function TasksPage() {
                         <Badge tone={PRIORITY_TONE[t.priority]}>{t.priority}</Badge>
                       </td>
                       <td className="px-5 py-3">
-                        <select
-                          value={t.status}
-                          onChange={(e) => quickStatus(t, e.target.value)}
-                          className={cn(
-                            "cursor-pointer rounded-full border-0 px-2 py-1 text-xs font-medium ring-1 ring-inset focus:ring-2 focus:ring-indigo-300 focus:outline-none",
-                            statusPillClass(t.status),
-                          )}
-                        >
-                          {TASK_STATUSES.map((s) => (
-                            <option key={s}>{s}</option>
-                          ))}
-                        </select>
+                        {canManage ? (
+                          <select
+                            value={t.status}
+                            onChange={(e) => quickStatus(t, e.target.value)}
+                            className={cn(
+                              "cursor-pointer rounded-full border-0 px-2 py-1 text-xs font-medium ring-1 ring-inset focus:ring-2 focus:ring-indigo-300 focus:outline-none",
+                              statusPillClass(t.status),
+                            )}
+                          >
+                            {TASK_STATUSES.map((s) => (
+                              <option key={s}>{s}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span
+                            className={cn(
+                              "inline-block rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset",
+                              statusPillClass(t.status),
+                            )}
+                          >
+                            {t.status}
+                          </span>
+                        )}
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => {
-                              setEditing(t);
-                              setFormOpen(true);
-                            }}
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                            title="Edit"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => setToDelete(t)}
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                            title="Delete"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          {canManage && (
+                            <button
+                              onClick={() => {
+                                setEditing(t);
+                                setFormOpen(true);
+                              }}
+                              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                              title="Edit"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              onClick={() => setToDelete(t)}
+                              className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                          {!canManage && !canDelete && (
+                            <span className="text-xs text-slate-300">—</span>
+                          )}
                         </div>
                       </td>
                     </tr>

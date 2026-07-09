@@ -1,9 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { ok, parse, route } from "@/lib/api";
+import { requireUser, requirePermission } from "@/lib/auth/session";
 import { clientCreateSchema } from "@/lib/validation";
 import type { Prisma } from "@prisma/client";
 
 export const GET = route(async (req) => {
+  await requireUser();
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.trim();
   const status = searchParams.get("status")?.trim();
@@ -36,6 +38,7 @@ export const GET = route(async (req) => {
 });
 
 export const POST = route(async (req) => {
+  await requirePermission("manageClients");
   const data = await parse(req, clientCreateSchema);
   const client = await prisma.client.create({ data });
   return ok(client, 201);

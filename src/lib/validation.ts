@@ -47,6 +47,11 @@ export const staffCreateSchema = z.object({
   role: oneOf(STAFF_ROLES, "role"),
   phone: optionalText,
   active: z.boolean().default(true),
+  // Optional login password. If omitted/blank, the member cannot sign in yet.
+  password: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.string().min(6, "Password must be at least 6 characters").optional(),
+  ),
 });
 export const staffUpdateSchema = staffCreateSchema.partial();
 

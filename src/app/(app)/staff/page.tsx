@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus, Pencil, Trash2, Mail, Phone, UsersRound } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
+import { useAuth } from "@/lib/auth/context";
 import type { Staff } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -26,6 +27,8 @@ const ROLE_TONE: Record<string, Parameters<typeof Badge>[0]["tone"]> = {
 type FormState = Partial<Staff>;
 
 export default function StaffPage() {
+  const { can } = useAuth();
+  const canManage = can("manageTeam");
   const { data, loading, error, refresh } = useResource<Staff[]>("/api/staff");
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Staff | null>(null);
@@ -37,16 +40,25 @@ export default function StaffPage() {
         title="Team"
         subtitle="Partners, managers and staff of the firm"
         actions={
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setFormOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" /> Add Member
-          </Button>
+          canManage ? (
+            <Button
+              onClick={() => {
+                setEditing(null);
+                setFormOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4" /> Add Member
+            </Button>
+          ) : undefined
         }
       />
+
+      {!canManage && (
+        <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-xs text-slate-500">
+          You have view-only access to the team. Only Partners and Admins can add
+          or edit members and set login access.
+        </div>
+      )}
 
       {loading && !data ? (
         <Loading label="Loading team…" />
@@ -72,25 +84,27 @@ export default function StaffPage() {
                     </Badge>
                   </div>
                 </div>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => {
-                      setEditing(s);
-                      setFormOpen(true);
-                    }}
-                    className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                    title="Edit"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => setToDelete(s)}
-                    className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                    title="Delete"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
+                {canManage && (
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => {
+                        setEditing(s);
+                        setFormOpen(true);
+                      }}
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      title="Edit"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => setToDelete(s)}
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="mt-4 space-y-1.5 text-sm text-slate-600">
                 <p className="flex items-center gap-2 truncate">
@@ -153,6 +167,7 @@ function StaffForm({
   const [form, setForm] = useState<FormState>(
     initial ?? { role: "Accountant", active: true },
   );
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const isEdit = !!initial;
@@ -169,6 +184,7 @@ function StaffForm({
         role: form.role,
         phone: form.phone,
         active: form.active ?? true,
+        ...(password ? { password } : {}),
       };
       if (isEdit) await apiMutate(`/api/staff/${initial!.id}`, "PUT", payload);
       else await apiMutate("/api/staff", "POST", payload);
@@ -222,7 +238,7 @@ function StaffForm({
         <Field label="Phone">
           <Input value={form.phone ?? ""} onChange={(e) => set("phone", e.target.value)} />
         </Field>
-        <Field label="Status" className="sm:col-span-2">
+        <Field label="Status">
           <Select
             value={form.active === false ? "Inactive" : "Active"}
             onChange={(e) => set("active", e.target.value === "Active")}
@@ -230,6 +246,22 @@ function StaffForm({
             <option>Active</option>
             <option>Inactive</option>
           </Select>
+        </Field>
+        <Field
+          label={isEdit ? "Reset password" : "Login password"}
+          hint={
+            isEdit
+              ? "Leave blank to keep the current password."
+              : "Optional. Min 6 characters. Blank = no sign-in access yet."
+          }
+        >
+          <Input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            autoComplete="new-password"
+          />
         </Field>
       </div>
     </Modal>

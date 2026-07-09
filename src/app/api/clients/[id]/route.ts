@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { ok, fail, parse, route } from "@/lib/api";
+import { requireUser, requirePermission } from "@/lib/auth/session";
 import { clientUpdateSchema } from "@/lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export const GET = route(async (_req, ctx: Ctx) => {
+  await requireUser();
   const { id } = await ctx.params;
   const client = await prisma.client.findUnique({
     where: { id },
@@ -22,6 +24,7 @@ export const GET = route(async (_req, ctx: Ctx) => {
 });
 
 export const PUT = route(async (req, ctx: Ctx) => {
+  await requirePermission("manageClients");
   const { id } = await ctx.params;
   const data = await parse(req, clientUpdateSchema);
   const client = await prisma.client.update({ where: { id }, data });
@@ -29,6 +32,7 @@ export const PUT = route(async (req, ctx: Ctx) => {
 });
 
 export const DELETE = route(async (_req, ctx: Ctx) => {
+  await requirePermission("deleteClients");
   const { id } = await ctx.params;
   await prisma.client.delete({ where: { id } });
   return ok({ ok: true });
