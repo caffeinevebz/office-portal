@@ -14,10 +14,10 @@ export const GET = route(async (req) => {
   if (status && status !== "All") where.status = status;
   if (q) {
     where.OR = [
-      { name: { contains: q } },
-      { pan: { contains: q } },
-      { gstin: { contains: q } },
-      { contactPerson: { contains: q } },
+      { name: { contains: q, mode: "insensitive" } },
+      { pan: { contains: q, mode: "insensitive" } },
+      { gstin: { contains: q, mode: "insensitive" } },
+      { contactPerson: { contains: q, mode: "insensitive" } },
     ];
   }
 

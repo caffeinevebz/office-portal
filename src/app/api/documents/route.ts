@@ -14,7 +14,7 @@ export const GET = route(async (req) => {
   const where: Prisma.DocumentWhereInput = {};
   if (category && category !== "All") where.category = category;
   if (clientId) where.clientId = clientId;
-  if (q) where.name = { contains: q };
+  if (q) where.name = { contains: q, mode: "insensitive" };
 
   const documents = await prisma.document.findMany({
     where,

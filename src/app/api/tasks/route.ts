@@ -20,8 +20,8 @@ export const GET = route(async (req) => {
   if (clientId) where.clientId = clientId;
   if (q) {
     where.OR = [
-      { title: { contains: q } },
-      { description: { contains: q } },
+      { title: { contains: q, mode: "insensitive" } },
+      { description: { contains: q, mode: "insensitive" } },
     ];
   }
 

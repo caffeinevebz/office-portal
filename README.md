@@ -4,7 +4,7 @@ A web-based **office management portal for a Chartered Accountancy (CA) firm**.
 It brings the firm's day-to-day operations — clients, statutory compliance,
 billing, team and documents — into a single dashboard.
 
-> Built with Next.js (App Router), TypeScript, Tailwind CSS, Prisma and SQLite.
+> Built with Next.js (App Router), TypeScript, Tailwind CSS, Prisma and PostgreSQL.
 > The sample data models an Indian CA practice (GST, income-tax, TDS, ROC/MCA,
 > audit, etc.), but the app is generic enough for any professional-services firm.
 
@@ -31,7 +31,7 @@ billing, team and documents — into a single dashboard.
 
 - **Next.js 16** (App Router, Route Handlers) + **React 19** + **TypeScript**
 - **Tailwind CSS v4** for styling
-- **Prisma 6** ORM with a **SQLite** database (zero external services)
+- **Prisma 6** ORM with **PostgreSQL** (Neon's free tier on Vercel; any Postgres locally)
 - **Recharts** for dashboard charts, **lucide-react** icons, **Zod** for API validation
 - **pdf-lib** for server-generated invoice & receipt PDFs (pure JS, no headless browser)
 - Session auth with signed cookies + `scrypt` password hashing (no auth service)
@@ -39,17 +39,34 @@ billing, team and documents — into a single dashboard.
 > Invoice PDFs use the firm identity in `src/lib/firm.ts` (name, address, PAN,
 > GSTIN, bank details) — edit that one file to change the letterhead.
 
-## Getting started
+## Deploy to Vercel (recommended — nothing to install)
+
+The whole setup happens in the browser:
+
+1. **Import the repo** — sign in at [vercel.com](https://vercel.com) with GitHub →
+   *Add New → Project* → import `office-portal`. Don't deploy yet.
+2. **Attach a free database** — in the project, open the **Storage** tab →
+   *Create Database* → **Neon (Postgres)** → accept the defaults. This injects
+   the `DATABASE_URL` environment variable automatically.
+3. **Add one env var** — under *Settings → Environment Variables*, add
+   `AUTH_SECRET` with any long random string (it signs the login cookies).
+4. **Deploy.** The build runs `prisma db push` automatically, so the database
+   tables are created on the first deploy.
+5. **Initialise from the browser** — open `https://<your-app>.vercel.app`.
+   The sign-in page shows a **"First run?"** link to the setup screen, where
+   you either **load the demo firm** (sample clients, tasks, invoices, DSCs +
+   the demo logins) or **create your own Partner account** and start clean.
+   Setup locks itself the moment the first account exists.
+
+## Run locally (for development)
+
+Requires Node.js 20+ and a PostgreSQL server (any 14+). Put its connection
+string in `.env` as `DATABASE_URL`, then:
 
 ```bash
-# 1. Install dependencies
 npm install
-
-# 2. Create the SQLite database and load sample data
-npm run db:push
-npm run db:seed
-
-# 3. Run the app
+npm run db:push      # create the tables
+npm run db:seed      # optional: load the demo firm
 npm run dev
 ```
 
@@ -145,7 +162,7 @@ Admins can set or reset a member's login password from the **Team** page.
 | --- | --- |
 | `npm run dev` | Start the dev server |
 | `npm run build` / `npm start` | Production build and serve |
-| `npm run db:push` | Sync the Prisma schema to the SQLite DB |
+| `npm run db:push` | Sync the Prisma schema to the database |
 | `npm run db:seed` | Reset and load sample data |
 | `npm run db:studio` | Open Prisma Studio to browse the data |
 
@@ -179,9 +196,8 @@ src/
 
 ## Notes & next steps
 
-The database is a local SQLite file, so all data lives on your machine.
 Authentication & roles, a statutory calendar of recurring obligations,
-email/WhatsApp deadline reminders, DSC and inward/outward registers, and
-invoice/receipt PDFs are already built. Natural extensions from here: real
-file uploads for documents, an audit log of who changed what, and self-service
-password changes.
+email/WhatsApp deadline reminders, DSC and inward/outward registers,
+invoice/receipt PDFs, and cloud deployment (Vercel + Neon Postgres) are
+already built. Natural extensions from here: real file uploads for documents,
+an audit log of who changed what, and self-service password changes.

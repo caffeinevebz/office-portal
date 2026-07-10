@@ -14,9 +14,9 @@ export const GET = route(async (req) => {
   if (custody && custody !== "All") where.custody = custody;
   if (q) {
     where.OR = [
-      { holderName: { contains: q } },
-      { serialNumber: { contains: q } },
-      { client: { name: { contains: q } } },
+      { holderName: { contains: q, mode: "insensitive" } },
+      { serialNumber: { contains: q, mode: "insensitive" } },
+      { client: { name: { contains: q, mode: "insensitive" } } },
     ];
   }
 

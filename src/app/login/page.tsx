@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, LogIn } from "lucide-react";
+import Link from "next/link";
+import { Building2, LogIn, Sparkles } from "lucide-react";
+import { useResource } from "@/lib/useApi";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
 
@@ -15,6 +17,7 @@ const DEMO = [
 
 export default function LoginPage() {
   const router = useRouter();
+  const { data: setup } = useResource<{ needsSetup: boolean }>("/api/setup/status");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +57,19 @@ export default function LoginPage() {
           </h1>
           <p className="text-sm text-slate-500">Office Portal · sign in to continue</p>
         </div>
+
+        {setup?.needsSetup && (
+          <Link
+            href="/setup"
+            className="mb-4 flex items-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700 hover:bg-indigo-100"
+          >
+            <Sparkles className="h-4 w-4 shrink-0" />
+            <span>
+              <strong>First run?</strong> This portal has no accounts yet —
+              initialise it here.
+            </span>
+          </Link>
+        )}
 
         <form
           onSubmit={submit}

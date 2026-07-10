@@ -15,10 +15,10 @@ export const GET = route(async (req) => {
   if (status && status !== "All") where.status = status;
   if (q) {
     where.OR = [
-      { inwardNumber: { contains: q } },
-      { receivedFrom: { contains: q } },
-      { contents: { contains: q } },
-      { client: { name: { contains: q } } },
+      { inwardNumber: { contains: q, mode: "insensitive" } },
+      { receivedFrom: { contains: q, mode: "insensitive" } },
+      { contents: { contains: q, mode: "insensitive" } },
+      { client: { name: { contains: q, mode: "insensitive" } } },
     ];
   }
 

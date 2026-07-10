@@ -16,8 +16,8 @@ export const GET = route(async (req) => {
   if (clientId) where.clientId = clientId;
   if (q) {
     where.OR = [
-      { invoiceNumber: { contains: q } },
-      { description: { contains: q } },
+      { invoiceNumber: { contains: q, mode: "insensitive" } },
+      { description: { contains: q, mode: "insensitive" } },
     ];
   }
 
