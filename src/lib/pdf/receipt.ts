@@ -1,7 +1,6 @@
 import "server-only";
-import type { Invoice, Client } from "@prisma/client";
 import { rupeesInWords } from "./words";
-import { taxBreakdown } from "./invoice";
+import { taxBreakdown, letterheadFor, type InvoiceForPdf } from "./invoice";
 import {
   A4,
   MARGIN,
@@ -17,8 +16,6 @@ import {
   signatureAndFooter,
 } from "./layout";
 
-type InvoiceWithClient = Invoice & { client: Client };
-
 const fmtDate = (d: Date | null | undefined) =>
   d
     ? d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
@@ -31,13 +28,14 @@ export function receiptNumber(invoiceNumber: string): string {
     : `RCT-${invoiceNumber}`;
 }
 
-export async function buildReceiptPdf(inv: InvoiceWithClient): Promise<Uint8Array> {
+export async function buildReceiptPdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   const pdf = await createA4();
   const { page, reg, bold } = pdf;
   const right = A4.width - MARGIN;
+  const lh = await letterheadFor(inv);
 
-  let y = firmHeader(pdf, "PAYMENT RECEIPT");
-  const tax = taxBreakdown(inv);
+  let y = await firmHeader(pdf, "PAYMENT RECEIPT", lh);
+  const tax = taxBreakdown(inv, lh.stateCode);
   const paidOn = inv.paidDate ?? new Date();
 
   // Facts row
@@ -94,6 +92,6 @@ export async function buildReceiptPdf(inv: InvoiceWithClient): Promise<Uint8Arra
     color: FAINT,
   });
 
-  signatureAndFooter(pdf, 168);
+  signatureAndFooter(pdf, 168, lh.name);
   return pdf.doc.save();
 }

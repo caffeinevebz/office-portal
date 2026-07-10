@@ -63,18 +63,59 @@ export type ComplianceSchedule = {
   _count?: { tasks: number };
 };
 
+export type Organization = {
+  id: string;
+  name: string;
+  tagline: string;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  pan: string | null;
+  gstin: string | null;
+  sacCode: string;
+  bankName: string | null;
+  bankAccount: string | null;
+  bankIfsc: string | null;
+  bankUpi: string | null;
+  invoiceNote: string | null;
+  isDefault: boolean;
+  hasLogo: boolean;
+  createdAt: string;
+  _count?: { invoices: number };
+};
+
 export type Invoice = {
   id: string;
   invoiceNumber: string;
   description: string | null;
   amount: number;
   taxRate: number;
+  gstMode: string;
   status: string;
   issueDate: string;
   dueDate: string | null;
   paidDate: string | null;
   clientId: string;
   client?: Client | null;
+  organizationId: string | null;
+  organization?: { id: string; name: string } | null;
+};
+
+export type ItrFiling = {
+  id: string;
+  assessmentYear: string;
+  formType: string;
+  regime: string;
+  status: string;
+  filedOn: string | null;
+  ackNumber: string | null;
+  refundAmount: number | null;
+  notes: string | null;
+  createdAt: string;
+  clientId: string;
+  assigneeId: string | null;
+  client?: Client | null;
+  assignee?: Staff | null;
 };
 
 export type DocumentRecord = {

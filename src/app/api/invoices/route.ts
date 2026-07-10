@@ -24,7 +24,10 @@ export const GET = route(async (req) => {
   const invoices = await prisma.invoice.findMany({
     where,
     orderBy: { issueDate: "desc" },
-    include: { client: true },
+    include: {
+      client: true,
+      organization: { select: { id: true, name: true } },
+    },
   });
   return ok(invoices);
 });

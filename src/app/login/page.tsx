@@ -15,9 +15,12 @@ const DEMO = [
   { label: "Article Asst.", email: "sneha@sharmaassociates.in", password: "staff@123" },
 ];
 
+type Branding = { name: string; tagline: string; hasLogo: boolean };
+
 export default function LoginPage() {
   const router = useRouter();
   const { data: setup } = useResource<{ needsSetup: boolean }>("/api/setup/status");
+  const { data: branding } = useResource<Branding>("/api/branding");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -49,13 +52,24 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
-            <Building2 className="h-6 w-6" />
-          </div>
+          {branding?.hasLogo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src="/api/branding/logo"
+              alt=""
+              className="h-12 w-12 rounded-xl bg-white object-contain shadow-sm ring-1 ring-slate-200"
+            />
+          ) : (
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
+              <Building2 className="h-6 w-6" />
+            </div>
+          )}
           <h1 className="mt-3 text-lg font-semibold text-slate-900">
-            Sharma &amp; Associates
+            {branding?.name ?? "Office Portal"}
           </h1>
-          <p className="text-sm text-slate-500">Office Portal · sign in to continue</p>
+          <p className="text-sm text-slate-500">
+            {branding?.tagline ?? ""} · sign in to continue
+          </p>
         </div>
 
         {setup?.needsSetup && (

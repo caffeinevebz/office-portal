@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, Plus, Pencil, Trash2, Eye, Users } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Eye, Users, FileUp, Download } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
 import type { Client } from "@/lib/types";
@@ -32,6 +32,7 @@ export default function ClientsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
   const [toDelete, setToDelete] = useState<Client | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   function openCreate() {
     setEditing(null);
@@ -49,9 +50,14 @@ export default function ClientsPage() {
         subtitle="Individuals and businesses managed by the firm"
         actions={
           canManage ? (
-            <Button onClick={openCreate}>
-              <Plus className="h-4 w-4" /> Add Client
-            </Button>
+            <>
+              <Button variant="secondary" onClick={() => setImportOpen(true)}>
+                <FileUp className="h-4 w-4" /> Import Excel
+              </Button>
+              <Button onClick={openCreate}>
+                <Plus className="h-4 w-4" /> Add Client
+              </Button>
+            </>
           ) : undefined
         }
       />
@@ -187,6 +193,13 @@ export default function ClientsPage() {
             setFormOpen(false);
             refresh();
           }}
+        />
+      )}
+
+      {importOpen && (
+        <ImportModal
+          onClose={() => setImportOpen(false)}
+          onImported={refresh}
         />
       )}
 
@@ -341,6 +354,131 @@ function ClientForm({
           />
         </Field>
       </div>
+    </Modal>
+  );
+}
+
+function ImportModal({
+  onClose,
+  onImported,
+}: {
+  onClose: () => void;
+  onImported: () => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [report, setReport] = useState<{
+    created: number;
+    skipped: { row: number; name: string; reason: string }[];
+    skippedTotal: number;
+  } | null>(null);
+
+  async function upload() {
+    if (!file) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const res = await fetch("/api/clients/import", { method: "POST", body });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `Import failed (${res.status})`);
+      setReport(json);
+      onImported();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Import failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Import clients from Excel"
+      description="Upload an .xlsx file based on the template. Duplicates (same PAN or name) are skipped."
+      footer={
+        report ? (
+          <Button onClick={onClose}>Done</Button>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={onClose} disabled={busy}>
+              Cancel
+            </Button>
+            <Button onClick={upload} disabled={busy || !file}>
+              {busy ? "Importing…" : "Import"}
+            </Button>
+          </>
+        )
+      }
+    >
+      {err && (
+        <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-200">
+          {err}
+        </div>
+      )}
+
+      {report ? (
+        <div className="space-y-3">
+          <div className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 ring-1 ring-emerald-200">
+            Imported <strong>{report.created}</strong> client
+            {report.created === 1 ? "" : "s"}
+            {report.skippedTotal > 0 && (
+              <> · skipped {report.skippedTotal} row{report.skippedTotal === 1 ? "" : "s"}</>
+            )}
+            .
+          </div>
+          {report.skipped.length > 0 && (
+            <div className="max-h-56 overflow-y-auto rounded-lg border border-slate-200">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50 text-left text-slate-500">
+                    <th className="px-3 py-2">Row</th>
+                    <th className="px-3 py-2">Name</th>
+                    <th className="px-3 py-2">Skipped because</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {report.skipped.map((s, i) => (
+                    <tr key={i}>
+                      <td className="px-3 py-1.5 text-slate-400">{s.row}</td>
+                      <td className="px-3 py-1.5 text-slate-700">{s.name}</td>
+                      <td className="px-3 py-1.5 text-slate-500">{s.reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <a
+            href="/api/clients/import/template"
+            className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-indigo-600 hover:bg-indigo-50"
+          >
+            <Download className="h-4 w-4" />
+            Download the import template (.xlsx)
+          </a>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-700">
+              Filled-in template
+            </label>
+            <input
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-indigo-600 hover:file:bg-indigo-100"
+            />
+          </div>
+          <p className="text-xs text-slate-400">
+            Columns: Name (required), Type, PAN, GSTIN, Email, Phone, Contact
+            Person, Address, Status, Notes. Up to 1,000 rows per file.
+          </p>
+        </div>
+      )}
     </Modal>
   );
 }

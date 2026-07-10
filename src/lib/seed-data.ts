@@ -2,6 +2,7 @@
 // setup endpoint. Clears all data, then loads the sample firm.
 import type { PrismaClient } from "@prisma/client";
 import { hashPassword } from "./auth/password";
+import { assessmentYears } from "./constants";
 
 // Helper: date offset by N days from now.
 const daysFromNow = (n: number) => {
@@ -21,8 +22,48 @@ export async function seedDemoData(prisma: PrismaClient) {
   await prisma.dsc.deleteMany();
   await prisma.packetMovement.deleteMany();
   await prisma.docPacket.deleteMany();
+  await prisma.itrFiling.deleteMany();
+  await prisma.organization.deleteMany();
   await prisma.client.deleteMany();
   await prisma.staff.deleteMany();
+
+  console.log("Seeding organizations...");
+  const mainOrg = await prisma.organization.create({
+    data: {
+      name: "Sharma & Associates",
+      tagline: "Chartered Accountants",
+      address: "302, Meridian Business Centre, S.V. Road\nAndheri West, Mumbai 400058, Maharashtra",
+      phone: "+91 22 2671 4455",
+      email: "office@sharmaassociates.in",
+      pan: "AAKFS3121L",
+      gstin: "27AAKFS3121L1Z6",
+      sacCode: "9982",
+      bankName: "HDFC Bank, Andheri West Branch",
+      bankAccount: "50200011223344",
+      bankIfsc: "HDFC0000239",
+      bankUpi: "sharmaassociates@hdfcbank",
+      invoiceNote:
+        "Payment is due within 15 days of the invoice date. Kindly quote the invoice number when remitting.",
+      isDefault: true,
+    },
+  });
+  const advisoryOrg = await prisma.organization.create({
+    data: {
+      name: "Sharma Advisory Services LLP",
+      tagline: "Management Consultants",
+      address: "302, Meridian Business Centre, S.V. Road\nAndheri West, Mumbai 400058, Maharashtra",
+      phone: "+91 22 2671 4456",
+      email: "advisory@sharmaassociates.in",
+      pan: "AAOFS8891M",
+      gstin: "27AAOFS8891M1ZK",
+      sacCode: "9983",
+      bankName: "ICICI Bank, Andheri West Branch",
+      bankAccount: "002105012345",
+      bankIfsc: "ICIC0000021",
+      bankUpi: "sharmaadvisory@icici",
+      invoiceNote: "Payment is due within 15 days of the invoice date.",
+    },
+  });
 
   console.log("Seeding staff...");
   const [partner, manager, senior, article, accountant] = await Promise.all([
@@ -159,13 +200,13 @@ export async function seedDemoData(prisma: PrismaClient) {
     { invoiceNumber: "INV-2627-002", clientId: apex.id, description: "Statutory audit fee – FY 2025-26 (advance)", amount: 125000, taxRate: 18, status: "Sent", issueDate: daysFromNow(-15), dueDate: daysFromNow(15) },
     { invoiceNumber: "INV-2627-003", clientId: greenleaf.id, description: "GST compliance – Q1 FY26-27", amount: 22000, taxRate: 18, status: "Overdue", issueDate: daysFromNow(-35), dueDate: daysFromNow(-5) },
     { invoiceNumber: "INV-2627-004", clientId: meera.id, description: "ITR filing & advisory – AY 2026-27", amount: 8000, taxRate: 18, status: "Paid", issueDate: daysFromNow(-12), dueDate: daysFromNow(3), paidDate: daysFromNow(-8) },
-    { invoiceNumber: "INV-2627-005", clientId: coastal.id, description: "GST export refund filing", amount: 18000, taxRate: 18, status: "Sent", issueDate: daysFromNow(-8), dueDate: daysFromNow(22) },
-    { invoiceNumber: "INV-2627-006", clientId: vasudha.id, description: "Tax audit fee – FY 2025-26 (advance)", amount: 60000, taxRate: 18, status: "Draft", issueDate: daysFromNow(-2) },
+    { invoiceNumber: "INV-2627-005", clientId: coastal.id, organizationId: advisoryOrg.id, description: "Advisory: GST export refund filing", amount: 18000, taxRate: 18, status: "Sent", issueDate: daysFromNow(-8), dueDate: daysFromNow(22) },
+    { invoiceNumber: "INV-2627-006", clientId: vasudha.id, description: "Tax audit fee – FY 2025-26 (advance)", amount: 60000, taxRate: 18, gstMode: "None", status: "Draft", issueDate: daysFromNow(-2) },
     { invoiceNumber: "INV-2627-007", clientId: sunrise.id, description: "Quarterly GST + accounting", amount: 12000, taxRate: 18, status: "Paid", issueDate: daysFromNow(-30), dueDate: daysFromNow(-15), paidDate: daysFromNow(-14) },
     { invoiceNumber: "INV-2627-008", clientId: trust.id, description: "12A/80G renewal & Form 10B", amount: 35000, taxRate: 18, status: "Overdue", issueDate: daysFromNow(-50), dueDate: daysFromNow(-20) },
   ];
   for (const inv of invoiceData) {
-    await prisma.invoice.create({ data: inv });
+    await prisma.invoice.create({ data: { organizationId: mainOrg.id, ...inv } });
   }
 
   console.log("Seeding documents...");
@@ -239,6 +280,21 @@ export async function seedDemoData(prisma: PrismaClient) {
     ],
   });
 
+  console.log("Seeding ITR filings...");
+  const [ayNow, ayPrev] = assessmentYears();
+  const itrData = [
+    { clientId: meera.id, assessmentYear: ayNow, formType: "ITR-2", regime: "New", status: "In Preparation", assigneeId: senior.id, notes: "Capital gains statements received; broker P&L pending." },
+    { clientId: huf.id, assessmentYear: ayNow, formType: "ITR-2", regime: "Old", status: "Documents Awaited", assigneeId: accountant.id, notes: "House property rent receipts awaited." },
+    { clientId: sunrise.id, assessmentYear: ayNow, formType: "ITR-3", regime: "New", status: "Documents Awaited", assigneeId: accountant.id },
+    { clientId: vasudha.id, assessmentYear: ayNow, formType: "ITR-5", regime: "New", status: "In Preparation", assigneeId: manager.id, notes: "To file after tax audit sign-off." },
+    { clientId: coastal.id, assessmentYear: ayNow, formType: "ITR-3", regime: "New", status: "Filed", filedOn: daysFromNow(-3), ackNumber: "445566778899001", assigneeId: senior.id },
+    { clientId: meera.id, assessmentYear: ayPrev, formType: "ITR-2", regime: "New", status: "Processed", filedOn: daysFromNow(-345), ackNumber: "123456789012345", refundAmount: 18450, assigneeId: senior.id },
+    { clientId: sunrise.id, assessmentYear: ayPrev, formType: "ITR-3", regime: "New", status: "E-Verified", filedOn: daysFromNow(-350), ackNumber: "987654321098765", assigneeId: accountant.id },
+  ];
+  for (const f of itrData) {
+    await prisma.itrFiling.create({ data: f });
+  }
+
   console.log("Seeding reminder settings...");
   await prisma.notificationLog.deleteMany();
   await prisma.reminderSettings.deleteMany();
@@ -269,6 +325,8 @@ export async function seedDemoData(prisma: PrismaClient) {
     schedules: await prisma.complianceSchedule.count(),
     dscs: await prisma.dsc.count(),
     packets: await prisma.docPacket.count(),
+    orgs: await prisma.organization.count(),
+    itrFilings: await prisma.itrFiling.count(),
   };
   console.log("Seed complete:", counts);
   return counts;

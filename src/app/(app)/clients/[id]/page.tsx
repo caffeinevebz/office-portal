@@ -22,6 +22,7 @@ import {
   dueLabel,
   daysUntil,
   initials,
+  invoiceGross,
   cn,
 } from "@/lib/format";
 import {
@@ -31,7 +32,8 @@ import {
   INVOICE_STATUS_TONE,
 } from "@/lib/constants";
 
-const withTax = (a: number, r: number) => a + (a * r) / 100;
+const withTax = (i: { amount: number; taxRate: number; gstMode?: string }) =>
+  invoiceGross(i.amount, i.taxRate, i.gstMode);
 
 export default function ClientDetailPage() {
   const params = useParams<{ id: string }>();
@@ -48,10 +50,10 @@ export default function ClientDetailPage() {
     );
 
   const openTasks = c.tasks.filter((t) => t.status !== "Completed").length;
-  const billed = c.invoices.reduce((s, i) => s + withTax(i.amount, i.taxRate), 0);
+  const billed = c.invoices.reduce((s, i) => s + withTax(i), 0);
   const outstanding = c.invoices
     .filter((i) => i.status === "Sent" || i.status === "Overdue")
-    .reduce((s, i) => s + withTax(i.amount, i.taxRate), 0);
+    .reduce((s, i) => s + withTax(i), 0);
 
   const infoRows = [
     { icon: Mail, value: c.email },
@@ -177,7 +179,7 @@ export default function ClientDetailPage() {
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-medium text-slate-800">
-                      {formatCurrency(withTax(i.amount, i.taxRate))}
+                      {formatCurrency(withTax(i))}
                     </p>
                     <Badge tone={INVOICE_STATUS_TONE[i.status]}>{i.status}</Badge>
                   </div>
