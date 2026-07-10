@@ -1,7 +1,7 @@
 import "server-only";
 import { rgb } from "pdf-lib";
-import type { Invoice, Client } from "@prisma/client";
-import { FIRM, FIRM_STATE_CODE } from "@/lib/firm";
+import type { Invoice, Client, Organization } from "@prisma/client";
+import { getDefaultOrg, toLetterhead, type Letterhead } from "@/lib/org";
 import { rupeesInWords } from "./words";
 import {
   A4,
@@ -20,47 +20,74 @@ import {
   signatureAndFooter,
 } from "./layout";
 
-type InvoiceWithClient = Invoice & { client: Client };
+export type InvoiceForPdf = Invoice & {
+  client: Client;
+  organization?: Organization | null;
+};
 
 const fmtDate = (d: Date | null | undefined) =>
   d
     ? d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
     : "—";
 
-/** GST breakdown: intra-state (CGST+SGST) vs inter-state (IGST) by GSTIN state code. */
-export function taxBreakdown(inv: InvoiceWithClient) {
+/**
+ * GST breakdown for an invoice. `gstMode` overrides the automatic
+ * intra/inter-state detection: Auto (compare client GSTIN state with the
+ * billing organization's), Intra (CGST+SGST), Inter (IGST), None (no GST).
+ */
+export function taxBreakdown(inv: InvoiceForPdf, orgStateCode: string | null) {
+  const mode = inv.gstMode ?? "Auto";
+  const none = mode === "None" || inv.taxRate <= 0;
+
   const clientState = inv.client.gstin?.slice(0, 2);
-  const interState = !!clientState && clientState !== FIRM_STATE_CODE;
+  const interState =
+    mode === "Inter"
+      ? true
+      : mode === "Intra"
+        ? false
+        : !!clientState && !!orgStateCode && clientState !== orgStateCode;
+
   const taxable = inv.amount;
-  const taxTotal = (taxable * inv.taxRate) / 100;
+  const taxTotal = none ? 0 : (taxable * inv.taxRate) / 100;
   const gross = taxable + taxTotal;
   const grand = Math.round(gross);
   const roundOff = grand - gross;
-  return { interState, taxable, taxTotal, gross, grand, roundOff, rate: inv.taxRate };
+  return { none, interState, taxable, taxTotal, gross, grand, roundOff, rate: inv.taxRate };
 }
 
-export async function buildInvoicePdf(inv: InvoiceWithClient): Promise<Uint8Array> {
+/** Letterhead for an invoice: its own organization, else the firm default. */
+export async function letterheadFor(inv: InvoiceForPdf): Promise<Letterhead> {
+  return toLetterhead(inv.organization ?? (await getDefaultOrg()));
+}
+
+export async function buildInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   const pdf = await createA4();
   const { page, reg, bold } = pdf;
   const right = A4.width - MARGIN;
+  const lh = await letterheadFor(inv);
 
   if (inv.status === "Paid") watermark(page, "PAID", rgb(0.02, 0.59, 0.41));
   else if (inv.status === "Draft") watermark(page, "DRAFT", rgb(0.42, 0.45, 0.5));
   else if (inv.status === "Overdue") watermark(page, "OVERDUE", rgb(0.88, 0.11, 0.28));
 
-  let y = firmHeader(pdf, "TAX INVOICE");
+  let y = await firmHeader(pdf, "TAX INVOICE", lh);
 
   // ---- Meta: Bill To (left) & invoice facts (right) ----
   const c = inv.client;
-  const tax = taxBreakdown(inv);
+  const tax = taxBreakdown(inv, lh.stateCode);
 
   text(page, "BILLED TO", { x: MARGIN, y, size: 7.5, font: bold, color: FAINT });
   const factsX = 340;
+  const supply = tax.none
+    ? "GST not applicable"
+    : tax.interState
+      ? "Inter-state (IGST)"
+      : `Intra-state${lh.stateCode ? ` (${lh.stateCode})` : ""}`;
   const facts: [string, string][] = [
     ["Invoice No.", inv.invoiceNumber],
     ["Invoice Date", fmtDate(inv.issueDate)],
     ["Due Date", fmtDate(inv.dueDate)],
-    ["Place of Supply", tax.interState ? `Inter-state (IGST)` : `Maharashtra (${FIRM_STATE_CODE})`],
+    ["Place of Supply", supply],
   ];
   let fy = y;
   for (const [k, v] of facts) {
@@ -112,7 +139,7 @@ export async function buildInvoicePdf(inv: InvoiceWithClient): Promise<Uint8Arra
     text(page, line, { x: MARGIN + 8, y, size: 9.5, font: reg });
     y -= 12;
   }
-  text(page, FIRM.sacCode, { x: colSac, y: rowTop, size: 9.5, font: reg, color: MUTED });
+  text(page, lh.sacCode, { x: colSac, y: rowTop, size: 9.5, font: reg, color: MUTED });
   text(page, money(tax.taxable), { x: right - 8, y: rowTop, size: 9.5, font: reg, align: "right" });
   y -= rowPadding;
   hline(page, MARGIN, right, y);
@@ -129,13 +156,13 @@ export async function buildInvoicePdf(inv: InvoiceWithClient): Promise<Uint8Arra
   };
 
   totalRow("Taxable value", money(tax.taxable));
-  if (tax.rate > 0) {
-    if (tax.interState) {
-      totalRow(`IGST @ ${tax.rate}%`, money(tax.taxTotal));
-    } else {
-      totalRow(`CGST @ ${tax.rate / 2}%`, money(tax.taxTotal / 2));
-      totalRow(`SGST @ ${tax.rate / 2}%`, money(tax.taxTotal / 2));
-    }
+  if (tax.none) {
+    totalRow("GST", "Not applicable");
+  } else if (tax.interState) {
+    totalRow(`IGST @ ${tax.rate}%`, money(tax.taxTotal));
+  } else {
+    totalRow(`CGST @ ${tax.rate / 2}%`, money(tax.taxTotal / 2));
+    totalRow(`SGST @ ${tax.rate / 2}%`, money(tax.taxTotal / 2));
   }
   if (Math.abs(tax.roundOff) >= 0.005) {
     totalRow("Round off", (tax.roundOff > 0 ? "+" : "-") + money(Math.abs(tax.roundOff)));
@@ -144,7 +171,7 @@ export async function buildInvoicePdf(inv: InvoiceWithClient): Promise<Uint8Arra
   page.drawRectangle({ x: labelX - 10, y: y - 7, width: right - labelX + 10, height: 22, color: FILL });
   totalRow("TOTAL", money(tax.grand), { bold: true, big: true });
 
-  // Amount in words (left of the totals block, full width below).
+  // Amount in words (full width below).
   y -= 6;
   text(page, "Amount in words", { x: MARGIN, y, size: 7.5, font: bold, color: FAINT });
   y -= 12;
@@ -155,25 +182,29 @@ export async function buildInvoicePdf(inv: InvoiceWithClient): Promise<Uint8Arra
 
   // ---- Bank details + signature ----
   const bankTop = 168;
-  text(page, "PAYMENT DETAILS", { x: MARGIN, y: bankTop, size: 7.5, font: bold, color: FAINT });
-  const bank = [
-    ["Bank", FIRM.bank.name],
-    ["Account No.", FIRM.bank.account],
-    ["IFSC", FIRM.bank.ifsc],
-    ["UPI", FIRM.bank.upi],
-  ];
+  const bank: [string, string][] = [];
+  if (lh.bank.name) bank.push(["Bank", lh.bank.name]);
+  if (lh.bank.account) bank.push(["Account No.", lh.bank.account]);
+  if (lh.bank.ifsc) bank.push(["IFSC", lh.bank.ifsc]);
+  if (lh.bank.upi) bank.push(["UPI", lh.bank.upi]);
+
+  if (bank.length > 0) {
+    text(page, "PAYMENT DETAILS", { x: MARGIN, y: bankTop, size: 7.5, font: bold, color: FAINT });
+  }
   let by = bankTop - 14;
   for (const [k, v] of bank) {
     text(page, k, { x: MARGIN, y: by, size: 8.5, font: reg, color: MUTED });
     text(page, v, { x: MARGIN + 70, y: by, size: 8.5, font: bold });
     by -= 12;
   }
-  by -= 6;
-  for (const line of wrap(FIRM.invoiceNote, reg, 8, 300)) {
-    text(page, line, { x: MARGIN, y: by, size: 8, font: reg, color: FAINT });
-    by -= 10;
+  if (lh.invoiceNote) {
+    by -= 6;
+    for (const line of wrap(lh.invoiceNote, reg, 8, 300)) {
+      text(page, line, { x: MARGIN, y: by, size: 8, font: reg, color: FAINT });
+      by -= 10;
+    }
   }
 
-  signatureAndFooter(pdf, bankTop);
+  signatureAndFooter(pdf, bankTop, lh.name);
   return pdf.doc.save();
 }

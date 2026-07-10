@@ -16,6 +16,8 @@ import {
   KeyRound,
   ArrowDownUp,
   Building2,
+  Landmark,
+  Settings,
   Menu,
   X,
   LogOut,
@@ -29,6 +31,7 @@ const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/tasks", label: "Compliance", icon: ClipboardList },
+  { href: "/itr", label: "ITR Filings", icon: Landmark },
   { href: "/schedules", label: "Recurring", icon: CalendarClock },
   { href: "/invoices", label: "Invoices", icon: Receipt },
   { href: "/staff", label: "Team", icon: UsersRound },
@@ -37,6 +40,7 @@ const NAV = [
   { href: "/dsc", label: "DSC Register", icon: KeyRound },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/reminders", label: "Reminders", icon: BellRing },
+  { href: "/settings", label: "Firm Settings", icon: Settings },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -76,15 +80,26 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function Brand() {
+export type Branding = { name: string; tagline: string; hasLogo: boolean };
+
+function Brand({ branding }: { branding: Branding }) {
   return (
     <div className="flex items-center gap-3 px-5 py-5">
-      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-white">
-        <Building2 className="h-5 w-5" />
-      </div>
+      {branding.hasLogo ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src="/api/branding/logo"
+          alt=""
+          className="h-9 w-9 rounded-lg bg-white object-contain p-0.5"
+        />
+      ) : (
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-white">
+          <Building2 className="h-5 w-5" />
+        </div>
+      )}
       <div className="leading-tight">
-        <p className="text-sm font-semibold text-white">Sharma &amp; Associates</p>
-        <p className="text-[11px] text-slate-400">Chartered Accountants</p>
+        <p className="text-sm font-semibold text-white">{branding.name}</p>
+        <p className="text-[11px] text-slate-400">{branding.tagline}</p>
       </div>
     </div>
   );
@@ -148,9 +163,11 @@ function UserMenu({ user }: { user: AuthUser }) {
 
 export function AppShell({
   user,
+  branding,
   children,
 }: {
   user: AuthUser;
+  branding: Branding;
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -160,7 +177,7 @@ export function AppShell({
       <div className="min-h-screen">
         {/* Desktop sidebar */}
         <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-slate-800 bg-slate-900 lg:flex">
-          <Brand />
+          <Brand branding={branding} />
           <div className="mt-1 flex-1 overflow-y-auto pb-6">
             <NavLinks />
           </div>
@@ -178,7 +195,7 @@ export function AppShell({
             />
             <aside className="absolute inset-y-0 left-0 flex w-64 flex-col bg-slate-900">
               <div className="flex items-center justify-between pr-3">
-                <Brand />
+                <Brand branding={branding} />
                 <button
                   onClick={() => setMobileOpen(false)}
                   className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"

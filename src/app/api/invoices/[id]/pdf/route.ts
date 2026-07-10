@@ -10,7 +10,7 @@ export const GET = route(async (_req, ctx: Ctx) => {
   const { id } = await ctx.params;
   const invoice = await prisma.invoice.findUnique({
     where: { id },
-    include: { client: true },
+    include: { client: true, organization: true },
   });
   if (!invoice) return fail("Invoice not found", 404);
 

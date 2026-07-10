@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Search, Plus, Pencil, Trash2, Receipt, FileDown, FileCheck2 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
-import type { Invoice, Client } from "@/lib/types";
+import type { Invoice, Client, Organization } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -12,10 +12,17 @@ import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Loading, EmptyState } from "@/components/ui/EmptyState";
-import { INVOICE_STATUSES } from "@/lib/constants";
-import { formatCurrency, formatDate, toDateInput, cn } from "@/lib/format";
+import { INVOICE_STATUSES, GST_MODES, GST_MODE_LABELS } from "@/lib/constants";
+import {
+  formatCurrency,
+  formatDate,
+  toDateInput,
+  invoiceGross,
+  cn,
+} from "@/lib/format";
 
-const withTax = (a: number, r: number) => a + (a * r) / 100;
+const withTax = (i: { amount: number; taxRate: number; gstMode?: string }) =>
+  invoiceGross(i.amount, i.taxRate, i.gstMode);
 type FormState = Partial<Invoice>;
 
 export default function InvoicesPage() {
@@ -26,19 +33,20 @@ export default function InvoicesPage() {
   const url = `/api/invoices?q=${encodeURIComponent(q)}&status=${status}`;
   const { data, loading, error, refresh } = useResource<Invoice[]>(url);
   const { data: clients } = useResource<Client[]>("/api/clients");
+  const { data: orgs } = useResource<Organization[]>("/api/orgs");
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Invoice | null>(null);
   const [toDelete, setToDelete] = useState<Invoice | null>(null);
 
   const all = data ?? [];
-  const billed = all.reduce((s, i) => s + withTax(i.amount, i.taxRate), 0);
+  const billed = all.reduce((s, i) => s + withTax(i), 0);
   const collected = all
     .filter((i) => i.status === "Paid")
-    .reduce((s, i) => s + withTax(i.amount, i.taxRate), 0);
+    .reduce((s, i) => s + withTax(i), 0);
   const outstanding = all
     .filter((i) => i.status === "Sent" || i.status === "Overdue")
-    .reduce((s, i) => s + withTax(i.amount, i.taxRate), 0);
+    .reduce((s, i) => s + withTax(i), 0);
 
   async function quickStatus(inv: Invoice, s: string) {
     await apiMutate(`/api/invoices/${inv.id}`, "PATCH", { status: s });
@@ -125,16 +133,21 @@ export default function InvoicesPage() {
                           {i.description}
                         </p>
                       )}
+                      {i.organization && (
+                        <p className="mt-0.5 text-[11px] text-indigo-500">
+                          {i.organization.name}
+                        </p>
+                      )}
                     </td>
                     <td className="px-5 py-3 text-slate-600">{i.client?.name ?? "—"}</td>
                     <td className="px-5 py-3 text-slate-600">{formatDate(i.issueDate)}</td>
                     <td className="px-5 py-3 text-slate-600">{formatDate(i.dueDate)}</td>
                     <td className="px-5 py-3 text-right">
                       <span className="font-medium text-slate-800">
-                        {formatCurrency(withTax(i.amount, i.taxRate))}
+                        {formatCurrency(withTax(i))}
                       </span>
                       <span className="block text-[11px] text-slate-400">
-                        incl. {i.taxRate}% GST
+                        {i.gstMode === "None" ? "No GST" : `incl. ${i.taxRate}% GST`}
                       </span>
                     </td>
                     <td className="px-5 py-3">
@@ -219,6 +232,7 @@ export default function InvoicesPage() {
         <InvoiceForm
           initial={editing}
           clients={clients ?? []}
+          orgs={orgs ?? []}
           onClose={() => setFormOpen(false)}
           onSaved={() => {
             setFormOpen(false);
@@ -279,17 +293,27 @@ function invoicePillClass(status: string) {
 function InvoiceForm({
   initial,
   clients,
+  orgs,
   onClose,
   onSaved,
 }: {
   initial: Invoice | null;
   clients: Client[];
+  orgs: Organization[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const suggested = `INV-2627-${String(Math.floor(Math.random() * 900) + 100)}`;
+  const defaultOrgId = orgs.find((o) => o.isDefault)?.id ?? orgs[0]?.id ?? "";
   const [form, setForm] = useState<FormState>(
-    initial ?? { invoiceNumber: suggested, taxRate: 18, status: "Draft", amount: 0 },
+    initial ?? {
+      invoiceNumber: suggested,
+      taxRate: 18,
+      gstMode: "Auto",
+      status: "Draft",
+      amount: 0,
+      organizationId: defaultOrgId,
+    },
   );
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -299,7 +323,8 @@ function InvoiceForm({
 
   const amount = Number(form.amount) || 0;
   const rate = Number(form.taxRate) || 0;
-  const total = withTax(amount, rate);
+  const gstMode = form.gstMode ?? "Auto";
+  const total = withTax({ amount, taxRate: rate, gstMode });
 
   async function submit() {
     setBusy(true);
@@ -308,9 +333,11 @@ function InvoiceForm({
       const payload = {
         invoiceNumber: form.invoiceNumber,
         clientId: form.clientId,
+        organizationId: form.organizationId || null,
         description: form.description,
         amount,
         taxRate: rate,
+        gstMode,
         status: form.status,
         issueDate: form.issueDate || null,
         dueDate: form.dueDate || null,
@@ -364,6 +391,25 @@ function InvoiceForm({
             ))}
           </Select>
         </Field>
+        {orgs.length > 0 && (
+          <Field
+            label="Billing organization"
+            hint="The entity whose letterhead, GSTIN and bank appear on the PDF"
+            className="sm:col-span-2"
+          >
+            <Select
+              value={form.organizationId ?? ""}
+              onChange={(e) => set("organizationId", e.target.value)}
+            >
+              {orgs.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                  {o.isDefault ? " (default)" : ""}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <Field label="Description" className="sm:col-span-2">
           <Input
             value={form.description ?? ""}
@@ -379,15 +425,26 @@ function InvoiceForm({
             onChange={(e) => set("amount", e.target.value)}
           />
         </Field>
-        <Field label="GST rate (%)">
-          <Input
-            type="number"
-            min={0}
-            max={100}
-            value={form.taxRate ?? 18}
-            onChange={(e) => set("taxRate", e.target.value)}
-          />
+        <Field label="GST applicability">
+          <Select value={gstMode} onChange={(e) => set("gstMode", e.target.value)}>
+            {GST_MODES.map((m) => (
+              <option key={m} value={m}>
+                {GST_MODE_LABELS[m]}
+              </option>
+            ))}
+          </Select>
         </Field>
+        {gstMode !== "None" && (
+          <Field label="GST rate (%)">
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={form.taxRate ?? 18}
+              onChange={(e) => set("taxRate", e.target.value)}
+            />
+          </Field>
+        )}
         <Field label="Issue date">
           <Input
             type="date"
@@ -411,7 +468,9 @@ function InvoiceForm({
         </Field>
         <div className="flex items-end">
           <div className="w-full rounded-lg bg-slate-50 px-4 py-2.5 text-right">
-            <p className="text-[11px] text-slate-500">Total incl. GST</p>
+            <p className="text-[11px] text-slate-500">
+              {gstMode === "None" ? "Total (no GST)" : "Total incl. GST"}
+            </p>
             <p className="text-lg font-semibold text-slate-900">{formatCurrency(total)}</p>
           </div>
         </div>

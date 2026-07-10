@@ -21,6 +21,9 @@ export type Permission =
   | "deleteDsc"
   | "manageInward"
   | "deleteInward"
+  | "manageOrgs"
+  | "manageItr"
+  | "deleteItr"
   | "manageTeam";
 
 // Which roles are granted each permission. Every authenticated user can *read*
@@ -40,6 +43,10 @@ const MATRIX: Record<Permission, Role[]> = {
   // The inward register is maintained by the whole office, including articles.
   manageInward: ["Partner", "Admin", "Manager", "Accountant", "Article Assistant"],
   deleteInward: ["Partner", "Admin", "Manager"],
+  // Billing entities / letterhead are firm-level configuration.
+  manageOrgs: ["Partner", "Admin"],
+  manageItr: ["Partner", "Admin", "Manager", "Accountant", "Article Assistant"],
+  deleteItr: ["Partner", "Admin", "Manager", "Accountant"],
   manageTeam: ["Partner", "Admin"],
 };
 

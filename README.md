@@ -15,9 +15,11 @@ billing, team and documents — into a single dashboard.
 | Module | What it does |
 | --- | --- |
 | **Dashboard** | KPIs (active clients, open tasks, overdue deadlines, receivables), a 6-month billing vs. collections chart, task-status breakdown, upcoming deadlines and a compliance-mix view. |
-| **Clients** | Full client register (Individual / Proprietorship / Partnership / LLP / Pvt Ltd / HUF / Trust …) with PAN, GSTIN and contacts. Search, filter, create, edit, delete, and a per-client detail page showing their tasks, invoices and documents. |
+| **Clients** | Full client register (Individual / Proprietorship / Partnership / LLP / Pvt Ltd / HUF / Trust …) with PAN, GSTIN and contacts. Search, filter, create, edit, delete, **bulk import from an Excel template** (with per-row validation and duplicate skipping), and a per-client detail page showing their tasks, invoices and documents. |
 | **Compliance & Tasks** | Track engagements by category (GST, Income Tax, TDS, ROC/MCA, Audit, Accounting, Registration). Priorities, due dates with overdue highlighting, assignee, and inline status changes. |
-| **Invoices** | Raise professional-fee invoices with GST, track Draft → Sent → Paid → Overdue, and see billed / collected / outstanding totals. Download a **GST tax-invoice PDF** for any invoice (CGST/SGST vs IGST split by GSTIN state, SAC code, round-off, amount in words, bank details, PAID/DRAFT/OVERDUE watermark) and a **payment-receipt PDF** for paid ones. |
+| **Invoices** | Raise professional-fee invoices with GST, track Draft → Sent → Paid → Overdue, and see billed / collected / outstanding totals. Each invoice picks its **billing organization** and its **GST applicability** (auto by client state / CGST+SGST / IGST / not applicable). Download a **GST tax-invoice PDF** (letterhead + logo of the invoice's organization, SAC code, round-off, amount in words, bank details, PAID/DRAFT/OVERDUE watermark) and a **payment-receipt PDF** for paid ones. |
+| **ITR Filings** | Income-tax returns per client per assessment year: ITR form type, regime, status pipeline (Documents Awaited → In Preparation → Filed → E-Verified → Processed / Defective) with auto-stamped filing dates, acknowledgement numbers and refund tracking. |
+| **Firm Settings** | Manage one or more **billing organizations** (name, letterhead address, PAN/GSTIN, bank & UPI, invoice note) and upload a **logo** per organization. The default organization brands the app and the sign-in screen. |
 | **Team** | Manage partners, managers, accountants and article assistants, with their open-task load. |
 | **Documents** | A register of statutory documents (PAN, GST, ITR, financials, agreements) linked to clients. |
 | **DSC Register** | Digital Signature Certificates per client signatory: class, authority, serial, validity with expiry countdowns, and a physical-token custody in/out register stamped with the acting user. DSC expiries feed the reminders engine. |
@@ -146,6 +148,9 @@ users: each `Staff` record can have a login password.
 | Delete DSCs | ✓ | ✓ | — | — |
 | Maintain the inward/outward register | ✓ | ✓ | ✓ | ✓ |
 | Delete inward register entries | ✓ | ✓ | — | — |
+| Manage ITR filings | ✓ | ✓ | ✓ | ✓ |
+| Delete ITR filings | ✓ | ✓ | ✓ | — |
+| Firm settings (organizations, logo) | ✓ | — | — | — |
 | Manage the team & roles | ✓ | — | — | — |
 
 Permissions are enforced server-side on every API route (a denied action returns

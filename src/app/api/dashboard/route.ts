@@ -1,10 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { ok, route } from "@/lib/api";
 import { requireUser } from "@/lib/auth/session";
+import { invoiceGross } from "@/lib/format";
 import { TASK_STATUSES, TASK_CATEGORIES } from "@/lib/constants";
 
-const withTax = (amount: number, taxRate: number) =>
-  amount + (amount * taxRate) / 100;
+const gross = (i: { amount: number; taxRate: number; gstMode: string }) =>
+  invoiceGross(i.amount, i.taxRate, i.gstMode);
 
 const startOfDay = () => {
   const d = new Date();
@@ -36,10 +37,10 @@ export const GET = route(async () => {
   // Receivables = billed but not yet paid (Sent + Overdue).
   const outstanding = invoices
     .filter((i) => i.status === "Sent" || i.status === "Overdue")
-    .reduce((sum, i) => sum + withTax(i.amount, i.taxRate), 0);
+    .reduce((sum, i) => sum + gross(i), 0);
   const collected = invoices
     .filter((i) => i.status === "Paid")
-    .reduce((sum, i) => sum + withTax(i.amount, i.taxRate), 0);
+    .reduce((sum, i) => sum + gross(i), 0);
 
   const statusBreakdown = TASK_STATUSES.map((status) => ({
     status,
@@ -68,7 +69,7 @@ export const GET = route(async () => {
     const key = `${d.getFullYear()}-${d.getMonth()}`;
     const m = bucket.get(key);
     if (!m) continue;
-    const total = withTax(inv.amount, inv.taxRate);
+    const total = gross(inv);
     m.billed += total;
     if (inv.status === "Paid") m.collected += total;
   }

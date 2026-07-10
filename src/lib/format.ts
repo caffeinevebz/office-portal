@@ -60,6 +60,16 @@ export function dueLabel(value: Date | string | null | undefined): string {
   return `Due in ${n} days`;
 }
 
+/** Invoice gross value respecting GST applicability ("None" skips tax). */
+export function invoiceGross(
+  amount: number,
+  taxRate: number,
+  gstMode?: string | null,
+): number {
+  if (gstMode === "None") return amount;
+  return amount + (amount * taxRate) / 100;
+}
+
 /** Two-letter initials for an avatar chip. */
 export function initials(name: string) {
   const parts = name.replace(/\(.*?\)/g, "").trim().split(/\s+/).filter(Boolean);

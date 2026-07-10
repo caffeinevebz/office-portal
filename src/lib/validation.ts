@@ -13,6 +13,10 @@ import {
   DSC_AUTHORITIES,
   DSC_STATUSES,
   PACKET_MODES,
+  GST_MODES,
+  ITR_FORMS,
+  ITR_REGIMES,
+  ITR_STATUSES,
 } from "./constants";
 
 // Accept only one of the allowed domain values.
@@ -75,9 +79,11 @@ export const taskUpdateSchema = taskCreateSchema.partial();
 export const invoiceCreateSchema = z.object({
   invoiceNumber: z.string().trim().min(1, "Invoice number is required"),
   clientId: z.string().trim().min(1, "Client is required"),
+  organizationId: optionalText,
   description: optionalText,
   amount: z.coerce.number().min(0, "Amount must be positive"),
   taxRate: z.coerce.number().min(0).max(100).default(18),
+  gstMode: oneOf(GST_MODES, "GST mode").default("Auto"),
   status: oneOf(INVOICE_STATUSES, "status").default("Draft"),
   issueDate: optionalDate,
   dueDate: optionalDate,
@@ -148,6 +154,45 @@ export const packetCreateSchema = z.object({
   clientId: optionalText,
 });
 export const packetUpdateSchema = packetCreateSchema.partial();
+
+export const organizationSchema = z.object({
+  name: z.string().trim().min(1, "Name is required"),
+  tagline: z.string().trim().default("Chartered Accountants"),
+  address: optionalText,
+  phone: optionalText,
+  email: optionalText,
+  pan: optionalText,
+  gstin: optionalText,
+  sacCode: z.string().trim().default("9982"),
+  bankName: optionalText,
+  bankAccount: optionalText,
+  bankIfsc: optionalText,
+  bankUpi: optionalText,
+  invoiceNote: optionalText,
+});
+export const organizationUpdateSchema = organizationSchema.partial();
+
+export const itrCreateSchema = z.object({
+  clientId: z.string().trim().min(1, "Client is required"),
+  assessmentYear: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}$/, "Assessment year must look like 2026-27"),
+  formType: oneOf(ITR_FORMS, "ITR form").default("ITR-1"),
+  regime: oneOf(ITR_REGIMES, "regime").default("New"),
+  status: oneOf(ITR_STATUSES, "status").default("Documents Awaited"),
+  filedOn: optionalDate,
+  ackNumber: optionalText,
+  refundAmount: z
+    .preprocess(
+      (v) => (v === "" || v == null ? null : v),
+      z.coerce.number().min(0).nullable(),
+    )
+    .optional(),
+  assigneeId: optionalText,
+  notes: optionalText,
+});
+export const itrUpdateSchema = itrCreateSchema.partial();
 
 export const packetMovementSchema = z.object({
   direction: z.string().refine((v) => v === "In" || v === "Out", {

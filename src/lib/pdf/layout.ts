@@ -8,7 +8,7 @@ import {
   degrees,
   type RGB,
 } from "pdf-lib";
-import { FIRM } from "@/lib/firm";
+import type { Letterhead } from "@/lib/org";
 
 // A4 in PDF points.
 export const A4 = { width: 595.28, height: 841.89 };
@@ -101,28 +101,61 @@ export function watermark(page: PDFPage, label: string, color: RGB) {
 }
 
 /**
- * Letterhead: accent strip, firm identity on the left, document title on the
- * right. Returns the y where content can start.
+ * Letterhead: accent strip, organization identity (with optional logo) on the
+ * left, document title on the right. Returns the y where content can start.
  */
-export function firmHeader(pdf: Pdf, title: string): number {
-  const { page, reg, bold } = pdf;
+export async function firmHeader(pdf: Pdf, title: string, lh: Letterhead): Promise<number> {
+  const { doc, page, reg, bold } = pdf;
   page.drawRectangle({ x: 0, y: A4.height - 6, width: A4.width, height: 6, color: ACCENT });
 
+  // Optional logo, boxed to 40x40 left of the name.
+  let textX = MARGIN;
+  if (lh.logo && lh.logoMime) {
+    try {
+      const img =
+        lh.logoMime === "image/png"
+          ? await doc.embedPng(lh.logo)
+          : await doc.embedJpg(lh.logo);
+      const box = 40;
+      const scale = Math.min(box / img.width, box / img.height);
+      const w = img.width * scale;
+      const h = img.height * scale;
+      page.drawImage(img, {
+        x: MARGIN,
+        y: A4.height - 30 - h + (box - h) / 2 - 22,
+        width: w,
+        height: h,
+      });
+      textX = MARGIN + box + 12;
+    } catch {
+      // Unreadable image — fall back to text-only letterhead.
+    }
+  }
+
   let y = A4.height - 44;
-  text(page, FIRM.name, { x: MARGIN, y, size: 19, font: bold, color: INK });
+  text(page, lh.name, { x: textX, y, size: 19, font: bold, color: INK });
   text(page, title, { x: A4.width - MARGIN, y, size: 15, font: bold, color: ACCENT, align: "right" });
 
   y -= 14;
-  text(page, FIRM.tagline, { x: MARGIN, y, size: 9.5, font: reg, color: ACCENT });
+  text(page, lh.tagline, { x: textX, y, size: 9.5, font: reg, color: ACCENT });
 
   y -= 13;
-  for (const line of FIRM.addressLines) {
-    text(page, line, { x: MARGIN, y, size: 8, font: reg, color: MUTED });
+  for (const line of lh.addressLines) {
+    text(page, line, { x: textX, y, size: 8, font: reg, color: MUTED });
     y -= 10;
   }
-  text(page, `${FIRM.phone}  ·  ${FIRM.email}`, { x: MARGIN, y, size: 8, font: reg, color: MUTED });
-  y -= 10;
-  text(page, `PAN: ${FIRM.pan}   GSTIN: ${FIRM.gstin}`, { x: MARGIN, y, size: 8, font: reg, color: MUTED });
+  const contact = [lh.phone, lh.email].filter(Boolean).join("  ·  ");
+  if (contact) {
+    text(page, contact, { x: textX, y, size: 8, font: reg, color: MUTED });
+    y -= 10;
+  }
+  const ids = [lh.pan ? `PAN: ${lh.pan}` : null, lh.gstin ? `GSTIN: ${lh.gstin}` : null]
+    .filter(Boolean)
+    .join("   ");
+  if (ids) {
+    text(page, ids, { x: textX, y, size: 8, font: reg, color: MUTED });
+    y -= 10;
+  }
 
   y -= 14;
   hline(page, MARGIN, A4.width - MARGIN, y);
@@ -130,10 +163,10 @@ export function firmHeader(pdf: Pdf, title: string): number {
 }
 
 /** Signature block bottom-right + footer note, shared by both documents. */
-export function signatureAndFooter(pdf: Pdf, yTop: number) {
+export function signatureAndFooter(pdf: Pdf, yTop: number, firmName: string) {
   const { page, reg, bold } = pdf;
   const x = A4.width - MARGIN;
-  text(page, `For ${FIRM.name}`, { x, y: yTop, size: 9.5, font: bold, align: "right" });
+  text(page, `For ${firmName}`, { x, y: yTop, size: 9.5, font: bold, align: "right" });
   text(page, "Authorised Signatory", { x, y: yTop - 46, size: 9, font: reg, color: MUTED, align: "right" });
 
   hline(page, MARGIN, A4.width - MARGIN, 58);

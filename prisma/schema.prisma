@@ -26,12 +26,13 @@ model Client {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  tasks     Task[]
-  invoices  Invoice[]
-  documents Document[]
-  schedules ComplianceSchedule[]
-  dscs      Dsc[]
-  packets   DocPacket[]
+  tasks      Task[]
+  invoices   Invoice[]
+  documents  Document[]
+  schedules  ComplianceSchedule[]
+  dscs       Dsc[]
+  packets    DocPacket[]
+  itrFilings ItrFiling[]
 }
 
 /// A member of the firm's team.
@@ -45,8 +46,9 @@ model Staff {
   passwordHash String? // scrypt hash "salt:hash"; null = cannot sign in
   createdAt    DateTime @default(now())
 
-  tasks     Task[]
-  schedules ComplianceSchedule[]
+  tasks      Task[]
+  schedules  ComplianceSchedule[]
+  itrFilings ItrFiling[]
 }
 
 /// A compliance / engagement task for a client.
@@ -200,6 +202,33 @@ model ComplianceSchedule {
   tasks Task[]
 }
 
+/// A billing entity of the firm — many firms invoice under more than one
+/// organization (partnership, LLP, consulting company…). The default one
+/// also brands the portal and is used when an invoice names none.
+model Organization {
+  id            String   @id @default(cuid())
+  name          String
+  tagline       String   @default("Chartered Accountants")
+  address       String? // multiline letterhead address
+  phone         String?
+  email         String?
+  pan           String?
+  gstin         String? // state code prefix drives CGST/SGST vs IGST
+  sacCode       String   @default("9982")
+  bankName      String?
+  bankAccount   String?
+  bankIfsc      String?
+  bankUpi       String?
+  invoiceNote   String?
+  isDefault     Boolean  @default(false)
+  logo          Bytes? // small PNG/JPEG shown in the app and on PDFs
+  logoMime      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  invoices Invoice[]
+}
+
 /// A billing invoice raised to a client.
 model Invoice {
   id            String    @id @default(cuid())
@@ -207,14 +236,39 @@ model Invoice {
   description   String?
   amount        Float     @default(0) // pre-tax professional fee
   taxRate       Float     @default(18) // GST %
+  gstMode       String    @default("Auto") // Auto (by client state), Intra, Inter, None
   status        String    @default("Draft") // Draft, Sent, Paid, Overdue
   issueDate     DateTime  @default(now())
   dueDate       DateTime?
   paidDate      DateTime?
   createdAt     DateTime  @default(now())
 
-  clientId String
-  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId       String
+  client         Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+}
+
+/// An Income Tax Return engagement for a client, per assessment year.
+model ItrFiling {
+  id             String    @id @default(cuid())
+  assessmentYear String // e.g. "2026-27"
+  formType       String    @default("ITR-1") // ITR-1 … ITR-7
+  regime         String    @default("New") // New, Old
+  status         String    @default("Documents Awaited") // Documents Awaited, In Preparation, Filed, E-Verified, Processed, Defective
+  filedOn        DateTime?
+  ackNumber      String? // e-filing acknowledgement number
+  refundAmount   Float? // expected/claimed refund, if any
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  clientId   String
+  client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  assigneeId String?
+  assignee   Staff?  @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@unique([clientId, assessmentYear])
 }
 
 /// A document record tracked for a client.

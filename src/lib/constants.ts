@@ -43,6 +43,48 @@ export const STAFF_ROLES = [
 
 export const INVOICE_STATUSES = ["Draft", "Sent", "Paid", "Overdue"] as const;
 
+// GST applicability on an invoice.
+export const GST_MODES = ["Auto", "Intra", "Inter", "None"] as const;
+export const GST_MODE_LABELS: Record<string, string> = {
+  Auto: "Auto (by client's GSTIN state)",
+  Intra: "CGST + SGST (intra-state)",
+  Inter: "IGST (inter-state)",
+  None: "Not applicable (no GST)",
+};
+
+export const ITR_FORMS = [
+  "ITR-1", "ITR-2", "ITR-3", "ITR-4", "ITR-5", "ITR-6", "ITR-7",
+] as const;
+
+export const ITR_REGIMES = ["New", "Old"] as const;
+
+export const ITR_STATUSES = [
+  "Documents Awaited",
+  "In Preparation",
+  "Filed",
+  "E-Verified",
+  "Processed",
+  "Defective",
+] as const;
+
+export const ITR_STATUS_TONE: Record<string, keyof typeof TONE> = {
+  "Documents Awaited": "slate",
+  "In Preparation": "blue",
+  Filed: "indigo",
+  "E-Verified": "violet",
+  Processed: "green",
+  Defective: "red",
+};
+
+/** Assessment years for the ITR register: current AY and the two before. */
+export function assessmentYears(now = new Date()): string[] {
+  const fyStart = now.getMonth() + 1 >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+  return [0, 1, 2].map((back) => {
+    const s = fyStart - back;
+    return `${s}-${String(s + 1).slice(2)}`;
+  });
+}
+
 export const DOC_CATEGORIES = [
   "PAN",
   "GST",
