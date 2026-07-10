@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Plus, Pencil, Trash2, Receipt } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Receipt, FileDown, FileCheck2 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
+import { useAuth } from "@/lib/auth/context";
 import type { Invoice, Client } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -18,6 +19,8 @@ const withTax = (a: number, r: number) => a + (a * r) / 100;
 type FormState = Partial<Invoice>;
 
 export default function InvoicesPage() {
+  const { can } = useAuth();
+  const canManage = can("manageInvoices");
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("All");
   const url = `/api/invoices?q=${encodeURIComponent(q)}&status=${status}`;
@@ -48,14 +51,16 @@ export default function InvoicesPage() {
         title="Invoices"
         subtitle="Professional fee billing and collections"
         actions={
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setFormOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" /> New Invoice
-          </Button>
+          canManage ? (
+            <Button
+              onClick={() => {
+                setEditing(null);
+                setFormOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4" /> New Invoice
+            </Button>
+          ) : undefined
         }
       />
 
@@ -133,38 +138,73 @@ export default function InvoicesPage() {
                       </span>
                     </td>
                     <td className="px-5 py-3">
-                      <select
-                        value={i.status}
-                        onChange={(e) => quickStatus(i, e.target.value)}
-                        className={cn(
-                          "cursor-pointer rounded-full border-0 px-2 py-1 text-xs font-medium ring-1 ring-inset focus:ring-2 focus:ring-indigo-300 focus:outline-none",
-                          invoicePillClass(i.status),
-                        )}
-                      >
-                        {INVOICE_STATUSES.map((s) => (
-                          <option key={s}>{s}</option>
-                        ))}
-                      </select>
+                      {canManage ? (
+                        <select
+                          value={i.status}
+                          onChange={(e) => quickStatus(i, e.target.value)}
+                          className={cn(
+                            "cursor-pointer rounded-full border-0 px-2 py-1 text-xs font-medium ring-1 ring-inset focus:ring-2 focus:ring-indigo-300 focus:outline-none",
+                            invoicePillClass(i.status),
+                          )}
+                        >
+                          {INVOICE_STATUSES.map((s) => (
+                            <option key={s}>{s}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span
+                          className={cn(
+                            "inline-block rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset",
+                            invoicePillClass(i.status),
+                          )}
+                        >
+                          {i.status}
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => {
-                            setEditing(i);
-                            setFormOpen(true);
-                          }}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                          title="Edit"
+                        <a
+                          href={`/api/invoices/${i.id}/pdf`}
+                          target="_blank"
+                          rel="noopener"
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
+                          title="Invoice PDF"
                         >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => setToDelete(i)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                          <FileDown className="h-4 w-4" />
+                        </a>
+                        {i.status === "Paid" && (
+                          <a
+                            href={`/api/invoices/${i.id}/receipt`}
+                            target="_blank"
+                            rel="noopener"
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                            title="Payment receipt PDF"
+                          >
+                            <FileCheck2 className="h-4 w-4" />
+                          </a>
+                        )}
+                        {canManage && (
+                          <>
+                            <button
+                              onClick={() => {
+                                setEditing(i);
+                                setFormOpen(true);
+                              }}
+                              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                              title="Edit"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => setToDelete(i)}
+                              className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>

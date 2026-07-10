@@ -1,9 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { ok, parse, route } from "@/lib/api";
+import { requireUser, requirePermission } from "@/lib/auth/session";
 import { taskCreateSchema } from "@/lib/validation";
 import type { Prisma } from "@prisma/client";
 
 export const GET = route(async (req) => {
+  await requireUser();
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status")?.trim();
   const category = searchParams.get("category")?.trim();
@@ -18,8 +20,8 @@ export const GET = route(async (req) => {
   if (clientId) where.clientId = clientId;
   if (q) {
     where.OR = [
-      { title: { contains: q } },
-      { description: { contains: q } },
+      { title: { contains: q, mode: "insensitive" } },
+      { description: { contains: q, mode: "insensitive" } },
     ];
   }
 
@@ -32,6 +34,7 @@ export const GET = route(async (req) => {
 });
 
 export const POST = route(async (req) => {
+  await requirePermission("manageTasks");
   const data = await parse(req, taskCreateSchema);
   const task = await prisma.task.create({
     data: {

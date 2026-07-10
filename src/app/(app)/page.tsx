@@ -10,6 +10,7 @@ import {
   CircleDot,
 } from "lucide-react";
 import { useResource } from "@/lib/useApi";
+import { useAuth } from "@/lib/auth/context";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -51,7 +52,10 @@ type Dashboard = {
 };
 
 export default function DashboardPage() {
+  const { user } = useAuth();
   const { data, loading, error } = useResource<Dashboard>("/api/dashboard");
+  const firstName =
+    user?.name.replace(/^CA\s+/, "").split(" ")[0] ?? "there";
 
   if (loading) return <Loading label="Loading dashboard…" />;
   if (error || !data)
@@ -64,7 +68,7 @@ export default function DashboardPage() {
     <div>
       <div className="mb-6">
         <h1 className="text-xl font-semibold tracking-tight text-slate-900">
-          Good morning, Rajesh 👋
+          Welcome back, {firstName} 👋
         </h1>
         <p className="mt-1 text-sm text-slate-500">
           Here&apos;s what needs your firm&apos;s attention today · {formatDate(new Date())}

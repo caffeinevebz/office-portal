@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Search, Plus, Pencil, Trash2, FileText, FolderClosed } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
+import { useAuth } from "@/lib/auth/context";
 import type { DocumentRecord, Client } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -18,6 +19,9 @@ import { formatDate } from "@/lib/format";
 type FormState = Partial<DocumentRecord>;
 
 export default function DocumentsPage() {
+  const { can } = useAuth();
+  const canManage = can("manageDocuments");
+  const canDelete = can("deleteDocuments");
   const [q, setQ] = useState("");
   const [category, setCategory] = useState("All");
   const url = `/api/documents?q=${encodeURIComponent(q)}&category=${encodeURIComponent(category)}`;
@@ -34,14 +38,16 @@ export default function DocumentsPage() {
         title="Documents"
         subtitle="Statutory records and client paperwork tracked by the firm"
         actions={
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setFormOpen(true);
-            }}
-          >
-            <Plus className="h-4 w-4" /> Add Document
-          </Button>
+          canManage ? (
+            <Button
+              onClick={() => {
+                setEditing(null);
+                setFormOpen(true);
+              }}
+            >
+              <Plus className="h-4 w-4" /> Add Document
+            </Button>
+          ) : undefined
         }
       />
 
@@ -117,23 +123,30 @@ export default function DocumentsPage() {
                     <td className="px-5 py-3 text-slate-600">{formatDate(d.uploadedAt)}</td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => {
-                            setEditing(d);
-                            setFormOpen(true);
-                          }}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                          title="Edit"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => setToDelete(d)}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        {canManage && (
+                          <button
+                            onClick={() => {
+                              setEditing(d);
+                              setFormOpen(true);
+                            }}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                            title="Edit"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            onClick={() => setToDelete(d)}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                            title="Delete"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                        {!canManage && !canDelete && (
+                          <span className="text-xs text-slate-300">—</span>
+                        )}
                       </div>
                     </td>
                   </tr>

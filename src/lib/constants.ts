@@ -52,6 +52,67 @@ export const DOC_CATEGORIES = [
   "Other",
 ] as const;
 
+export const PACKET_MODES = ["Hand Delivery", "Courier", "Post", "Other"] as const;
+
+export const PACKET_STATUSES = ["In Custody", "Returned"] as const;
+
+export const DSC_CLASSES = ["Class 3", "Class 2 (legacy)", "DGFT"] as const;
+
+export const DSC_AUTHORITIES = [
+  "eMudhra",
+  "Sify SafeScrypt",
+  "Capricorn",
+  "VSign",
+  "PantaSign",
+  "XtraTrust",
+  "IDSign",
+  "Other",
+] as const;
+
+export const DSC_STATUSES = ["Active", "Revoked", "Surrendered"] as const;
+
+export const DSC_CUSTODY = ["With Firm", "With Client"] as const;
+
+export const SCHEDULE_FREQUENCIES = [
+  "Monthly",
+  "Quarterly",
+  "Half-Yearly",
+  "Annually",
+] as const;
+
+export const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+] as const;
+
+// A small library of common Indian statutory obligations. Selecting one on the
+// Recurring page pre-fills the schedule form; the firm can still tweak it.
+export type StatutoryPreset = {
+  label: string;
+  title: string;
+  category: (typeof TASK_CATEGORIES)[number];
+  frequency: (typeof SCHEDULE_FREQUENCIES)[number];
+  dueDay: number;
+  anchorMonth: number; // 1-12 (relevant for non-monthly)
+  hint: string;
+};
+
+export const STATUTORY_PRESETS: StatutoryPreset[] = [
+  { label: "GSTR-1 (Monthly)", title: "GSTR-1", category: "GST", frequency: "Monthly", dueDay: 11, anchorMonth: 4, hint: "Outward supplies, due 11th" },
+  { label: "GSTR-3B (Monthly)", title: "GSTR-3B", category: "GST", frequency: "Monthly", dueDay: 20, anchorMonth: 4, hint: "Monthly summary return, due 20th" },
+  { label: "GSTR-1 (Quarterly · QRMP)", title: "GSTR-1 (QRMP)", category: "GST", frequency: "Quarterly", dueDay: 13, anchorMonth: 7, hint: "QRMP scheme, due 13th after quarter" },
+  { label: "CMP-08 (Composition)", title: "CMP-08", category: "GST", frequency: "Quarterly", dueDay: 18, anchorMonth: 7, hint: "Composition statement, due 18th after quarter" },
+  { label: "TDS Payment (Monthly)", title: "TDS Payment", category: "TDS", frequency: "Monthly", dueDay: 7, anchorMonth: 4, hint: "Deposit of TDS, due 7th" },
+  { label: "TDS Return (Quarterly)", title: "TDS Return", category: "TDS", frequency: "Quarterly", dueDay: 31, anchorMonth: 7, hint: "Quarterly TDS statement" },
+  { label: "Advance Tax (Quarterly)", title: "Advance Tax", category: "Income Tax", frequency: "Quarterly", dueDay: 15, anchorMonth: 6, hint: "Instalments: 15 Jun/Sep/Dec/Mar" },
+  { label: "PF & ESI (Monthly)", title: "PF & ESI Payment", category: "Accounting", frequency: "Monthly", dueDay: 15, anchorMonth: 4, hint: "Provident fund & ESI, due 15th" },
+  { label: "ITR Filing (Annual)", title: "Income Tax Return", category: "Income Tax", frequency: "Annually", dueDay: 31, anchorMonth: 7, hint: "Non-audit ITR, due 31 Jul" },
+  { label: "Tax Audit (Annual)", title: "Tax Audit u/s 44AB", category: "Audit", frequency: "Annually", dueDay: 30, anchorMonth: 9, hint: "Due 30 Sep" },
+  { label: "ROC AOC-4 (Annual)", title: "ROC AOC-4", category: "ROC/MCA", frequency: "Annually", dueDay: 30, anchorMonth: 10, hint: "Financial statements filing" },
+  { label: "ROC MGT-7 (Annual)", title: "ROC MGT-7", category: "ROC/MCA", frequency: "Annually", dueDay: 29, anchorMonth: 11, hint: "Annual return filing" },
+  { label: "DIR-3 KYC (Annual)", title: "DIR-3 KYC", category: "ROC/MCA", frequency: "Annually", dueDay: 30, anchorMonth: 9, hint: "Director KYC, due 30 Sep" },
+];
+
 // Tailwind class fragments used for coloured status/category badges.
 type BadgeTone = { bg: string; text: string; ring: string };
 

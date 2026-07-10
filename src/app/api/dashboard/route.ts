@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ok, route } from "@/lib/api";
+import { requireUser } from "@/lib/auth/session";
 import { TASK_STATUSES, TASK_CATEGORIES } from "@/lib/constants";
 
 const withTax = (amount: number, taxRate: number) =>
@@ -12,6 +13,7 @@ const startOfDay = () => {
 };
 
 export const GET = route(async () => {
+  await requireUser();
   const now = new Date();
   const today = startOfDay();
   const in7 = new Date(today);

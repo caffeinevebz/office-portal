@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ok, fail, parse, route } from "@/lib/api";
+import { requirePermission } from "@/lib/auth/session";
 import { taskUpdateSchema } from "@/lib/validation";
 import type { Prisma } from "@prisma/client";
 
@@ -24,6 +25,7 @@ async function applyUpdate(id: string, data: Prisma.TaskUncheckedUpdateInput) {
 }
 
 export const PUT = route(async (req, ctx: Ctx) => {
+  await requirePermission("manageTasks");
   const { id } = await ctx.params;
   const data = await parse(req, taskUpdateSchema);
   const task = await applyUpdate(id, data as Prisma.TaskUncheckedUpdateInput);
@@ -32,6 +34,7 @@ export const PUT = route(async (req, ctx: Ctx) => {
 
 // Lightweight status toggle used by the board / quick actions.
 export const PATCH = route(async (req, ctx: Ctx) => {
+  await requirePermission("manageTasks");
   const { id } = await ctx.params;
   const body = (await req.json().catch(() => ({}))) as { status?: string };
   if (!body.status) return fail("status is required");
@@ -40,6 +43,7 @@ export const PATCH = route(async (req, ctx: Ctx) => {
 });
 
 export const DELETE = route(async (_req, ctx: Ctx) => {
+  await requirePermission("deleteTasks");
   const { id } = await ctx.params;
   await prisma.task.delete({ where: { id } });
   return ok({ ok: true });

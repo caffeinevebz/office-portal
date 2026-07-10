@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -29,19 +29,24 @@ model Client {
   tasks     Task[]
   invoices  Invoice[]
   documents Document[]
+  schedules ComplianceSchedule[]
+  dscs      Dsc[]
+  packets   DocPacket[]
 }
 
 /// A member of the firm's team.
 model Staff {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  role      String // Partner, Manager, Article Assistant, Accountant, Admin
-  phone     String?
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  role         String // Partner, Manager, Article Assistant, Accountant, Admin
+  phone        String?
+  active       Boolean  @default(true)
+  passwordHash String? // scrypt hash "salt:hash"; null = cannot sign in
+  createdAt    DateTime @default(now())
 
-  tasks Task[]
+  tasks     Task[]
+  schedules ComplianceSchedule[]
 }
 
 /// A compliance / engagement task for a client.
@@ -61,6 +66,138 @@ model Task {
   client     Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
   assigneeId String?
   assignee   Staff?  @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  // Set when a task was generated from a recurring compliance schedule.
+  scheduleId String?
+  schedule   ComplianceSchedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  periodKey  String? // e.g. "2026-07"; unique per schedule occurrence for idempotent generation
+
+  @@unique([scheduleId, periodKey])
+}
+
+/// Firm-wide reminder configuration (single row, id = "default").
+model ReminderSettings {
+  id              String   @id @default("default")
+  enabled         Boolean  @default(true)
+  leadDays        Int      @default(3) // remind when a task is due within N days (and while overdue)
+  notifyAssignee  Boolean  @default(true)
+  notifyClient    Boolean  @default(false)
+  channelEmail    Boolean  @default(true)
+  channelWhatsapp Boolean  @default(false)
+  notifyDscExpiry Boolean  @default(true) // include DSC expiry reminders in runs
+  dscLeadDays     Int      @default(30) // remind when a DSC expires within N days
+  updatedAt       DateTime @updatedAt
+}
+
+/// An inward entry in the physical-document register: a packet of original
+/// papers received from a client and held by the firm.
+model DocPacket {
+  id             String   @id @default(cuid())
+  inwardNumber   String   @unique // e.g. IN-2627-004 (FY-based sequence)
+  receivedFrom   String // person who delivered the documents
+  contents       String // what is inside (e.g. "Original sale deed, 3 bank statements")
+  purpose        String? // engagement it relates to
+  mode           String   @default("Hand Delivery") // Hand Delivery, Courier, Post, Other
+  courierRef     String? // docket/tracking no. for couriered packets
+  location       String? // where the packet is stored in the office
+  notes          String?
+  status         String   @default("In Custody") // In Custody, Returned
+  receivedByName String // portal user who recorded the receipt
+  receivedAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  clientId  String?
+  client    Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  movements PacketMovement[]
+}
+
+/// Outward dispatch (or re-receipt) of a document packet.
+model PacketMovement {
+  id            String   @id @default(cuid())
+  direction     String // Out (returned/dispatched to client), In (received back)
+  outwardNumber String? // e.g. OUT-2627-002; set on Out entries
+  person        String // handed to / received from
+  mode          String   @default("Hand Delivery")
+  courierRef    String?
+  note          String?
+  byName        String // portal user who recorded the movement
+  createdAt     DateTime @default(now())
+
+  packetId String
+  packet   DocPacket @relation(fields: [packetId], references: [id], onDelete: Cascade)
+}
+
+/// A Digital Signature Certificate held for a client's signatory.
+model Dsc {
+  id           String   @id @default(cuid())
+  holderName   String // the person the DSC belongs to (director/partner/proprietor)
+  class        String   @default("Class 3") // Class 3, Class 2 (legacy), DGFT
+  authority    String   @default("eMudhra") // issuing certifying authority
+  serialNumber String?
+  email        String? // holder contact for expiry reminders (falls back to client)
+  phone        String?
+  issueDate    DateTime?
+  expiryDate   DateTime
+  status       String   @default("Active") // Active, Revoked, Surrendered ("Expired" is derived)
+  custody      String   @default("With Firm") // With Firm, With Client
+  location     String? // where the token is kept when with the firm
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  clientId  String?
+  client    Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  movements DscMovement[]
+}
+
+/// In/out register entry for a DSC token's physical custody.
+model DscMovement {
+  id        String   @id @default(cuid())
+  direction String // In (received by firm), Out (handed to client)
+  note      String?
+  byName    String // portal user who recorded the movement
+  createdAt DateTime @default(now())
+
+  dscId String
+  dsc   Dsc    @relation(fields: [dscId], references: [id], onDelete: Cascade)
+}
+
+/// A record of a reminder that was sent (or simulated).
+model NotificationLog {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  channel       String // Email, WhatsApp
+  recipientType String // Staff, Client
+  recipientName String
+  to            String
+  subject       String
+  body          String
+  status        String // Sent, Simulated, Failed
+  taskId        String?
+  dedupeKey     String   @unique
+}
+
+/// A recurring statutory obligation for a client, used to auto-generate tasks.
+model ComplianceSchedule {
+  id          String   @id @default(cuid())
+  title       String
+  category    String   @default("Other")
+  frequency   String   @default("Monthly") // Monthly, Quarterly, Half-Yearly, Annually
+  dueDay      Int      @default(10) // day of month the return is due (clamped to month length)
+  anchorMonth Int      @default(4) // 1-12; seeds the cycle for non-monthly frequencies
+  priority    String   @default("Medium")
+  active      Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  clientId   String?
+  client     Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  assigneeId String?
+  assignee   Staff?  @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  tasks Task[]
 }
 
 /// A billing invoice raised to a client.
