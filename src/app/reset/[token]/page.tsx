@@ -49,9 +49,9 @@ export default function ResetPasswordPage() {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-brand-900 to-brand-950 px-4 py-10">
       <div className="absolute inset-x-0 top-0 flex h-1">
-        <span className="flex-1 bg-saffron-500" />
-        <span className="flex-1 bg-white" />
-        <span className="flex-1 bg-fern-500" />
+        <span className="flex-1 bg-fern-400" />
+        <span className="flex-1 bg-fern-200" />
+        <span className="flex-1 bg-brand-500" />
       </div>
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">

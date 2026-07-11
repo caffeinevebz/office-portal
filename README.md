@@ -4,7 +4,10 @@
 Accountancy (CA) firm**. It brings the firm's day-to-day operations — clients,
 statutory compliance, billing, team and documents — into a single dashboard.
 The browser tab shows *Ledgify · your firm's name* (taken from the default
-organization in Firm Settings).
+organization in Firm Settings). The UI wears Ledgify's chalkboard-green
+identity — deep green with chalk-white and light-green accents — with a
+collapsible sidebar on desktop and a split login screen (Ledgify logo panel
+beside a clean sign-in card; stacked on phones).
 
 > Built with Next.js (App Router), TypeScript, Tailwind CSS, Prisma and PostgreSQL.
 > The sample data models an Indian CA practice (GST, income-tax, TDS, ROC/MCA,
@@ -32,6 +35,7 @@ organization in Firm Settings).
 | **Deadline reminders** | Email & WhatsApp nudges for tasks that are due soon or overdue, to the assignee and/or client, with a preview, a delivery log and configurable lead time. |
 | **Login & roles** | Session-based sign-in with role-based access, enforced on both the API and the UI. Roles are dynamic: the built-in five ship with sensible defaults, and admins can add custom roles and adjust any role's permissions from **Access Control**. A **Forgot password?** flow emails a one-time reset link (60-minute expiry). |
 | **Mobile & PWA** | Fully responsive on phones, plus a web-app manifest: open the site on a phone and *Add to Home Screen* to install Ledgify like an app (full-screen, own icon). |
+| **Quick-access PIN** | Any member can set a **4-digit PIN** from their profile menu; the sign-in screen then offers one-tap PIN unlock for that device (5 wrong attempts lock the PIN until a password sign-in). |
 
 ## Tech stack
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -15,7 +15,6 @@ import {
   BellRing,
   KeyRound,
   ArrowDownUp,
-  Building2,
   Landmark,
   Settings,
   ShieldCheck,
@@ -23,10 +22,14 @@ import {
   X,
   LogOut,
   ChevronDown,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { cn, initials } from "@/lib/format";
 import { AuthProvider, useAuth, type AuthUser } from "@/lib/auth/context";
 import { ROLE_ACCESS, type Permission } from "@/lib/auth/roles";
+import { LedgifyMark } from "@/components/LedgifyLogo";
+import { SetPinModal } from "@/components/SetPinModal";
 
 const NAV: { href: string; label: string; icon: typeof Users; perm?: Permission }[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -50,7 +53,13 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(href + "/");
 }
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+function NavLinks({
+  onNavigate,
+  collapsed = false,
+}: {
+  onNavigate?: () => void;
+  collapsed?: boolean;
+}) {
   const pathname = usePathname();
   const { can } = useAuth();
   return (
@@ -62,23 +71,25 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             key={href}
             href={href}
             onClick={onNavigate}
+            title={collapsed ? label : undefined}
             className={cn(
-              "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              "group relative flex items-center gap-3 rounded-lg py-2 text-sm font-medium transition-colors",
+              collapsed ? "justify-center px-2" : "px-3",
               active
                 ? "bg-white/10 text-white"
                 : "text-brand-100/75 hover:bg-white/5 hover:text-white",
             )}
           >
             {active && (
-              <span className="absolute top-1.5 bottom-1.5 -left-3 w-1 rounded-r bg-saffron-500" />
+              <span className="absolute top-1.5 bottom-1.5 -left-3 w-1 rounded-r bg-fern-400" />
             )}
             <Icon
               className={cn(
-                "h-[18px] w-[18px]",
-                active ? "text-saffron-400" : "text-brand-200/70 group-hover:text-white",
+                "h-[18px] w-[18px] shrink-0",
+                active ? "text-fern-300" : "text-brand-200/70 group-hover:text-white",
               )}
             />
-            {label}
+            {!collapsed && label}
           </Link>
         );
       })}
@@ -88,25 +99,36 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 
 export type Branding = { name: string; tagline: string; hasLogo: boolean };
 
-function Brand({ branding }: { branding: Branding }) {
+function Brand({
+  branding,
+  collapsed = false,
+}: {
+  branding: Branding;
+  collapsed?: boolean;
+}) {
   return (
-    <div className="flex items-center gap-3 px-5 py-5">
+    <div
+      className={cn(
+        "flex items-center gap-3 py-5",
+        collapsed ? "justify-center px-2" : "px-5",
+      )}
+    >
       {branding.hasLogo ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src="/api/branding/logo"
           alt=""
-          className="h-9 w-9 rounded-lg bg-white object-contain p-0.5"
+          className="h-9 w-9 shrink-0 rounded-lg bg-white object-contain p-0.5"
         />
       ) : (
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white">
-          <Building2 className="h-5 w-5" />
+        <LedgifyMark className="h-9 w-9 shrink-0" />
+      )}
+      {!collapsed && (
+        <div className="leading-tight">
+          <p className="text-sm font-semibold text-white">{branding.name}</p>
+          <p className="text-[11px] text-brand-200/80">{branding.tagline}</p>
         </div>
       )}
-      <div className="leading-tight">
-        <p className="text-sm font-semibold text-white">{branding.name}</p>
-        <p className="text-[11px] text-brand-200/80">{branding.tagline}</p>
-      </div>
     </div>
   );
 }
@@ -114,6 +136,7 @@ function Brand({ branding }: { branding: Branding }) {
 function UserMenu({ user }: { user: AuthUser }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [pinOpen, setPinOpen] = useState(false);
   const router = useRouter();
 
   async function signOut() {
@@ -153,6 +176,16 @@ function UserMenu({ user }: { user: AuthUser }) {
               </p>
             </div>
             <button
+              onClick={() => {
+                setOpen(false);
+                setPinOpen(true);
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              <KeyRound className="h-4 w-4 text-brand-500" />
+              Quick-access PIN
+            </button>
+            <button
               onClick={signOut}
               disabled={busy}
               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-rose-600 hover:bg-rose-50 disabled:opacity-50"
@@ -163,6 +196,8 @@ function UserMenu({ user }: { user: AuthUser }) {
           </div>
         </>
       )}
+
+      {pinOpen && <SetPinModal user={user} onClose={() => setPinOpen(false)} />}
     </div>
   );
 }
@@ -179,18 +214,55 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  // Restore the saved sidebar preference (client-only to avoid hydration drift).
+  useEffect(() => {
+    setCollapsed(localStorage.getItem("ledgify.sidebar") === "collapsed");
+  }, []);
+
+  function toggleSidebar() {
+    setCollapsed((c) => {
+      localStorage.setItem("ledgify.sidebar", c ? "open" : "collapsed");
+      return !c;
+    });
+  }
 
   return (
     <AuthProvider user={user} permissions={permissions}>
       <div className="min-h-screen">
         {/* Desktop sidebar */}
-        <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col bg-gradient-to-b from-brand-900 to-brand-950 lg:flex">
-          <Brand branding={branding} />
+        <aside
+          className={cn(
+            "fixed inset-y-0 left-0 z-30 hidden flex-col bg-gradient-to-b from-brand-900 to-brand-950 transition-[width] duration-200 lg:flex",
+            collapsed ? "w-[76px]" : "w-64",
+          )}
+        >
+          <Brand branding={branding} collapsed={collapsed} />
           <div className="mt-1 flex-1 overflow-y-auto pb-6">
-            <NavLinks />
+            <NavLinks collapsed={collapsed} />
           </div>
-          <div className="border-t border-white/10 px-5 py-4">
-            <p className="text-[11px] text-brand-200/70">FY 2026-27 · AY 2026-27</p>
+          <div
+            className={cn(
+              "flex items-center border-t border-white/10 py-3",
+              collapsed ? "justify-center px-2" : "justify-between px-5",
+            )}
+          >
+            {!collapsed && (
+              <p className="text-[11px] text-brand-200/70">FY 2026-27 · AY 2026-27</p>
+            )}
+            <button
+              onClick={toggleSidebar}
+              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className="rounded-lg p-1.5 text-brand-200/80 hover:bg-white/10 hover:text-white"
+            >
+              {collapsed ? (
+                <PanelLeftOpen className="h-4.5 w-4.5" />
+              ) : (
+                <PanelLeftClose className="h-4.5 w-4.5" />
+              )}
+            </button>
           </div>
         </aside>
 
@@ -220,7 +292,7 @@ export function AppShell({
         )}
 
         {/* Content */}
-        <div className="lg:pl-64">
+        <div className={cn(collapsed ? "lg:pl-[76px]" : "lg:pl-64")}>
           <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-slate-200 bg-white/85 px-4 backdrop-blur lg:px-8">
             <button
               onClick={() => setMobileOpen(true)}
@@ -235,8 +307,8 @@ export function AppShell({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src="/api/branding/logo" alt="" className="h-7 w-7 rounded-md object-contain" />
               ) : (
-                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-600 text-white">
-                  <Building2 className="h-4 w-4" />
+                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-900">
+                  <LedgifyMark className="h-5 w-5" />
                 </span>
               )}
               <span className="max-w-[46vw] truncate text-sm font-semibold text-slate-900">

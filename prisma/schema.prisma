@@ -82,6 +82,10 @@ model Staff {
   phone        String?
   active       Boolean  @default(true)
   passwordHash String? // scrypt hash "salt:hash"; null = cannot sign in
+  // Optional 4-digit quick-access PIN. Locked after 5 wrong attempts until
+  // the member signs in with their password again.
+  pinHash        String?
+  pinFailedCount Int     @default(0)
   createdAt    DateTime @default(now())
 
   tasks      Task[]

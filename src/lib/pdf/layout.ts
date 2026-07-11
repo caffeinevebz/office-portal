@@ -17,9 +17,9 @@ export const MARGIN = 48;
 export const INK = rgb(0.06, 0.09, 0.16); // slate-900
 export const MUTED = rgb(0.39, 0.45, 0.55); // slate-500
 export const FAINT = rgb(0.58, 0.64, 0.72); // slate-400
-export const ACCENT = rgb(0.122, 0.306, 0.51); // brand-600 navy #1f4e82
-export const SAFFRON = rgb(0.933, 0.459, 0.149); // #ee7526
-export const FERN = rgb(0.341, 0.659, 0.22); // #57a838
+export const ACCENT = rgb(0.18, 0.424, 0.318); // brand-600 green #2e6c51
+export const SAFFRON = rgb(0.498, 0.788, 0.561); // chalk green #7fc98f
+export const FERN = rgb(0.333, 0.671, 0.408); // #55ab68
 export const LINE = rgb(0.89, 0.91, 0.94); // slate-200
 export const FILL = rgb(0.97, 0.98, 0.99); // slate-50
 
@@ -108,7 +108,7 @@ export function watermark(page: PDFPage, label: string, color: RGB) {
  */
 export async function firmHeader(pdf: Pdf, title: string, lh: Letterhead): Promise<number> {
   const { doc, page, reg, bold } = pdf;
-  // Tricolour top strip: saffron · navy · green (CA India accent).
+  // Ledgify accent strip: chalk-green tones.
   const third = A4.width / 3;
   page.drawRectangle({ x: 0, y: A4.height - 6, width: third, height: 6, color: SAFFRON });
   page.drawRectangle({ x: third, y: A4.height - 6, width: third, height: 6, color: ACCENT });

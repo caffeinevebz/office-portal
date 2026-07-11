@@ -52,14 +52,14 @@ export function RevenueChart({
             fontSize: 12,
             boxShadow: "0 4px 12px rgba(15,23,42,0.08)",
           }}
-          cursor={{ fill: "rgba(31,78,130,0.06)" }}
+          cursor={{ fill: "rgba(46,108,81,0.07)" }}
         />
         <Legend
           iconType="circle"
           wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
         />
-        <Bar dataKey="billed" name="Billed" fill="#b3cde8" radius={[4, 4, 0, 0]} />
-        <Bar dataKey="collected" name="Collected" fill="#1f4e82" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="billed" name="Billed" fill="#bcd9c9" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="collected" name="Collected" fill="#2e6c51" radius={[4, 4, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -67,9 +67,9 @@ export function RevenueChart({
 
 const STATUS_COLORS: Record<string, string> = {
   Pending: "#94a3b8",
-  "In Progress": "#2c63a1",
-  "Under Review": "#ee7526",
-  Completed: "#57a838",
+  "In Progress": "#41748f",
+  "Under Review": "#d68f28",
+  Completed: "#55ab68",
 };
 
 export function StatusDonut({
