@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -10,11 +11,16 @@ import {
   FileText,
   Receipt,
   ClipboardList,
+  Send,
 } from "lucide-react";
-import { useResource } from "@/lib/useApi";
+import { useResource, apiMutate } from "@/lib/useApi";
+import { useAuth } from "@/lib/auth/context";
 import type { ClientDetail } from "@/lib/types";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
+import { Field, Input, Textarea } from "@/components/ui/Field";
 import { Loading } from "@/components/ui/EmptyState";
 import {
   formatCurrency,
@@ -37,9 +43,11 @@ const withTax = (i: { amount: number; taxRate: number; gstMode?: string }) =>
 
 export default function ClientDetailPage() {
   const params = useParams<{ id: string }>();
+  const { can } = useAuth();
   const { data: c, loading, error } = useResource<ClientDetail>(
     `/api/clients/${params.id}`,
   );
+  const [composeOpen, setComposeOpen] = useState(false);
 
   if (loading) return <Loading label="Loading client…" />;
   if (error || !c)
@@ -100,10 +108,17 @@ export default function ClientDetailPage() {
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4 text-center sm:text-right">
-            <Stat label="Open Tasks" value={openTasks} />
-            <Stat label="Billed" value={formatCurrency(billed)} />
-            <Stat label="Outstanding" value={formatCurrency(outstanding)} />
+          <div className="flex flex-col items-stretch gap-3 sm:items-end">
+            <div className="grid grid-cols-3 gap-4 text-center sm:text-right">
+              <Stat label="Open Tasks" value={openTasks} />
+              <Stat label="Billed" value={formatCurrency(billed)} />
+              <Stat label="Outstanding" value={formatCurrency(outstanding)} />
+            </div>
+            {can("manageClients") && c.email && (
+              <Button size="sm" variant="secondary" onClick={() => setComposeOpen(true)}>
+                <Send className="h-3.5 w-3.5" /> Send email
+              </Button>
+            )}
           </div>
         </div>
         {(infoRows.length > 0 || c.notes) && (
@@ -216,7 +231,99 @@ export default function ClientDetailPage() {
           )}
         </Card>
       </div>
+
+      {composeOpen && (
+        <ComposeEmailModal client={c} onClose={() => setComposeOpen(false)} />
+      )}
     </div>
+  );
+}
+
+function ComposeEmailModal({
+  client,
+  onClose,
+}: {
+  client: ClientDetail;
+  onClose: () => void;
+}) {
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState(
+    `Dear ${client.contactPerson || client.name},\n\n`,
+  );
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [sent, setSent] = useState<string | null>(null);
+
+  async function send() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = (await apiMutate(`/api/clients/${client.id}/email`, "POST", {
+        subject,
+        body,
+      })) as { status: string; to: string };
+      setSent(
+        res.status === "Sent"
+          ? `Email sent to ${res.to}.`
+          : `Email simulated and logged for ${res.to} — configure the firm email in Settings to send for real.`,
+      );
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not send the email");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="lg"
+      title={`Email ${client.name}`}
+      description={`To: ${client.email} — sent from the firm's official email`}
+      footer={
+        sent ? (
+          <Button onClick={onClose}>Done</Button>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={onClose} disabled={busy}>
+              Cancel
+            </Button>
+            <Button onClick={send} disabled={busy || !subject.trim() || !body.trim()}>
+              <Send className="h-4 w-4" /> {busy ? "Sending…" : "Send email"}
+            </Button>
+          </>
+        )
+      }
+    >
+      {err && (
+        <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-200">
+          {err}
+        </div>
+      )}
+      {sent ? (
+        <div className="rounded-lg bg-fern-50 px-3 py-2 text-sm text-fern-800 ring-1 ring-fern-200">
+          {sent}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <Field label="Subject" required>
+            <Input
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="e.g. Documents required for ITR AY 2026-27"
+            />
+          </Field>
+          <Field label="Message" required hint="Your name and the firm's name are signed automatically.">
+            <Textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={8}
+            />
+          </Field>
+        </div>
+      )}
+    </Modal>
   );
 }
 

@@ -119,6 +119,30 @@ model Task {
   @@unique([scheduleId, periodKey])
 }
 
+/// Firm-wide outbound-email configuration (single row, id = "default").
+/// The official firm mailbox used as the From address for invoices,
+/// documents, invitations, password resets and alert emails.
+model EmailSettings {
+  id           String   @id @default("default")
+  fromName     String? // display name, e.g. the firm's name
+  fromEmail    String? // official firm email (domain verified with the provider)
+  replyTo      String?
+  resendApiKey String? // provider key; falls back to the RESEND_API_KEY env var
+  updatedAt    DateTime @updatedAt
+}
+
+/// A pending forgot-password reset link.
+model PasswordReset {
+  id        String    @id @default(cuid())
+  staffId   String
+  token     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([staffId])
+}
+
 /// Firm-wide reminder configuration (single row, id = "default").
 model ReminderSettings {
   id              String   @id @default("default")
@@ -233,8 +257,12 @@ model ComplianceSchedule {
   priority    String   @default("Medium")
   active      Boolean  @default(true)
   notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  // Set when the schedule came from a built-in statutory calendar sync
+  // (e.g. "income-tax"); sourceKey makes re-syncs idempotent.
+  source    String?
+  sourceKey String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   clientId   String?
   client     Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)

@@ -20,12 +20,21 @@ export const GET = route(async () => {
   const in7 = new Date(today);
   in7.setDate(in7.getDate() + 7);
 
-  const [clients, tasks, invoices] = await Promise.all([
+  const in30 = new Date(today);
+  in30.setDate(in30.getDate() + 30);
+
+  const [clients, tasks, invoices, dscs] = await Promise.all([
     prisma.client.findMany({ select: { status: true } }),
     prisma.task.findMany({
       include: { client: { select: { name: true } }, assignee: { select: { name: true } } },
     }),
     prisma.invoice.findMany(),
+    // DSC alerts: active certificates already expired or expiring within 30 days.
+    prisma.dsc.findMany({
+      where: { status: "Active", expiryDate: { lte: in30 } },
+      orderBy: { expiryDate: "asc" },
+      include: { client: { select: { name: true } } },
+    }),
   ]);
 
   const openTasks = tasks.filter((t) => t.status !== "Completed");
@@ -89,6 +98,15 @@ export const GET = route(async () => {
       assignee: t.assignee?.name ?? null,
     }));
 
+  const dscAlerts = dscs.map((d) => ({
+    id: d.id,
+    holderName: d.holderName,
+    client: d.client?.name ?? null,
+    expiryDate: d.expiryDate,
+    daysLeft: Math.ceil((d.expiryDate.getTime() - today.getTime()) / 86_400_000),
+    expired: d.expiryDate < now,
+  }));
+
   return ok({
     kpis: {
       activeClients: clients.filter((c) => c.status === "Active").length,
@@ -104,5 +122,6 @@ export const GET = route(async () => {
     categoryBreakdown,
     months,
     upcoming,
+    dscAlerts,
   });
 });

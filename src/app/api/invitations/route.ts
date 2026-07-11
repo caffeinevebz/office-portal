@@ -54,5 +54,5 @@ export const POST = route(async (req) => {
   const body = `Hello${data.name ? " " + data.name : ""},\n\n${user.name} has invited you to join ${firmName} as ${data.role} on the office portal.\n\nSet your password and activate your account here (link valid ${INVITE_TTL_DAYS} days):\n${link}\n\nIf you weren't expecting this, you can ignore this email.`;
   const status = await deliver("Email", email, subject, body);
 
-  return ok({ invite: { id: invite.id, email, role: data.role }, link, delivery: status, provider: providerStatus() }, 201);
+  return ok({ invite: { id: invite.id, email, role: data.role }, link, delivery: status, provider: await providerStatus() }, 201);
 });

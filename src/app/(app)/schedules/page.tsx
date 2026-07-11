@@ -9,6 +9,8 @@ import {
   Repeat,
   CalendarClock,
   Info,
+  Landmark,
+  RefreshCw,
 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
@@ -78,6 +80,33 @@ export default function SchedulesPage() {
     }
   }
 
+  const [sync, setSync] = useState<{ busy: boolean; msg: string | null }>({
+    busy: false,
+    msg: null,
+  });
+
+  async function syncIncomeTax() {
+    setSync({ busy: true, msg: null });
+    try {
+      const res = (await apiMutate("/api/schedules/sync-income-tax", "POST")) as {
+        created: number;
+        updated: number;
+        unchanged: number;
+        total: number;
+      };
+      setSync({
+        busy: false,
+        msg:
+          res.created === 0 && res.updated === 0
+            ? `Already in sync — all ${res.total} income-tax calendar entries are up to date.`
+            : `Income-tax calendar synced: ${res.created} added, ${res.updated} updated, ${res.unchanged} already current.`,
+      });
+      refresh();
+    } catch (e) {
+      setSync({ busy: false, msg: e instanceof Error ? e.message : "Sync failed" });
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -129,6 +158,31 @@ export default function SchedulesPage() {
               {gen.msg}
             </div>
           )}
+          <div className="flex flex-col gap-3 border-t border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-2 text-sm text-slate-600">
+              <Landmark className="mt-0.5 h-4 w-4 shrink-0 text-saffron-500" />
+              <p>
+                Pull the <strong>Income Tax Department&apos;s compliance
+                calendar</strong> (advance tax, TDS payments &amp; returns,
+                ITR &amp; audit due dates, Form 16, SFT) into this list.
+                Re-syncing updates dates in place, never duplicates.
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              onClick={syncIncomeTax}
+              disabled={sync.busy}
+              className="shrink-0"
+            >
+              <RefreshCw className={`h-4 w-4 ${sync.busy ? "animate-spin" : ""}`} />
+              {sync.busy ? "Syncing…" : "Sync income-tax calendar"}
+            </Button>
+          </div>
+          {sync.msg && (
+            <div className="border-t border-slate-100 bg-saffron-50/60 px-4 py-2 text-xs text-saffron-700">
+              {sync.msg}
+            </div>
+          )}
         </Card>
       )}
 
@@ -165,6 +219,11 @@ export default function SchedulesPage() {
                         <Repeat className="h-3.5 w-3.5 text-brand-400" />
                         <span className="font-medium text-slate-800">{s.title}</span>
                         <Badge tone={CATEGORY_TONE[s.category]}>{s.category}</Badge>
+                        {s.source === "income-tax" && (
+                          <Badge tone="amber">
+                            <Landmark className="h-3 w-3" /> IT calendar
+                          </Badge>
+                        )}
                         {!s.active && <Badge tone="slate">Paused</Badge>}
                       </div>
                     </td>

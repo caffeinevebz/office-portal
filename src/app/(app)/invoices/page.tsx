@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Plus, Pencil, Trash2, Receipt, FileDown, FileCheck2 } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Receipt, FileDown, FileCheck2, Mail } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
 import type { Invoice, Client, Organization } from "@/lib/types";
@@ -53,6 +53,34 @@ export default function InvoicesPage() {
     refresh();
   }
 
+  const [emailBusy, setEmailBusy] = useState<string | null>(null);
+  const [emailMsg, setEmailMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  async function emailInvoice(inv: Invoice) {
+    setEmailBusy(inv.id);
+    setEmailMsg(null);
+    try {
+      const res = (await apiMutate(`/api/invoices/${inv.id}/email`, "POST")) as {
+        status: string;
+        to: string;
+        live: boolean;
+      };
+      setEmailMsg(
+        res.status === "Sent"
+          ? { kind: "ok", text: `Invoice ${inv.invoiceNumber} emailed to ${res.to}.` }
+          : {
+              kind: "ok",
+              text: `Invoice ${inv.invoiceNumber} email simulated (configure the firm email in Settings to send for real). Logged for ${res.to}.`,
+            },
+      );
+      refresh();
+    } catch (e) {
+      setEmailMsg({ kind: "err", text: e instanceof Error ? e.message : "Could not email the invoice" });
+    } finally {
+      setEmailBusy(null);
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -77,6 +105,18 @@ export default function InvoicesPage() {
         <SummaryTile label="Collected" value={formatCurrency(collected)} tone="emerald" />
         <SummaryTile label="Outstanding" value={formatCurrency(outstanding)} tone="amber" />
       </div>
+
+      {emailMsg && (
+        <div
+          className={`mb-4 rounded-lg px-4 py-2.5 text-xs ring-1 ${
+            emailMsg.kind === "ok"
+              ? "bg-fern-50 text-fern-800 ring-fern-200"
+              : "bg-rose-50 text-rose-700 ring-rose-200"
+          }`}
+        >
+          {emailMsg.text}
+        </div>
+      )}
 
       <Card className="mb-4">
         <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center">
@@ -199,6 +239,18 @@ export default function InvoicesPage() {
                         )}
                         {canManage && (
                           <>
+                            <button
+                              onClick={() => emailInvoice(i)}
+                              disabled={emailBusy === i.id}
+                              className="rounded-lg p-1.5 text-slate-400 hover:bg-brand-50 hover:text-brand-600 disabled:opacity-50"
+                              title={
+                                i.client?.email
+                                  ? `Email invoice to ${i.client.email}`
+                                  : "Email invoice (client has no email on record)"
+                              }
+                            >
+                              <Mail className="h-4 w-4" />
+                            </button>
                             <button
                               onClick={() => {
                                 setEditing(i);

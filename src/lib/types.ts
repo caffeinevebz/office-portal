@@ -87,6 +87,8 @@ export type ComplianceSchedule = {
   priority: string;
   active: boolean;
   notes: string | null;
+  source: string | null;
+  sourceKey: string | null;
   createdAt: string;
   clientId: string | null;
   assigneeId: string | null;
