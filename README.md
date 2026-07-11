@@ -28,9 +28,10 @@ organization in Firm Settings).
 | **DSC Register** | Digital Signature Certificates per client signatory: class, authority, serial, validity with expiry countdowns, and a physical-token custody in/out register stamped with the acting user. DSC expiries feed the reminders engine. |
 | **Inward/Outward Register** | The office's physical-document register, digitized: every packet of originals received gets an auto-issued inward number (IN-2627-001…) with contents, deliverer, mode/courier docket and storage location; returns/dispatches get outward numbers, and a full movement trail shows who handled what. Long-held packets (90+ days) are flagged. |
 | **Calendar** | A month view of every statutory due date across all clients, colour-coded by category. |
-| **Recurring compliance** | A statutory calendar of recurring obligations (monthly GST, quarterly TDS/advance tax, annual ITR/ROC…) that auto-generates the upcoming deadline tasks — idempotently. |
+| **Recurring compliance** | A statutory calendar of recurring obligations (monthly GST, quarterly TDS/advance tax, annual ITR/ROC…) that auto-generates the upcoming deadline tasks — idempotently. One click **syncs the Income Tax Department's compliance calendar** (advance tax installments, monthly TDS payments, quarterly TDS returns, ITR & tax-audit due dates, Form 16, SFT) into the list; re-syncing updates dates in place and never duplicates. |
 | **Deadline reminders** | Email & WhatsApp nudges for tasks that are due soon or overdue, to the assignee and/or client, with a preview, a delivery log and configurable lead time. |
-| **Login & roles** | Session-based sign-in with role-based access, enforced on both the API and the UI. Roles are dynamic: the built-in five ship with sensible defaults, and admins can add custom roles and adjust any role's permissions from **Access Control**. |
+| **Login & roles** | Session-based sign-in with role-based access, enforced on both the API and the UI. Roles are dynamic: the built-in five ship with sensible defaults, and admins can add custom roles and adjust any role's permissions from **Access Control**. A **Forgot password?** flow emails a one-time reset link (60-minute expiry). |
+| **Mobile & PWA** | Fully responsive on phones, plus a web-app manifest: open the site on a phone and *Add to Home Screen* to install Ledgify like an app (full-screen, own icon). |
 
 ## Tech stack
 
@@ -106,8 +107,15 @@ Delivery is **pluggable and dependency-free**:
 
 | Channel | Goes live when you set | Otherwise |
 | --- | --- | --- |
-| Email | `RESEND_API_KEY` (+ optional `REMINDER_FROM_EMAIL`) | Simulated |
+| Email | the firm's official email + a Resend API key in **Firm Settings → Official firm email** (or the `RESEND_API_KEY` / `REMINDER_FROM_EMAIL` env vars) | Simulated |
 | WhatsApp | `WHATSAPP_TOKEN` + `WHATSAPP_PHONE_ID` (Meta Cloud API) | Simulated |
+
+The same official mailbox is used for **everything the portal emails**: invoice
+PDFs sent to clients from the Invoices page, ad-hoc client emails composed from
+a client's page (document requests etc.), team invitations, password-reset
+links, deadline reminders and DSC-expiry alerts. Configure it once in the app —
+no redeploy needed — and use **Send test email** to verify. The From domain
+must be verified with Resend.
 
 In **simulation mode** (the default, and what runs without credentials) messages
 are fully rendered and logged but not actually delivered — nothing leaves the
@@ -118,7 +126,9 @@ Manager).
 
 Reminder runs also cover **DSC expiries**: certificate holders (falling back to
 the client's contact details) are nudged when their DSC expires within a
-configurable window (default 30 days) or has already lapsed.
+configurable window (default 30 days) or has already lapsed. The **dashboard**
+additionally shows a standing *Digital signature alerts* panel listing every
+active DSC that has expired or expires within 30 days.
 
 ## Authentication & roles
 
@@ -164,8 +174,12 @@ Permissions are enforced server-side on every API route (a denied action returns
 `403`) and mirrored in the UI (buttons hidden / controls read-only). Partners and
 Admins can set or reset a member's login password from the **Team** page, or
 **invite a member by email** — the invitee opens the link and sets their own
-password. Invitation emails go out live once `RESEND_API_KEY` is set (the same
-switch as reminders); otherwise the invite link is shown for manual sharing.
+password. Members who forget their password can use **Forgot password?** on
+the sign-in screen: a one-time reset link (valid 60 minutes) is emailed to
+them; while email is in simulated mode the link is also visible to admins in
+the reminders **delivery log**. Invitation and reset emails go out live once
+the firm email is configured (Firm Settings → Official firm email, or
+`RESEND_API_KEY`); otherwise invite links are shown for manual sharing.
 
 > **Production note:** set a strong `AUTH_SECRET` in the environment (the
 > committed `.env` ships with a development value). The session cookie is signed

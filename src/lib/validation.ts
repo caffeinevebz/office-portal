@@ -221,6 +221,20 @@ export const rolePermissionSchema = z.object({
   allowed: z.boolean(),
 });
 
+export const emailSettingsSchema = z.object({
+  fromName: optionalText,
+  fromEmail: z
+    .union([z.string().trim().email("Valid email required"), z.literal(""), z.null()])
+    .optional()
+    .transform((v) => (v ? v : null)),
+  replyTo: z
+    .union([z.string().trim().email("Valid email required"), z.literal(""), z.null()])
+    .optional()
+    .transform((v) => (v ? v : null)),
+  // Blank/omitted = keep the stored key; the literal "clear" removes it.
+  resendApiKey: z.string().trim().optional(),
+});
+
 export const invitationCreateSchema = z.object({
   email: z.string().trim().email("Valid email required"),
   name: optionalText,

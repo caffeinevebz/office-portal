@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { getDefaultOrg } from "@/lib/org";
 import { APP_NAME } from "@/lib/constants";
@@ -14,6 +14,12 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+export const viewport: Viewport = {
+  themeColor: "#1f4e82",
+  width: "device-width",
+  initialScale: 1,
+};
+
 // Browser-tab title: the app name, then the firm the portal is set up for.
 export async function generateMetadata(): Promise<Metadata> {
   let firm: string | undefined;
@@ -26,6 +32,8 @@ export async function generateMetadata(): Promise<Metadata> {
     title: firm ? `${APP_NAME} · ${firm}` : APP_NAME,
     description:
       "Ledgify — office management for a Chartered Accountancy firm: clients, compliance, billing and team.",
+    icons: { icon: "/icon-192.png", apple: "/icon-192.png" },
+    appleWebApp: { capable: true, title: APP_NAME, statusBarStyle: "default" },
   };
 }
 

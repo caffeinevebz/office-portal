@@ -10,12 +10,14 @@ import {
   Upload,
   X,
   Landmark,
+  Mail,
+  Send,
 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
 import type { Organization } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Card } from "@/components/ui/Card";
+import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
@@ -245,6 +247,8 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {canManage && <EmailSettingsCard />}
+
       {formOpen && (
         <OrgForm
           initial={editing}
@@ -388,5 +392,200 @@ function OrgForm({
         </Field>
       </div>
     </Modal>
+  );
+}
+
+type EmailSettingsView = {
+  fromName: string;
+  fromEmail: string;
+  replyTo: string;
+  hasApiKey: boolean;
+  effectiveFrom: string;
+  envKeyPresent: boolean;
+  provider: { email: string; whatsapp: string; live: boolean };
+};
+
+function EmailSettingsCard() {
+  const { user } = useAuth();
+  const { data, loading, refresh, setData } =
+    useResource<EmailSettingsView>("/api/email-settings");
+  const [form, setForm] = useState<{ fromName: string; fromEmail: string; replyTo: string; resendApiKey: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [testTo, setTestTo] = useState("");
+  const [testBusy, setTestBusy] = useState(false);
+
+  // Initialise the form once from the loaded settings.
+  if (data && form === null) {
+    setForm({
+      fromName: data.fromName,
+      fromEmail: data.fromEmail,
+      replyTo: data.replyTo,
+      resendApiKey: "",
+    });
+    setTestTo(user?.email ?? "");
+  }
+
+  async function save(clearKey = false) {
+    if (!form) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const saved = (await apiMutate("/api/email-settings", "PUT", {
+        fromName: form.fromName,
+        fromEmail: form.fromEmail,
+        replyTo: form.replyTo,
+        resendApiKey: clearKey ? "clear" : form.resendApiKey || undefined,
+      })) as EmailSettingsView;
+      setData(saved);
+      setForm({
+        fromName: saved.fromName,
+        fromEmail: saved.fromEmail,
+        replyTo: saved.replyTo,
+        resendApiKey: "",
+      });
+      setMsg({ kind: "ok", text: "Email settings saved." });
+    } catch (e) {
+      setMsg({ kind: "err", text: e instanceof Error ? e.message : "Failed to save" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendTest() {
+    setTestBusy(true);
+    setMsg(null);
+    try {
+      const res = (await apiMutate("/api/email-settings/test", "POST", { to: testTo })) as {
+        status: string;
+        to: string;
+        from: string;
+        live: boolean;
+      };
+      setMsg(
+        res.status === "Sent"
+          ? { kind: "ok", text: `Test email sent to ${res.to} from ${res.from}.` }
+          : res.status === "Simulated"
+            ? {
+                kind: "ok",
+                text: `Simulated (no API key yet): the email to ${res.to} was rendered but not sent.`,
+              }
+            : { kind: "err", text: "The provider rejected the test email — check the key and the verified domain." },
+      );
+      refresh();
+    } catch (e) {
+      setMsg({ kind: "err", text: e instanceof Error ? e.message : "Test failed" });
+    } finally {
+      setTestBusy(false);
+    }
+  }
+
+  return (
+    <Card className="mt-6">
+      <CardHeader
+        title={
+          <span className="flex items-center gap-2">
+            <Mail className="h-4 w-4 text-brand-500" /> Official firm email
+          </span>
+        }
+        subtitle="Invoices, documents, invitations and alerts are emailed to clients from this address"
+        action={
+          data && (
+            <Badge tone={data.provider.live ? "green" : "amber"}>
+              {data.provider.live ? "Live" : "Simulated"}
+            </Badge>
+          )
+        }
+      />
+      {loading && !data ? (
+        <div className="p-5">
+          <Loading label="Loading email settings…" />
+        </div>
+      ) : (
+        <div className="p-5">
+          {msg && (
+            <div
+              className={`mb-4 rounded-lg px-3 py-2 text-xs ring-1 ${
+                msg.kind === "ok"
+                  ? "bg-fern-50 text-fern-800 ring-fern-200"
+                  : "bg-rose-50 text-rose-700 ring-rose-200"
+              }`}
+            >
+              {msg.text}
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Sender name" hint="Shown as the From name in the client's inbox">
+              <Input
+                value={form?.fromName ?? ""}
+                onChange={(e) => setForm((f) => f && { ...f, fromName: e.target.value })}
+                placeholder="e.g. Anil P.S.Bhansali & Co."
+              />
+            </Field>
+            <Field label="Official email (From address)" hint="Domain must be verified with Resend">
+              <Input
+                type="email"
+                value={form?.fromEmail ?? ""}
+                onChange={(e) => setForm((f) => f && { ...f, fromEmail: e.target.value })}
+                placeholder="office@yourfirm.in"
+              />
+            </Field>
+            <Field label="Reply-to (optional)">
+              <Input
+                type="email"
+                value={form?.replyTo ?? ""}
+                onChange={(e) => setForm((f) => f && { ...f, replyTo: e.target.value })}
+                placeholder="Defaults to the From address"
+              />
+            </Field>
+            <Field
+              label="Resend API key"
+              hint={
+                data?.hasApiKey
+                  ? "A key is saved. Enter a new one to replace it."
+                  : data?.envKeyPresent
+                    ? "Using the key from the server environment."
+                    : "Create a free key at resend.com — until then emails are simulated."
+              }
+            >
+              <Input
+                type="password"
+                value={form?.resendApiKey ?? ""}
+                onChange={(e) => setForm((f) => f && { ...f, resendApiKey: e.target.value })}
+                placeholder={data?.hasApiKey ? "•••••••• (unchanged)" : "re_…"}
+                autoComplete="new-password"
+              />
+            </Field>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+            <Button onClick={() => save(false)} disabled={busy || !form}>
+              {busy ? "Saving…" : "Save email settings"}
+            </Button>
+            {data?.hasApiKey && (
+              <Button variant="ghost" onClick={() => save(true)} disabled={busy}>
+                Remove saved key
+              </Button>
+            )}
+            <span className="flex-1" />
+            <Input
+              type="email"
+              value={testTo}
+              onChange={(e) => setTestTo(e.target.value)}
+              placeholder="you@yourfirm.in"
+              className="w-56"
+            />
+            <Button variant="secondary" onClick={sendTest} disabled={testBusy || !testTo}>
+              <Send className="h-4 w-4" /> {testBusy ? "Sending…" : "Send test email"}
+            </Button>
+          </div>
+          {data && (
+            <p className="mt-3 text-xs text-slate-400">
+              Currently sending as <span className="font-medium text-slate-500">{data.effectiveFrom}</span> · {data.provider.email}
+            </p>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }

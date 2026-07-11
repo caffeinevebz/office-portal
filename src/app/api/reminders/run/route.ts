@@ -9,5 +9,5 @@ import { providerStatus } from "@/lib/notify";
 export const POST = route(async () => {
   await requirePermission("manageReminders");
   const result = await runReminders();
-  return ok({ ...result, provider: providerStatus() });
+  return ok({ ...result, provider: await providerStatus() });
 });

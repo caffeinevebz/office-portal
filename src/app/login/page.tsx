@@ -130,6 +130,14 @@ export default function LoginPage() {
             <LogIn className="h-4 w-4" />
             {busy ? "Signing in…" : "Sign in"}
           </Button>
+          <p className="text-center">
+            <Link
+              href="/forgot"
+              className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </p>
         </form>
 
         <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">

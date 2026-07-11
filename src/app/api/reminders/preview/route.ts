@@ -7,5 +7,5 @@ export const GET = route(async () => {
   await requireUser();
   const settings = await getSettings();
   const candidates = await computeCandidates(settings);
-  return ok({ candidates, provider: providerStatus(), settings });
+  return ok({ candidates, provider: await providerStatus(), settings });
 });
