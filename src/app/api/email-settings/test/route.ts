@@ -23,6 +23,6 @@ export const POST = route(async (req) => {
     status,
     to,
     from: cfg.fromName ? `${cfg.fromName} <${cfg.fromEmail}>` : cfg.fromEmail,
-    live: Boolean(cfg.apiKey),
+    live: cfg.live,
   });
 });

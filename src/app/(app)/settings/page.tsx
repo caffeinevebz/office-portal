@@ -395,21 +395,33 @@ function OrgForm({
   );
 }
 
+
 type EmailSettingsView = {
+  provider: "google" | "resend";
   fromName: string;
   fromEmail: string;
   replyTo: string;
+  hasAppPassword: boolean;
   hasApiKey: boolean;
   effectiveFrom: string;
   envKeyPresent: boolean;
-  provider: { email: string; whatsapp: string; live: boolean };
+  live: boolean;
+};
+
+type EmailForm = {
+  provider: "google" | "resend";
+  fromName: string;
+  fromEmail: string;
+  replyTo: string;
+  appPassword: string;
+  resendApiKey: string;
 };
 
 function EmailSettingsCard() {
   const { user } = useAuth();
   const { data, loading, refresh, setData } =
     useResource<EmailSettingsView>("/api/email-settings");
-  const [form, setForm] = useState<{ fromName: string; fromEmail: string; replyTo: string; resendApiKey: string } | null>(null);
+  const [form, setForm] = useState<EmailForm | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [testTo, setTestTo] = useState("");
@@ -418,33 +430,47 @@ function EmailSettingsCard() {
   // Initialise the form once from the loaded settings.
   if (data && form === null) {
     setForm({
+      provider: data.provider,
       fromName: data.fromName,
       fromEmail: data.fromEmail,
       replyTo: data.replyTo,
+      appPassword: "",
       resendApiKey: "",
     });
     setTestTo(user?.email ?? "");
   }
 
-  async function save(clearKey = false) {
+  const set = <K extends keyof EmailForm>(k: K, v: EmailForm[K]) =>
+    setForm((f) => f && { ...f, [k]: v });
+
+  async function save(clearSecret = false) {
     if (!form) return;
     setBusy(true);
     setMsg(null);
     try {
       const saved = (await apiMutate("/api/email-settings", "PUT", {
+        provider: form.provider,
         fromName: form.fromName,
         fromEmail: form.fromEmail,
         replyTo: form.replyTo,
-        resendApiKey: clearKey ? "clear" : form.resendApiKey || undefined,
+        appPassword: clearSecret && form.provider === "google" ? "clear" : form.appPassword || undefined,
+        resendApiKey: clearSecret && form.provider === "resend" ? "clear" : form.resendApiKey || undefined,
       })) as EmailSettingsView;
       setData(saved);
       setForm({
+        provider: saved.provider,
         fromName: saved.fromName,
         fromEmail: saved.fromEmail,
         replyTo: saved.replyTo,
+        appPassword: "",
         resendApiKey: "",
       });
-      setMsg({ kind: "ok", text: "Email settings saved." });
+      setMsg({
+        kind: "ok",
+        text: saved.live
+          ? "Saved. Email is LIVE — use the test button to confirm delivery."
+          : "Saved. Still simulated — add the missing credential to go live.",
+      });
     } catch (e) {
       setMsg({ kind: "err", text: e instanceof Error ? e.message : "Failed to save" });
     } finally {
@@ -460,17 +486,16 @@ function EmailSettingsCard() {
         status: string;
         to: string;
         from: string;
-        live: boolean;
       };
       setMsg(
         res.status === "Sent"
-          ? { kind: "ok", text: `Test email sent to ${res.to} from ${res.from}.` }
+          ? { kind: "ok", text: `Test email sent to ${res.to} from ${res.from} — check the inbox.` }
           : res.status === "Simulated"
-            ? {
-                kind: "ok",
-                text: `Simulated (no API key yet): the email to ${res.to} was rendered but not sent.`,
-              }
-            : { kind: "err", text: "The provider rejected the test email — check the key and the verified domain." },
+            ? { kind: "ok", text: `Simulated only — save the credentials first to send for real.` }
+            : {
+                kind: "err",
+                text: "Delivery failed — for Google, check the App Password and that it belongs to the From address; for Resend, check the key and verified domain.",
+              },
       );
       refresh();
     } catch (e) {
@@ -479,6 +504,8 @@ function EmailSettingsCard() {
       setTestBusy(false);
     }
   }
+
+  const google = form?.provider !== "resend";
 
   return (
     <Card className="mt-6">
@@ -491,8 +518,8 @@ function EmailSettingsCard() {
         subtitle="Invoices, documents, invitations and alerts are emailed to clients from this address"
         action={
           data && (
-            <Badge tone={data.provider.live ? "green" : "amber"}>
-              {data.provider.live ? "Live" : "Simulated"}
+            <Badge tone={data.live ? "green" : "amber"}>
+              {data.live ? "Live" : "Simulated"}
             </Badge>
           )
         }
@@ -514,57 +541,117 @@ function EmailSettingsCard() {
               {msg.text}
             </div>
           )}
+
+          <div className="mb-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => set("provider", "google")}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium ring-1 transition-colors ${
+                google
+                  ? "bg-brand-600 text-white ring-brand-600"
+                  : "bg-white text-slate-600 ring-slate-300 hover:bg-slate-50"
+              }`}
+            >
+              Google / Gmail (recommended)
+            </button>
+            <button
+              type="button"
+              onClick={() => set("provider", "resend")}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium ring-1 transition-colors ${
+                !google
+                  ? "bg-brand-600 text-white ring-brand-600"
+                  : "bg-white text-slate-600 ring-slate-300 hover:bg-slate-50"
+              }`}
+            >
+              Resend
+            </button>
+          </div>
+
+          {google && (
+            <div className="mb-4 rounded-xl border border-brand-100 bg-brand-50/60 px-4 py-3 text-xs leading-relaxed text-brand-800">
+              For a firm email hosted on Google (Workspace or Gmail):
+              sign in to that account at{" "}
+              <span className="font-mono">myaccount.google.com</span> →
+              Security → turn on <strong>2-Step Verification</strong> → then
+              search for <strong>App passwords</strong>, create one (name it
+              &ldquo;Ledgify&rdquo;) and paste the 16-character password here.
+              No DNS changes are needed.
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Sender name" hint="Shown as the From name in the client's inbox">
               <Input
                 value={form?.fromName ?? ""}
-                onChange={(e) => setForm((f) => f && { ...f, fromName: e.target.value })}
+                onChange={(e) => set("fromName", e.target.value)}
                 placeholder="e.g. Anil P.S.Bhansali & Co."
               />
             </Field>
-            <Field label="Official email (From address)" hint="Domain must be verified with Resend">
+            <Field
+              label="Official email (From address)"
+              hint={google ? "The Google account the app password belongs to" : "Domain must be verified with Resend"}
+            >
               <Input
                 type="email"
                 value={form?.fromEmail ?? ""}
-                onChange={(e) => setForm((f) => f && { ...f, fromEmail: e.target.value })}
-                placeholder="office@yourfirm.in"
+                onChange={(e) => set("fromEmail", e.target.value)}
+                placeholder="info@yourfirm.in"
               />
             </Field>
             <Field label="Reply-to (optional)">
               <Input
                 type="email"
                 value={form?.replyTo ?? ""}
-                onChange={(e) => setForm((f) => f && { ...f, replyTo: e.target.value })}
+                onChange={(e) => set("replyTo", e.target.value)}
                 placeholder="Defaults to the From address"
               />
             </Field>
-            <Field
-              label="Resend API key"
-              hint={
-                data?.hasApiKey
-                  ? "A key is saved. Enter a new one to replace it."
-                  : data?.envKeyPresent
-                    ? "Using the key from the server environment."
-                    : "Create a free key at resend.com — until then emails are simulated."
-              }
-            >
-              <Input
-                type="password"
-                value={form?.resendApiKey ?? ""}
-                onChange={(e) => setForm((f) => f && { ...f, resendApiKey: e.target.value })}
-                placeholder={data?.hasApiKey ? "•••••••• (unchanged)" : "re_…"}
-                autoComplete="new-password"
-              />
-            </Field>
+            {google ? (
+              <Field
+                label="Google App Password"
+                hint={
+                  data?.hasAppPassword
+                    ? "A password is saved. Enter a new one to replace it."
+                    : "16 characters, spaces are ignored."
+                }
+              >
+                <Input
+                  type="password"
+                  value={form?.appPassword ?? ""}
+                  onChange={(e) => set("appPassword", e.target.value)}
+                  placeholder={data?.hasAppPassword ? "•••••••• (unchanged)" : "abcd efgh ijkl mnop"}
+                  autoComplete="new-password"
+                />
+              </Field>
+            ) : (
+              <Field
+                label="Resend API key"
+                hint={
+                  data?.hasApiKey
+                    ? "A key is saved. Enter a new one to replace it."
+                    : data?.envKeyPresent
+                      ? "Using the key from the server environment."
+                      : "Create a free key at resend.com."
+                }
+              >
+                <Input
+                  type="password"
+                  value={form?.resendApiKey ?? ""}
+                  onChange={(e) => set("resendApiKey", e.target.value)}
+                  placeholder={data?.hasApiKey ? "•••••••• (unchanged)" : "re_…"}
+                  autoComplete="new-password"
+                />
+              </Field>
+            )}
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
             <Button onClick={() => save(false)} disabled={busy || !form}>
               {busy ? "Saving…" : "Save email settings"}
             </Button>
-            {data?.hasApiKey && (
+            {((google && data?.hasAppPassword) || (!google && data?.hasApiKey)) && (
               <Button variant="ghost" onClick={() => save(true)} disabled={busy}>
-                Remove saved key
+                Remove saved {google ? "password" : "key"}
               </Button>
             )}
             <span className="flex-1" />
@@ -581,7 +668,13 @@ function EmailSettingsCard() {
           </div>
           {data && (
             <p className="mt-3 text-xs text-slate-400">
-              Currently sending as <span className="font-medium text-slate-500">{data.effectiveFrom}</span> · {data.provider.email}
+              Currently sending as{" "}
+              <span className="font-medium text-slate-500">{data.effectiveFrom}</span> ·{" "}
+              {data.provider === "google" && data.live
+                ? "Google SMTP (live)"
+                : data.live
+                  ? "Resend (live)"
+                  : "Simulated"}
             </p>
           )}
         </div>

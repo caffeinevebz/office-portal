@@ -107,15 +107,20 @@ Delivery is **pluggable and dependency-free**:
 
 | Channel | Goes live when you set | Otherwise |
 | --- | --- | --- |
-| Email | the firm's official email + a Resend API key in **Firm Settings → Official firm email** (or the `RESEND_API_KEY` / `REMINDER_FROM_EMAIL` env vars) | Simulated |
+| Email | the firm's official mailbox in **Firm Settings → Official firm email** — either **Google/Gmail** (a Google **App Password** for the firm's account; the right choice when the firm's email is hosted on Google Workspace — no DNS changes needed) or **Resend** (API key; falls back to `RESEND_API_KEY`) | Simulated |
 | WhatsApp | `WHATSAPP_TOKEN` + `WHATSAPP_PHONE_ID` (Meta Cloud API) | Simulated |
 
 The same official mailbox is used for **everything the portal emails**: invoice
 PDFs sent to clients from the Invoices page, ad-hoc client emails composed from
 a client's page (document requests etc.), team invitations, password-reset
 links, deadline reminders and DSC-expiry alerts. Configure it once in the app —
-no redeploy needed — and use **Send test email** to verify. The From domain
-must be verified with Resend.
+no redeploy needed — and use **Send test email** to verify.
+
+For the Google option: sign in to the firm's Google account → enable
+**2-Step Verification** → create an **App password** (myaccount.google.com →
+search "App passwords") → paste it in Firm Settings together with the firm's
+email as the From address. For Resend, the From domain must be verified with
+Resend first.
 
 In **simulation mode** (the default, and what runs without credentials) messages
 are fully rendered and logged but not actually delivered — nothing leaves the
