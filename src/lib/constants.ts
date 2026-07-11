@@ -1,5 +1,8 @@
 // Domain enums shared between the API validation layer and the UI.
 
+/** Product name — shown in browser tabs next to the firm's name. */
+export const APP_NAME = "Ledgify";
+
 export const CLIENT_TYPES = [
   "Individual",
   "Proprietorship",
@@ -163,7 +166,7 @@ const TONE: Record<string, BadgeTone> = {
   green: { bg: "bg-emerald-100", text: "text-emerald-700", ring: "ring-emerald-200" },
   amber: { bg: "bg-amber-100", text: "text-amber-700", ring: "ring-amber-200" },
   blue: { bg: "bg-blue-100", text: "text-blue-700", ring: "ring-blue-200" },
-  indigo: { bg: "bg-indigo-100", text: "text-indigo-700", ring: "ring-indigo-200" },
+  indigo: { bg: "bg-brand-100", text: "text-brand-700", ring: "ring-brand-200" },
   red: { bg: "bg-rose-100", text: "text-rose-700", ring: "ring-rose-200" },
   violet: { bg: "bg-violet-100", text: "text-violet-700", ring: "ring-violet-200" },
 };

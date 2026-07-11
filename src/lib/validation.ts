@@ -5,7 +5,6 @@ import {
   TASK_CATEGORIES,
   TASK_STATUSES,
   TASK_PRIORITIES,
-  STAFF_ROLES,
   INVOICE_STATUSES,
   DOC_CATEGORIES,
   SCHEDULE_FREQUENCIES,
@@ -53,7 +52,7 @@ export const clientUpdateSchema = clientCreateSchema.partial();
 export const staffCreateSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
   email: z.string().trim().email("Valid email required"),
-  role: oneOf(STAFF_ROLES, "role"),
+  role: z.string().trim().min(1, "Role is required"),
   phone: optionalText,
   active: z.boolean().default(true),
   // Optional login password. If omitted/blank, the member cannot sign in yet.
@@ -73,8 +72,17 @@ export const taskCreateSchema = z.object({
   dueDate: optionalDate,
   clientId: optionalText,
   assigneeId: optionalText,
+  isReturnFiling: z.boolean().optional(),
+  filingDate: optionalDate,
+  ackNumber: optionalText,
 });
 export const taskUpdateSchema = taskCreateSchema.partial();
+
+// Recording a filing for a return task (auto-completes it).
+export const taskFilingSchema = z.object({
+  filingDate: z.string().min(1, "Filing date is required").transform((v) => new Date(v)),
+  ackNumber: optionalText,
+});
 
 export const invoiceCreateSchema = z.object({
   invoiceNumber: z.string().trim().min(1, "Invoice number is required"),
@@ -193,6 +201,37 @@ export const itrCreateSchema = z.object({
   notes: optionalText,
 });
 export const itrUpdateSchema = itrCreateSchema.partial();
+
+export const roleCreateSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "Role name is required")
+    .max(40)
+    .regex(/^[A-Za-z0-9 &./-]+$/, "Use letters, numbers and spaces only"),
+  description: optionalText,
+});
+
+export const roleUpdateSchema = z.object({
+  description: optionalText,
+});
+
+export const rolePermissionSchema = z.object({
+  permission: z.string().trim().min(1),
+  allowed: z.boolean(),
+});
+
+export const invitationCreateSchema = z.object({
+  email: z.string().trim().email("Valid email required"),
+  name: optionalText,
+  role: z.string().trim().min(1, "Role is required"),
+});
+
+export const invitationAcceptSchema = z.object({
+  token: z.string().trim().min(1),
+  name: z.string().trim().min(1, "Name is required"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+});
 
 export const packetMovementSchema = z.object({
   direction: z.string().refine((v) => v === "In" || v === "Out", {

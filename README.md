@@ -1,8 +1,10 @@
-# Anil P.S.Bhansali & Co. — Office Portal
+# Ledgify · Anil P.S.Bhansali & Co.
 
-A web-based **office management portal for a Chartered Accountancy (CA) firm**.
-It brings the firm's day-to-day operations — clients, statutory compliance,
-billing, team and documents — into a single dashboard.
+**Ledgify** is a web-based **office management portal for a Chartered
+Accountancy (CA) firm**. It brings the firm's day-to-day operations — clients,
+statutory compliance, billing, team and documents — into a single dashboard.
+The browser tab shows *Ledgify · your firm's name* (taken from the default
+organization in Firm Settings).
 
 > Built with Next.js (App Router), TypeScript, Tailwind CSS, Prisma and PostgreSQL.
 > The sample data models an Indian CA practice (GST, income-tax, TDS, ROC/MCA,
@@ -16,18 +18,19 @@ billing, team and documents — into a single dashboard.
 | --- | --- |
 | **Dashboard** | KPIs (active clients, open tasks, overdue deadlines, receivables), a 6-month billing vs. collections chart, task-status breakdown, upcoming deadlines and a compliance-mix view. |
 | **Clients** | Full client register (Individual / Proprietorship / Partnership / LLP / Pvt Ltd / HUF / Trust …) with PAN, GSTIN and contacts. Search, filter, create, edit, delete, **bulk import from an Excel template** (with per-row validation and duplicate skipping), and a per-client detail page showing their tasks, invoices and documents. |
-| **Compliance & Tasks** | Track engagements by category (GST, Income Tax, TDS, ROC/MCA, Audit, Accounting, Registration). Priorities, due dates with overdue highlighting, assignee, and inline status changes. |
+| **Compliance & Tasks** | Track engagements by category (GST, Income Tax, TDS, ROC/MCA, Audit, Accounting, Registration). Priorities, due dates with overdue highlighting, assignee, and inline status changes. **Return-filing tasks** (GST/ITR/TDS) complete automatically the moment the filing entry — filing date + acknowledgment number — is recorded, via a one-click "Record filing" action. |
 | **Invoices** | Raise professional-fee invoices with GST, track Draft → Sent → Paid → Overdue, and see billed / collected / outstanding totals. Each invoice picks its **billing organization** and its **GST applicability** (auto by client state / CGST+SGST / IGST / not applicable). Download a **GST tax-invoice PDF** (letterhead + logo of the invoice's organization, SAC code, round-off, amount in words, bank details, PAID/DRAFT/OVERDUE watermark) and a **payment-receipt PDF** for paid ones. |
 | **ITR Filings** | Income-tax returns per client per assessment year: ITR form type, regime, status pipeline (Documents Awaited → In Preparation → Filed → E-Verified → Processed / Defective) with auto-stamped filing dates, acknowledgement numbers and refund tracking. |
 | **Firm Settings** | Manage one or more **billing organizations** (name, letterhead address, PAN/GSTIN, bank & UPI, invoice note) and upload a **logo** per organization. The default organization brands the app and the sign-in screen. |
-| **Team** | Manage partners, managers, accountants and article assistants, with their open-task load. |
+| **Team** | Manage partners, managers, accountants and article assistants, with their open-task load. **Enrol new members by email invitation**: send an invite link (7-day expiry), the invitee sets their own password on a public accept page, and pending invites can be revoked. |
+| **Access Control** | Admins can **add user categories (roles)** and **edit each category's access level** in a permission × role grid — grouped by area, with per-permission toggles. Built-in roles can be re-tuned; the Partner role is the locked super-admin so a firm can never lock itself out. |
 | **Documents** | A register of statutory documents (PAN, GST, ITR, financials, agreements) linked to clients. |
 | **DSC Register** | Digital Signature Certificates per client signatory: class, authority, serial, validity with expiry countdowns, and a physical-token custody in/out register stamped with the acting user. DSC expiries feed the reminders engine. |
 | **Inward/Outward Register** | The office's physical-document register, digitized: every packet of originals received gets an auto-issued inward number (IN-2627-001…) with contents, deliverer, mode/courier docket and storage location; returns/dispatches get outward numbers, and a full movement trail shows who handled what. Long-held packets (90+ days) are flagged. |
 | **Calendar** | A month view of every statutory due date across all clients, colour-coded by category. |
 | **Recurring compliance** | A statutory calendar of recurring obligations (monthly GST, quarterly TDS/advance tax, annual ITR/ROC…) that auto-generates the upcoming deadline tasks — idempotently. |
 | **Deadline reminders** | Email & WhatsApp nudges for tasks that are due soon or overdue, to the assignee and/or client, with a preview, a delivery log and configurable lead time. |
-| **Login & roles** | Session-based sign-in with role-based access (Partner / Manager / Accountant / Article Assistant), enforced on both the API and the UI. |
+| **Login & roles** | Session-based sign-in with role-based access, enforced on both the API and the UI. Roles are dynamic: the built-in five ship with sensible defaults, and admins can add custom roles and adjust any role's permissions from **Access Control**. |
 
 ## Tech stack
 
@@ -132,7 +135,11 @@ users: each `Staff` record can have a login password.
 | Accountant | `amit@sharmaassociates.in` | `staff@123` |
 | Article Assistant | `sneha@sharmaassociates.in` | `staff@123` |
 
-**Access levels** — everyone can *view* everything; these gate the write actions:
+**Access levels** — everyone can *view* everything; these gate the write actions.
+The table below shows the **built-in defaults**: from **Access Control** an
+admin can change any of them per role, and add new roles (user categories)
+with their own set of permissions. Only the Partner role is fixed — it is the
+super-admin and always has full access, so the firm can never lock itself out.
 
 | Action | Partner / Admin | Manager | Accountant | Article Assistant |
 | --- | :-: | :-: | :-: | :-: |
@@ -155,7 +162,10 @@ users: each `Staff` record can have a login password.
 
 Permissions are enforced server-side on every API route (a denied action returns
 `403`) and mirrored in the UI (buttons hidden / controls read-only). Partners and
-Admins can set or reset a member's login password from the **Team** page.
+Admins can set or reset a member's login password from the **Team** page, or
+**invite a member by email** — the invitee opens the link and sets their own
+password. Invitation emails go out live once `RESEND_API_KEY` is set (the same
+switch as reminders); otherwise the invite link is shown for manual sharing.
 
 > **Production note:** set a strong `AUTH_SECRET` in the environment (the
 > committed `.env` ships with a development value). The session cookie is signed

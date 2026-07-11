@@ -2,6 +2,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ok, fail, route } from "@/lib/api";
 import { hashPassword } from "@/lib/auth/password";
+import { ensureSystemRoles } from "@/lib/auth/ensure-roles";
 import { seedDemoData } from "@/lib/seed-data";
 
 const schema = z.discriminatedUnion("mode", [
@@ -34,6 +35,7 @@ export const POST = route(async (req) => {
   }
 
   const { name, email, password } = parsed.data;
+  await ensureSystemRoles(prisma);
   await prisma.reminderSettings.upsert({
     where: { id: "default" },
     update: {},

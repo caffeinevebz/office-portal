@@ -137,7 +137,7 @@ export default function DashboardPage() {
             action={
               <Link
                 href="/tasks"
-                className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700"
               >
                 View all <ChevronRight className="h-3.5 w-3.5" />
               </Link>
@@ -197,14 +197,14 @@ export default function DashboardPage() {
               <div key={c.category}>
                 <div className="mb-1 flex items-center justify-between text-xs">
                   <span className="flex items-center gap-1.5 text-slate-600">
-                    <CircleDot className="h-3 w-3 text-indigo-400" />
+                    <CircleDot className="h-3 w-3 text-brand-400" />
                     {c.category}
                   </span>
                   <span className="font-medium text-slate-700">{c.count}</span>
                 </div>
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
                   <div
-                    className="h-full rounded-full bg-indigo-500"
+                    className="h-full rounded-full bg-brand-500"
                     style={{ width: `${(c.count / maxCat) * 100}%` }}
                   />
                 </div>

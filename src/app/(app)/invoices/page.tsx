@@ -86,13 +86,13 @@ export default function InvoicesPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search by number or description…"
-              className="w-full rounded-lg border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none"
+              className="w-full rounded-lg border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
             />
           </div>
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
           >
             <option value="All">All statuses</option>
             {INVOICE_STATUSES.map((s) => (
@@ -134,7 +134,7 @@ export default function InvoicesPage() {
                         </p>
                       )}
                       {i.organization && (
-                        <p className="mt-0.5 text-[11px] text-indigo-500">
+                        <p className="mt-0.5 text-[11px] text-brand-500">
                           {i.organization.name}
                         </p>
                       )}
@@ -156,7 +156,7 @@ export default function InvoicesPage() {
                           value={i.status}
                           onChange={(e) => quickStatus(i, e.target.value)}
                           className={cn(
-                            "cursor-pointer rounded-full border-0 px-2 py-1 text-xs font-medium ring-1 ring-inset focus:ring-2 focus:ring-indigo-300 focus:outline-none",
+                            "cursor-pointer rounded-full border-0 px-2 py-1 text-xs font-medium ring-1 ring-inset focus:ring-2 focus:ring-brand-300 focus:outline-none",
                             invoicePillClass(i.status),
                           )}
                         >
@@ -181,7 +181,7 @@ export default function InvoicesPage() {
                           href={`/api/invoices/${i.id}/pdf`}
                           target="_blank"
                           rel="noopener"
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-brand-50 hover:text-brand-600"
                           title="Invoice PDF"
                         >
                           <FileDown className="h-4 w-4" />
@@ -265,7 +265,7 @@ function SummaryTile({
   tone: "indigo" | "emerald" | "amber";
 }) {
   const ring = {
-    indigo: "border-l-indigo-500",
+    indigo: "border-l-brand-500",
     emerald: "border-l-emerald-500",
     amber: "border-l-amber-500",
   }[tone];

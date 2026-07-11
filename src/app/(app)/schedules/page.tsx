@@ -101,7 +101,7 @@ export default function SchedulesPage() {
         <Card className="mb-4">
           <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-2 text-sm text-slate-600">
-              <Info className="mt-0.5 h-4 w-4 shrink-0 text-indigo-500" />
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand-500" />
               <p>
                 Generate compliance tasks from every active obligation below.
                 Runs are <strong>safe to repeat</strong> — already-created
@@ -125,7 +125,7 @@ export default function SchedulesPage() {
             </div>
           </div>
           {gen.msg && (
-            <div className="border-t border-slate-100 bg-indigo-50/50 px-4 py-2 text-xs text-indigo-700">
+            <div className="border-t border-slate-100 bg-brand-50/50 px-4 py-2 text-xs text-brand-700">
               {gen.msg}
             </div>
           )}
@@ -162,7 +162,7 @@ export default function SchedulesPage() {
                   <tr key={s.id} className={s.active ? "hover:bg-slate-50" : "bg-slate-50/40"}>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-2">
-                        <Repeat className="h-3.5 w-3.5 text-indigo-400" />
+                        <Repeat className="h-3.5 w-3.5 text-brand-400" />
                         <span className="font-medium text-slate-800">{s.title}</span>
                         <Badge tone={CATEGORY_TONE[s.category]}>{s.category}</Badge>
                         {!s.active && <Badge tone="slate">Paused</Badge>}

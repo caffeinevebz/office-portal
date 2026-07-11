@@ -38,6 +38,7 @@ export const POST = route(async (req) => {
   );
   if (toCreate.length === 0) return ok({ created: 0, months });
 
+  const RETURN_CATEGORIES = ["GST", "Income Tax", "TDS"];
   await prisma.task.createMany({
     data: toCreate.map((c) => ({
       title: c.occurrence.title,
@@ -49,6 +50,7 @@ export const POST = route(async (req) => {
       assigneeId: c.schedule.assigneeId,
       scheduleId: c.schedule.id,
       periodKey: c.occurrence.periodKey,
+      isReturnFiling: RETURN_CATEGORIES.includes(c.schedule.category),
     })),
   });
 

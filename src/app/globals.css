@@ -5,6 +5,40 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* ── Brand palette — Anil P.S. Bhansali & Co. (CA India tricolour) ────────
+   brand = navy blue (primary), saffron = orange accent, fern = green accent */
+@theme {
+  --color-brand-50: #eef4fb;
+  --color-brand-100: #d8e6f4;
+  --color-brand-200: #b3cde8;
+  --color-brand-300: #82abd6;
+  --color-brand-400: #4f83bd;
+  --color-brand-500: #2c63a1;
+  --color-brand-600: #1f4e82;
+  --color-brand-700: #1a406b;
+  --color-brand-800: #183857;
+  --color-brand-900: #14304a;
+  --color-brand-950: #0d2036;
+
+  --color-saffron-50: #fdf3ec;
+  --color-saffron-100: #fbe1cd;
+  --color-saffron-200: #f6c19b;
+  --color-saffron-300: #f19b66;
+  --color-saffron-400: #ef8442;
+  --color-saffron-500: #ee7526;
+  --color-saffron-600: #d95f16;
+  --color-saffron-700: #b44a14;
+
+  --color-fern-50: #f0f7ea;
+  --color-fern-100: #dcedc9;
+  --color-fern-200: #bcdb9b;
+  --color-fern-300: #97c56a;
+  --color-fern-400: #74af41;
+  --color-fern-500: #57a838;
+  --color-fern-600: #468a2b;
+  --color-fern-700: #386e24;
+}
+
 html,
 body {
   height: 100%;

@@ -3,7 +3,8 @@ import { cookies } from "next/headers";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { fail } from "@/lib/api";
-import { can, type Permission } from "./roles";
+import { type Permission } from "./roles";
+import { roleHasPermission } from "./effective";
 
 const COOKIE = "op_session";
 const MAX_AGE = 60 * 60 * 24 * 7; // 7 days
@@ -86,7 +87,7 @@ export async function requireUser(): Promise<SessionUser> {
 /** Require a specific permission in an API route (throws 401/403). */
 export async function requirePermission(permission: Permission): Promise<SessionUser> {
   const user = await requireUser();
-  if (!can(user.role, permission)) {
+  if (!(await roleHasPermission(user.role, permission))) {
     throw fail("You do not have permission to perform this action", 403);
   }
   return user;

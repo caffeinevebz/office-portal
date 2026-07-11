@@ -120,13 +120,13 @@ export default function DscPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search by holder, client or serial number…"
-              className="w-full rounded-lg border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none"
+              className="w-full rounded-lg border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
             />
           </div>
           <select
             value={custody}
             onChange={(e) => setCustody(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
           >
             <option value="All">All custody</option>
             <option>With Firm</option>
@@ -166,7 +166,7 @@ export default function DscPage() {
                     <tr key={d.id} className="hover:bg-slate-50">
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
                             {initials(d.holderName)}
                           </span>
                           <div>
@@ -205,7 +205,7 @@ export default function DscPage() {
                           {canManage && (
                             <button
                               onClick={() => setCustodyFor(d)}
-                              className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
+                              className="rounded-lg p-1.5 text-slate-400 hover:bg-brand-50 hover:text-brand-600"
                               title={d.custody === "With Firm" ? "Hand over to client" : "Receive from client"}
                             >
                               <ArrowLeftRight className="h-4 w-4" />

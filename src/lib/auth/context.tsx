@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import { can as canFn, type Permission } from "./roles";
+import type { Permission } from "./roles";
 
 export type AuthUser = {
   id: string;
@@ -10,22 +10,31 @@ export type AuthUser = {
   role: string;
 };
 
-const AuthContext = createContext<AuthUser | null>(null);
+type AuthValue = { user: AuthUser | null; permissions: string[] };
+
+const AuthContext = createContext<AuthValue>({ user: null, permissions: [] });
 
 export function AuthProvider({
   user,
+  permissions,
   children,
 }: {
   user: AuthUser;
+  permissions: string[];
   children: React.ReactNode;
 }) {
-  return <AuthContext.Provider value={user}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, permissions }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
-  const user = useContext(AuthContext);
+  const { user, permissions } = useContext(AuthContext);
   return {
     user,
-    can: (permission: Permission) => canFn(user?.role, permission),
+    permissions,
+    can: (permission: Permission) => permissions.includes(permission),
   };
 }
