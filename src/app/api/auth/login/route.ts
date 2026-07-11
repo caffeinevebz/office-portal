@@ -20,6 +20,11 @@ export const POST = route(async (req) => {
     return fail("Invalid email or password", 401);
   }
 
+  // A successful password sign-in unlocks a PIN locked by failed attempts.
+  if (user.pinFailedCount > 0) {
+    await prisma.staff.update({ where: { id: user.id }, data: { pinFailedCount: 0 } });
+  }
+
   await createSession(user.id);
   return ok({ id: user.id, name: user.name, email: user.email, role: user.role });
 });

@@ -160,7 +160,7 @@ export default function SchedulesPage() {
           )}
           <div className="flex flex-col gap-3 border-t border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-2 text-sm text-slate-600">
-              <Landmark className="mt-0.5 h-4 w-4 shrink-0 text-saffron-500" />
+              <Landmark className="mt-0.5 h-4 w-4 shrink-0 text-fern-600" />
               <p>
                 Pull the <strong>Income Tax Department&apos;s compliance
                 calendar</strong> (advance tax, TDS payments &amp; returns,
@@ -179,7 +179,7 @@ export default function SchedulesPage() {
             </Button>
           </div>
           {sync.msg && (
-            <div className="border-t border-slate-100 bg-saffron-50/60 px-4 py-2 text-xs text-saffron-700">
+            <div className="border-t border-slate-100 bg-fern-50/60 px-4 py-2 text-xs text-fern-700">
               {sync.msg}
             </div>
           )}
