@@ -60,7 +60,7 @@ function render(
   const body =
     recipientType === "Client"
       ? `Dear ${firstName},\n\nThis is a reminder from Sharma & Associates regarding "${task.title}", due on ${formatDate(due)}. Kindly share the required information/documents at the earliest so we can complete it on time.\n\nWarm regards,\nSharma & Associates, Chartered Accountants`
-      : `Hi ${firstName},\n\nReminder: "${task.title}"${forClient} is ${status} (due ${formatDate(due)}).\nCategory: ${task.category} · Priority: ${task.priority}.\n\nOpen the office portal to update its status.\n\n— Sharma & Associates Office Portal`;
+      : `Hi ${firstName},\n\nReminder: "${task.title}"${forClient} is ${status} (due ${formatDate(due)}).\nCategory: ${task.category} · Priority: ${task.priority}.\n\nOpen Ledgify to update its status.\n\n— Sharma & Associates · Ledgify`;
   return { subject, body };
 }
 

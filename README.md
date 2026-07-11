@@ -1,8 +1,10 @@
-# Anil P.S.Bhansali & Co. — Office Portal
+# Ledgify · Anil P.S.Bhansali & Co.
 
-A web-based **office management portal for a Chartered Accountancy (CA) firm**.
-It brings the firm's day-to-day operations — clients, statutory compliance,
-billing, team and documents — into a single dashboard.
+**Ledgify** is a web-based **office management portal for a Chartered
+Accountancy (CA) firm**. It brings the firm's day-to-day operations — clients,
+statutory compliance, billing, team and documents — into a single dashboard.
+The browser tab shows *Ledgify · your firm's name* (taken from the default
+organization in Firm Settings).
 
 > Built with Next.js (App Router), TypeScript, Tailwind CSS, Prisma and PostgreSQL.
 > The sample data models an Indian CA practice (GST, income-tax, TDS, ROC/MCA,

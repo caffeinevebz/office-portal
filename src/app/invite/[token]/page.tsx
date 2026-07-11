@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Building2, UserPlus, CheckCircle2 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
+import { APP_NAME } from "@/lib/constants";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
 import { Loading } from "@/components/ui/EmptyState";
@@ -33,6 +34,10 @@ export default function AcceptInvitePage() {
   // Prefill the name once the invite loads.
   const filledName = name || data?.name || "";
 
+  useEffect(() => {
+    document.title = data?.firmName ? `${APP_NAME} · ${data.firmName}` : APP_NAME;
+  }, [data?.firmName]);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -60,7 +65,7 @@ export default function AcceptInvitePage() {
             <Building2 className="h-7 w-7" />
           </div>
           <h1 className="mt-3 text-lg font-semibold text-white">
-            {data?.firmName ?? "Office Portal"}
+            {data?.firmName ?? APP_NAME}
           </h1>
           <p className="text-sm text-brand-200/80">Team invitation</p>
         </div>

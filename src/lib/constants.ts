@@ -1,5 +1,8 @@
 // Domain enums shared between the API validation layer and the UI.
 
+/** Product name — shown in browser tabs next to the firm's name. */
+export const APP_NAME = "Ledgify";
+
 export const CLIENT_TYPES = [
   "Individual",
   "Proprietorship",

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Building2, LogIn, Sparkles } from "lucide-react";
 import { useResource } from "@/lib/useApi";
+import { APP_NAME } from "@/lib/constants";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
 
@@ -25,6 +26,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Keep the browser tab in sync with the firm the portal is branded for.
+  useEffect(() => {
+    document.title = branding?.name ? `${APP_NAME} · ${branding.name}` : APP_NAME;
+  }, [branding?.name]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -71,7 +77,7 @@ export default function LoginPage() {
             </div>
           )}
           <h1 className="mt-4 text-xl font-semibold text-white">
-            {branding?.name ?? "Office Portal"}
+            {branding?.name ?? APP_NAME}
           </h1>
           <p className="text-sm text-brand-200/80">
             {branding?.tagline ?? ""} · sign in to continue
