@@ -2,6 +2,7 @@
 // setup endpoint. Clears all data, then loads the sample firm.
 import type { PrismaClient } from "@prisma/client";
 import { hashPassword } from "./auth/password";
+import { ensureSystemRoles } from "./auth/ensure-roles";
 import { assessmentYears } from "./constants";
 
 // Helper: date offset by N days from now.
@@ -24,8 +25,14 @@ export async function seedDemoData(prisma: PrismaClient) {
   await prisma.docPacket.deleteMany();
   await prisma.itrFiling.deleteMany();
   await prisma.organization.deleteMany();
+  await prisma.invitation.deleteMany();
+  await prisma.rolePermission.deleteMany();
+  await prisma.role.deleteMany();
   await prisma.client.deleteMany();
   await prisma.staff.deleteMany();
+
+  console.log("Seeding roles...");
+  await ensureSystemRoles(prisma);
 
   console.log("Seeding organizations...");
   const mainOrg = await prisma.organization.create({
@@ -190,8 +197,22 @@ export async function seedDemoData(prisma: PrismaClient) {
     { title: "Advance Tax Computation – Q1", category: "Income Tax", status: "Completed", priority: "Medium", dueDate: daysFromNow(-24), completedAt: daysFromNow(-27), clientId: apex.id, assigneeId: manager.id, description: "First installment advance tax working." },
     { title: "GSTR-9 Annual Return – FY 2024-25", category: "GST", status: "Pending", priority: "Medium", dueDate: daysFromNow(170), clientId: greenleaf.id, assigneeId: senior.id, description: "Annual GST reconciliation return." },
   ];
+  // GST / income-tax / TDS tasks are treated as return filings; a completed
+  // one carries its filing date + acknowledgement number.
+  const RETURN_CATEGORIES = ["GST", "Income Tax", "TDS"];
+  let ackSeq = 100;
   for (const t of taskData) {
-    await prisma.task.create({ data: t });
+    const isReturnFiling = RETURN_CATEGORIES.includes(t.category);
+    const filed = isReturnFiling && t.status === "Completed";
+    await prisma.task.create({
+      data: {
+        ...t,
+        isReturnFiling,
+        ...(filed
+          ? { filingDate: t.completedAt, ackNumber: `AA${240000000000 + ackSeq++}` }
+          : {}),
+      },
+    });
   }
 
   console.log("Seeding invoices...");

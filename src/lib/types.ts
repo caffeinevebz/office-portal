@@ -28,6 +28,35 @@ export type Staff = {
   _count?: { tasks: number };
 };
 
+export type Invitation = {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  status: string;
+  invitedBy: string;
+  expiresAt: string;
+  createdAt: string;
+  expired: boolean;
+};
+
+export type RoleInfo = {
+  name: string;
+  description: string | null;
+  isSystem: boolean;
+  isSuperadmin: boolean;
+  staffCount: number;
+  permissions: string[];
+};
+
+export type PermissionMeta = { key: string; label: string; category: string };
+
+export type RolesResponse = {
+  roles: RoleInfo[];
+  permissions: PermissionMeta[];
+  categories: string[];
+};
+
 export type Task = {
   id: string;
   title: string;
@@ -37,6 +66,9 @@ export type Task = {
   priority: string;
   dueDate: string | null;
   completedAt: string | null;
+  isReturnFiling: boolean;
+  filingDate: string | null;
+  ackNumber: string | null;
   createdAt: string;
   clientId: string | null;
   assigneeId: string | null;

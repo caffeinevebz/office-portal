@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Plus, Pencil, Trash2, ClipboardList, Repeat } from "lucide-react";
+import {
+  Search,
+  Plus,
+  Pencil,
+  Trash2,
+  ClipboardList,
+  Repeat,
+  FileCheck2,
+} from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
 import type { Task, Client, Staff } from "@/lib/types";
@@ -20,7 +28,10 @@ import {
   CATEGORY_TONE,
   PRIORITY_TONE,
 } from "@/lib/constants";
-import { dueLabel, daysUntil, toDateInput, cn } from "@/lib/format";
+import { dueLabel, daysUntil, toDateInput, formatDate, cn } from "@/lib/format";
+
+// Categories whose tasks are completed by recording a return-filing entry.
+const RETURN_CATEGORIES = ["GST", "Income Tax", "TDS"];
 
 type FormState = Partial<Task>;
 
@@ -43,6 +54,7 @@ export default function TasksPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
   const [toDelete, setToDelete] = useState<Task | null>(null);
+  const [filingFor, setFilingFor] = useState<Task | null>(null);
 
   async function quickStatus(t: Task, newStatus: string) {
     await apiMutate(`/api/tasks/${t.id}`, "PATCH", { status: newStatus });
@@ -76,7 +88,7 @@ export default function TasksPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search tasks…"
-              className="w-full rounded-lg border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none"
+              className="w-full rounded-lg border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
             />
           </div>
           <FilterSelect value={status} onChange={setStatus} label="status" options={TASK_STATUSES} />
@@ -84,7 +96,7 @@ export default function TasksPage() {
           <select
             value={assignee}
             onChange={(e) => setAssignee(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
           >
             <option value="All">All assignees</option>
             {staff?.map((s) => (
@@ -131,7 +143,7 @@ export default function TasksPage() {
                         <div className="flex items-center gap-2">
                           {t.scheduleId && (
                             <Repeat
-                              className="h-3.5 w-3.5 shrink-0 text-indigo-400"
+                              className="h-3.5 w-3.5 shrink-0 text-brand-400"
                               aria-label="Recurring"
                             />
                           )}
@@ -141,6 +153,13 @@ export default function TasksPage() {
                         {t.description && (
                           <p className="mt-0.5 max-w-md truncate text-xs text-slate-500">
                             {t.description}
+                          </p>
+                        )}
+                        {t.isReturnFiling && t.filingDate && (
+                          <p className="mt-0.5 flex items-center gap-1 text-xs text-fern-700">
+                            <FileCheck2 className="h-3 w-3 shrink-0" />
+                            Filed {formatDate(t.filingDate)}
+                            {t.ackNumber && <span className="text-slate-400">· Ack {t.ackNumber}</span>}
                           </p>
                         )}
                       </td>
@@ -164,7 +183,7 @@ export default function TasksPage() {
                             value={t.status}
                             onChange={(e) => quickStatus(t, e.target.value)}
                             className={cn(
-                              "cursor-pointer rounded-full border-0 px-2 py-1 text-xs font-medium ring-1 ring-inset focus:ring-2 focus:ring-indigo-300 focus:outline-none",
+                              "cursor-pointer rounded-full border-0 px-2 py-1 text-xs font-medium ring-1 ring-inset focus:ring-2 focus:ring-brand-300 focus:outline-none",
                               statusPillClass(t.status),
                             )}
                           >
@@ -185,6 +204,15 @@ export default function TasksPage() {
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex items-center justify-end gap-1">
+                          {canManage && t.isReturnFiling && t.status !== "Completed" && (
+                            <button
+                              onClick={() => setFilingFor(t)}
+                              className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-fern-700 hover:bg-fern-50"
+                              title="Record return filing"
+                            >
+                              <FileCheck2 className="h-4 w-4" /> Record filing
+                            </button>
+                          )}
                           {canManage && (
                             <button
                               onClick={() => {
@@ -233,6 +261,17 @@ export default function TasksPage() {
         />
       )}
 
+      {filingFor && (
+        <RecordFilingModal
+          task={filingFor}
+          onClose={() => setFilingFor(null)}
+          onSaved={() => {
+            setFilingFor(null);
+            refresh();
+          }}
+        />
+      )}
+
       <ConfirmDialog
         open={!!toDelete}
         onClose={() => setToDelete(null)}
@@ -262,7 +301,7 @@ function FilterSelect({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none"
+      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
     >
       <option value="All">All {label === "category" ? "categories" : label + "es"}</option>
       {options.map((o) => (
@@ -304,7 +343,12 @@ function TaskForm({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const isEdit = !!initial;
-  const set = (k: keyof FormState, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: keyof FormState, v: string | boolean) =>
+    setForm((f) => ({ ...f, [k]: v }));
+
+  // Return-filing defaults on for GST / ITR / TDS categories until toggled.
+  const isReturnFiling =
+    form.isReturnFiling ?? RETURN_CATEGORIES.includes(form.category ?? "");
 
   async function submit() {
     setBusy(true);
@@ -319,6 +363,9 @@ function TaskForm({
         dueDate: form.dueDate || null,
         clientId: form.clientId || null,
         assigneeId: form.assigneeId || null,
+        isReturnFiling,
+        filingDate: isReturnFiling ? form.filingDate || null : null,
+        ackNumber: isReturnFiling ? form.ackNumber || null : null,
       };
       if (isEdit) await apiMutate(`/api/tasks/${initial!.id}`, "PUT", payload);
       else await apiMutate("/api/tasks", "POST", payload);
@@ -419,6 +466,116 @@ function TaskForm({
             value={form.description ?? ""}
             onChange={(e) => set("description", e.target.value)}
             placeholder="Scope, notes, checklist…"
+          />
+        </Field>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:col-span-2">
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={isReturnFiling}
+              onChange={(e) => set("isReturnFiling", e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+            />
+            <FileCheck2 className="h-4 w-4 text-fern-600" />
+            Return-filing task (GST, ITR, TDS…)
+          </label>
+          <p className="mt-1 pl-6 text-xs text-slate-500">
+            Enter the filing date &amp; acknowledgment to record the return — the
+            task is then marked complete automatically.
+          </p>
+          {isReturnFiling && (
+            <div className="mt-3 grid grid-cols-1 gap-4 pl-6 sm:grid-cols-2">
+              <Field label="Filing date" hint="Setting this completes the task.">
+                <Input
+                  type="date"
+                  value={toDateInput(form.filingDate)}
+                  onChange={(e) => set("filingDate", e.target.value)}
+                />
+              </Field>
+              <Field label="Acknowledgment no.">
+                <Input
+                  value={form.ackNumber ?? ""}
+                  onChange={(e) => set("ackNumber", e.target.value)}
+                  placeholder="e.g. 123456780123456"
+                />
+              </Field>
+            </div>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function RecordFilingModal({
+  task,
+  onClose,
+  onSaved,
+}: {
+  task: Task;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [filingDate, setFilingDate] = useState(
+    toDateInput(task.filingDate) || toDateInput(new Date()),
+  );
+  const [ackNumber, setAckNumber] = useState(task.ackNumber ?? "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    setBusy(true);
+    setErr(null);
+    try {
+      await apiMutate(`/api/tasks/${task.id}`, "POST", { filingDate, ackNumber });
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to record filing");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Record return filing"
+      description={task.title}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={busy || !filingDate}>
+            <FileCheck2 className="h-4 w-4" />
+            {busy ? "Saving…" : "Mark as filed"}
+          </Button>
+        </>
+      }
+    >
+      {err && (
+        <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-200">
+          {err}
+        </div>
+      )}
+      <div className="rounded-lg bg-fern-50 px-3 py-2 text-xs text-fern-800 ring-1 ring-fern-200">
+        Recording the filing marks this task as <strong>Completed</strong>.
+      </div>
+      <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Filing date" required>
+          <Input
+            type="date"
+            value={filingDate}
+            onChange={(e) => setFilingDate(e.target.value)}
+          />
+        </Field>
+        <Field label="Acknowledgment no.">
+          <Input
+            value={ackNumber}
+            onChange={(e) => setAckNumber(e.target.value)}
+            placeholder="e.g. 123456780123456"
           />
         </Field>
       </div>

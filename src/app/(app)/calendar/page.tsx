@@ -22,7 +22,7 @@ import { Loading } from "@/components/ui/EmptyState";
 import { cn } from "@/lib/format";
 
 const CATEGORY_DOT: Record<string, string> = {
-  GST: "bg-indigo-500",
+  GST: "bg-brand-500",
   "Income Tax": "bg-violet-500",
   TDS: "bg-blue-500",
   "ROC/MCA": "bg-amber-500",
@@ -128,7 +128,7 @@ export default function CalendarPage() {
                         className={cn(
                           "flex h-6 w-6 items-center justify-center rounded-full text-xs",
                           today
-                            ? "bg-indigo-600 font-semibold text-white"
+                            ? "bg-brand-600 font-semibold text-white"
                             : inMonth
                               ? "text-slate-600"
                               : "text-slate-300",

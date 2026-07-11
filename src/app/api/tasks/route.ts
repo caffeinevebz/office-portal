@@ -33,13 +33,22 @@ export const GET = route(async (req) => {
   return ok(tasks);
 });
 
+// Return-filing categories default the "is return filing" flag on.
+const RETURN_CATEGORIES = ["GST", "Income Tax", "TDS"];
+
 export const POST = route(async (req) => {
   await requirePermission("manageTasks");
   const data = await parse(req, taskCreateSchema);
+  const isReturnFiling = data.isReturnFiling ?? RETURN_CATEGORIES.includes(data.category);
+  // A return task with a filing date recorded is complete on creation.
+  const filed = isReturnFiling && !!data.filingDate;
+  const status = filed ? "Completed" : data.status;
   const task = await prisma.task.create({
     data: {
       ...data,
-      completedAt: data.status === "Completed" ? new Date() : null,
+      isReturnFiling,
+      status,
+      completedAt: status === "Completed" ? (data.filingDate ?? new Date()) : null,
     },
     include: { client: true, assignee: true },
   });

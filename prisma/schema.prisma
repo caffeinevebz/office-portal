@@ -35,6 +35,44 @@ model Client {
   itrFilings ItrFiling[]
 }
 
+/// A pending email invitation to join the firm's team.
+model Invitation {
+  id         String    @id @default(cuid())
+  email      String
+  name       String?
+  role       String    @default("Accountant")
+  token      String    @unique
+  status     String    @default("Pending") // Pending, Accepted, Revoked
+  invitedBy  String // name of the staff member who sent it
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([email])
+}
+
+/// A user category (role). System roles ship with the app; admins may add
+/// their own. A role's effective permissions come from RolePermission
+/// overrides layered over the built-in defaults.
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+/// An admin override of a role's permission. Absence of a row = the built-in
+/// default for that (role, permission) pair (or "off" for custom roles).
+model RolePermission {
+  id         String  @id @default(cuid())
+  role       String
+  permission String
+  allowed    Boolean
+
+  @@unique([role, permission])
+}
+
 /// A member of the firm's team.
 model Staff {
   id           String   @id @default(cuid())
@@ -61,6 +99,10 @@ model Task {
   priority    String    @default("Medium") // Low, Medium, High
   dueDate     DateTime?
   completedAt DateTime?
+  // Return-filing tasks (GST/ITR/TDS…) auto-complete once the filing is recorded.
+  isReturnFiling Boolean   @default(false)
+  filingDate     DateTime?
+  ackNumber      String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

@@ -74,7 +74,7 @@ export default function ClientDetailPage() {
       <Card className="mb-4">
         <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-4">
-            <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-indigo-100 text-lg font-semibold text-indigo-700">
+            <span className="flex h-14 w-14 items-center justify-center rounded-xl bg-brand-100 text-lg font-semibold text-brand-700">
               {initials(c.name)}
             </span>
             <div>

@@ -18,16 +18,17 @@ import {
   Building2,
   Landmark,
   Settings,
+  ShieldCheck,
   Menu,
   X,
   LogOut,
   ChevronDown,
 } from "lucide-react";
 import { cn, initials } from "@/lib/format";
-import { AuthProvider, type AuthUser } from "@/lib/auth/context";
-import { ROLE_ACCESS } from "@/lib/auth/roles";
+import { AuthProvider, useAuth, type AuthUser } from "@/lib/auth/context";
+import { ROLE_ACCESS, type Permission } from "@/lib/auth/roles";
 
-const NAV = [
+const NAV: { href: string; label: string; icon: typeof Users; perm?: Permission }[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/tasks", label: "Compliance", icon: ClipboardList },
@@ -40,7 +41,8 @@ const NAV = [
   { href: "/dsc", label: "DSC Register", icon: KeyRound },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/reminders", label: "Reminders", icon: BellRing },
-  { href: "/settings", label: "Firm Settings", icon: Settings },
+  { href: "/access", label: "Access Control", icon: ShieldCheck, perm: "manageRoles" },
+  { href: "/settings", label: "Firm Settings", icon: Settings, perm: "manageOrgs" },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -50,9 +52,10 @@ function isActive(pathname: string, href: string) {
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const { can } = useAuth();
   return (
     <nav className="space-y-1 px-3">
-      {NAV.map(({ href, label, icon: Icon }) => {
+      {NAV.filter((item) => !item.perm || can(item.perm)).map(({ href, label, icon: Icon }) => {
         const active = isActive(pathname, href);
         return (
           <Link
@@ -60,16 +63,19 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             href={href}
             onClick={onNavigate}
             className={cn(
-              "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              "group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
               active
-                ? "bg-indigo-600 text-white shadow-sm"
-                : "text-slate-300 hover:bg-slate-800 hover:text-white",
+                ? "bg-white/10 text-white"
+                : "text-brand-100/75 hover:bg-white/5 hover:text-white",
             )}
           >
+            {active && (
+              <span className="absolute top-1.5 bottom-1.5 -left-3 w-1 rounded-r bg-saffron-500" />
+            )}
             <Icon
               className={cn(
                 "h-[18px] w-[18px]",
-                active ? "text-white" : "text-slate-400 group-hover:text-white",
+                active ? "text-saffron-400" : "text-brand-200/70 group-hover:text-white",
               )}
             />
             {label}
@@ -93,13 +99,13 @@ function Brand({ branding }: { branding: Branding }) {
           className="h-9 w-9 rounded-lg bg-white object-contain p-0.5"
         />
       ) : (
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-white">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white">
           <Building2 className="h-5 w-5" />
         </div>
       )}
       <div className="leading-tight">
         <p className="text-sm font-semibold text-white">{branding.name}</p>
-        <p className="text-[11px] text-slate-400">{branding.tagline}</p>
+        <p className="text-[11px] text-brand-200/80">{branding.tagline}</p>
       </div>
     </div>
   );
@@ -127,7 +133,7 @@ function UserMenu({ user }: { user: AuthUser }) {
           <p className="text-xs font-medium text-slate-900">{user.name}</p>
           <p className="text-[11px] text-slate-500">{user.role}</p>
         </div>
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
           {initials(user.name)}
         </div>
         <ChevronDown className="h-4 w-4 text-slate-400" />
@@ -163,26 +169,28 @@ function UserMenu({ user }: { user: AuthUser }) {
 
 export function AppShell({
   user,
+  permissions,
   branding,
   children,
 }: {
   user: AuthUser;
+  permissions: string[];
   branding: Branding;
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <AuthProvider user={user}>
+    <AuthProvider user={user} permissions={permissions}>
       <div className="min-h-screen">
         {/* Desktop sidebar */}
-        <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-slate-800 bg-slate-900 lg:flex">
+        <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col bg-gradient-to-b from-brand-900 to-brand-950 lg:flex">
           <Brand branding={branding} />
           <div className="mt-1 flex-1 overflow-y-auto pb-6">
             <NavLinks />
           </div>
-          <div className="border-t border-slate-800 px-5 py-4">
-            <p className="text-[11px] text-slate-500">FY 2026-27 · AY 2026-27</p>
+          <div className="border-t border-white/10 px-5 py-4">
+            <p className="text-[11px] text-brand-200/70">FY 2026-27 · AY 2026-27</p>
           </div>
         </aside>
 
@@ -190,15 +198,15 @@ export function AppShell({
         {mobileOpen && (
           <div className="fixed inset-0 z-40 lg:hidden">
             <div
-              className="absolute inset-0 bg-slate-900/50"
+              className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
               onClick={() => setMobileOpen(false)}
             />
-            <aside className="absolute inset-y-0 left-0 flex w-64 flex-col bg-slate-900">
+            <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[82vw] flex-col bg-gradient-to-b from-brand-900 to-brand-950 shadow-2xl">
               <div className="flex items-center justify-between pr-3">
                 <Brand branding={branding} />
                 <button
                   onClick={() => setMobileOpen(false)}
-                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
+                  className="rounded-lg p-1.5 text-brand-200 hover:bg-white/10 hover:text-white"
                   aria-label="Close menu"
                 >
                   <X className="h-5 w-5" />
@@ -213,18 +221,32 @@ export function AppShell({
 
         {/* Content */}
         <div className="lg:pl-64">
-          <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-slate-200 bg-white/80 px-4 backdrop-blur lg:px-8">
+          <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-slate-200 bg-white/85 px-4 backdrop-blur lg:px-8">
             <button
               onClick={() => setMobileOpen(true)}
-              className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100 lg:hidden"
+              className="-ml-1 rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
               aria-label="Open menu"
             >
               <Menu className="h-5 w-5" />
             </button>
+            {/* Firm identity in the mobile top bar (sidebar is hidden there) */}
+            <div className="flex items-center gap-2 lg:hidden">
+              {branding.hasLogo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src="/api/branding/logo" alt="" className="h-7 w-7 rounded-md object-contain" />
+              ) : (
+                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-600 text-white">
+                  <Building2 className="h-4 w-4" />
+                </span>
+              )}
+              <span className="max-w-[46vw] truncate text-sm font-semibold text-slate-900">
+                {branding.name}
+              </span>
+            </div>
             <div className="flex-1" />
             <UserMenu user={user} />
           </header>
-          <main className="mx-auto max-w-7xl px-4 py-6 lg:px-8 lg:py-8">
+          <main className="mx-auto max-w-7xl px-4 py-5 pb-16 lg:px-8 lg:py-8">
             {children}
           </main>
         </div>

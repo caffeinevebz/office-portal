@@ -39,7 +39,7 @@ function statusPillClass(status: string) {
     case "Processed":
       return "bg-emerald-100 text-emerald-700 ring-emerald-200";
     case "Filed":
-      return "bg-indigo-100 text-indigo-700 ring-indigo-200";
+      return "bg-brand-100 text-brand-700 ring-brand-200";
     case "E-Verified":
       return "bg-violet-100 text-violet-700 ring-violet-200";
     case "In Preparation":
@@ -132,13 +132,13 @@ export default function ItrPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search client, PAN or ack. no…"
-              className="w-full rounded-lg border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none"
+              className="w-full rounded-lg border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
             />
           </div>
           <select
             value={ay}
             onChange={(e) => setAy(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
           >
             {ays.map((a) => (
               <option key={a} value={a}>
@@ -150,7 +150,7 @@ export default function ItrPage() {
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
           >
             <option value="All">All statuses</option>
             {ITR_STATUSES.map((s) => (
@@ -216,7 +216,7 @@ export default function ItrPage() {
                           value={f.status}
                           onChange={(e) => quickStatus(f, e.target.value)}
                           className={cn(
-                            "cursor-pointer rounded-full border-0 px-2 py-1 text-xs font-medium ring-1 ring-inset focus:ring-2 focus:ring-indigo-300 focus:outline-none",
+                            "cursor-pointer rounded-full border-0 px-2 py-1 text-xs font-medium ring-1 ring-inset focus:ring-2 focus:ring-brand-300 focus:outline-none",
                             statusPillClass(f.status),
                           )}
                         >

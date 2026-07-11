@@ -70,13 +70,13 @@ export default function ClientsPage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search by name, PAN, GSTIN or contact…"
-              className="w-full rounded-lg border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none"
+              className="w-full rounded-lg border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
             />
           </div>
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none"
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
           >
             <option value="All">All statuses</option>
             {CLIENT_STATUSES.map((s) => (
@@ -122,11 +122,11 @@ export default function ClientsPage() {
                   <tr key={c.id} className="hover:bg-slate-50">
                     <td className="px-5 py-3">
                       <Link href={`/clients/${c.id}`} className="flex items-center gap-3 group">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
                           {initials(c.name)}
                         </span>
                         <span>
-                          <span className="block font-medium text-slate-800 group-hover:text-indigo-600">
+                          <span className="block font-medium text-slate-800 group-hover:text-brand-600">
                             {c.name}
                           </span>
                           <span className="block text-xs text-slate-500">
@@ -457,7 +457,7 @@ function ImportModal({
         <div className="space-y-4">
           <a
             href="/api/clients/import/template"
-            className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-indigo-600 hover:bg-indigo-50"
+            className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-brand-600 hover:bg-brand-50"
           >
             <Download className="h-4 w-4" />
             Download the import template (.xlsx)
@@ -470,7 +470,7 @@ function ImportModal({
               type="file"
               accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-indigo-600 hover:file:bg-indigo-100"
+              className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-600 hover:file:bg-brand-100"
             />
           </div>
           <p className="text-xs text-slate-400">

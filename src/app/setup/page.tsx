@@ -39,7 +39,7 @@ export default function SetupPage() {
     <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 text-white shadow-sm">
             <Building2 className="h-6 w-6" />
           </div>
           <h1 className="mt-3 text-lg font-semibold text-slate-900">
@@ -66,7 +66,7 @@ export default function SetupPage() {
             </p>
             <Link
               href="/login"
-              className="mt-3 inline-block text-sm font-medium text-indigo-600 hover:text-indigo-700"
+              className="mt-3 inline-block text-sm font-medium text-brand-600 hover:text-brand-700"
             >
               Go to sign in →
             </Link>
@@ -81,7 +81,7 @@ export default function SetupPage() {
 
             <div className="rounded-2xl border border-slate-200 bg-white p-5">
               <div className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
                   <Database className="h-4 w-4" />
                 </span>
                 <div>

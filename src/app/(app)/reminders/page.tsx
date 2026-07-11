@@ -127,7 +127,7 @@ export default function RemindersPage() {
           </div>
 
           {runMsg && (
-            <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+            <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
               {runMsg}
             </div>
           )}
@@ -295,7 +295,7 @@ function Toggle({
         onClick={() => onChange(!checked)}
         className={cn(
           "relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed",
-          checked ? "bg-indigo-600" : "bg-slate-300",
+          checked ? "bg-brand-600" : "bg-slate-300",
         )}
         aria-pressed={checked}
       >

@@ -49,7 +49,13 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-brand-900 to-brand-950 px-4 py-10">
+      {/* tricolour accent bar */}
+      <div className="absolute inset-x-0 top-0 flex h-1">
+        <span className="flex-1 bg-saffron-500" />
+        <span className="flex-1 bg-white" />
+        <span className="flex-1 bg-fern-500" />
+      </div>
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
           {branding?.hasLogo ? (
@@ -57,17 +63,17 @@ export default function LoginPage() {
             <img
               src="/api/branding/logo"
               alt=""
-              className="h-12 w-12 rounded-xl bg-white object-contain shadow-sm ring-1 ring-slate-200"
+              className="h-16 w-16 rounded-2xl bg-white object-contain p-1 shadow-lg ring-1 ring-white/20"
             />
           ) : (
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
-              <Building2 className="h-6 w-6" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 text-white shadow-lg ring-1 ring-white/20">
+              <Building2 className="h-8 w-8" />
             </div>
           )}
-          <h1 className="mt-3 text-lg font-semibold text-slate-900">
+          <h1 className="mt-4 text-xl font-semibold text-white">
             {branding?.name ?? "Office Portal"}
           </h1>
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-brand-200/80">
             {branding?.tagline ?? ""} · sign in to continue
           </p>
         </div>
@@ -75,7 +81,7 @@ export default function LoginPage() {
         {setup?.needsSetup && (
           <Link
             href="/setup"
-            className="mb-4 flex items-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700 hover:bg-indigo-100"
+            className="mb-4 flex items-center gap-2 rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700 hover:bg-brand-100"
           >
             <Sparkles className="h-4 w-4 shrink-0" />
             <span>
@@ -120,8 +126,8 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-white/60 p-4">
-          <p className="mb-2 text-xs font-medium text-slate-500">
+        <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+          <p className="mb-2 text-xs font-medium text-brand-200/80">
             Demo accounts — click to fill
           </p>
           <div className="grid grid-cols-2 gap-2">
@@ -134,10 +140,10 @@ export default function LoginPage() {
                   setPassword(d.password);
                   setError(null);
                 }}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs hover:border-indigo-300 hover:bg-indigo-50"
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-left text-xs text-white transition-colors hover:border-saffron-400/50 hover:bg-white/10"
               >
-                <span className="block font-medium text-slate-700">{d.label}</span>
-                <span className="block truncate text-slate-400">{d.password}</span>
+                <span className="block font-medium">{d.label}</span>
+                <span className="block truncate text-brand-200/70">{d.password}</span>
               </button>
             ))}
           </div>

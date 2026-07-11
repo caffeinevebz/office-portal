@@ -158,7 +158,7 @@ export default function SettingsPage() {
                       className="h-12 w-12 rounded-lg bg-white object-contain ring-1 ring-slate-200"
                     />
                   ) : (
-                    <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-indigo-100 text-indigo-600">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-brand-100 text-brand-600">
                       <Building2 className="h-6 w-6" />
                     </span>
                   )}
