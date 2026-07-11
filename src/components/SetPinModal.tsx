@@ -8,7 +8,11 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/format";
 
-/** Four single-digit boxes that behave like one PIN input. */
+/** Four boxes acting as one PIN pad. Digits always append (like a phone
+ *  lock screen), Backspace removes the last digit, and pasting 4 digits
+ *  fills everything. Plain text inputs masked with CSS keep password
+ *  managers and the iOS "strong password" overlay from hijacking the
+ *  boxes — the reason `type="password"` must NOT be used here. */
 export function PinInput({
   value,
   onChange,
@@ -21,20 +25,35 @@ export function PinInput({
   label?: string;
 }) {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
+  const active = Math.min(value.length, 3);
 
   useEffect(() => {
-    if (autoFocus) refs.current[0]?.focus();
+    if (autoFocus) refs.current[Math.min(value.length, 3)]?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoFocus]);
 
-  function handle(i: number, raw: string) {
-    const d = raw.replace(/\D/g, "").slice(-1);
-    const next = value.slice(0, i).padEnd(i, " ") + (d || " ") + value.slice(i + 1);
-    onChange(next.trimEnd().replace(/ /g, ""));
-    if (d && i < 3) refs.current[i + 1]?.focus();
+  function apply(next: string) {
+    const clean = next.replace(/\D/g, "").slice(0, 4);
+    onChange(clean);
+    refs.current[Math.min(clean.length, 3)]?.focus();
   }
 
-  function onKeyDown(i: number, e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Backspace" && !value[i] && i > 0) refs.current[i - 1]?.focus();
+  function onInput(raw: string) {
+    // Whatever landed in the box, keep only new digits and append them.
+    const digits = raw.replace(/\D/g, "");
+    if (digits) apply(value + digits);
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Backspace") {
+      e.preventDefault();
+      apply(value.slice(0, -1));
+    }
+  }
+
+  function onPaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    e.preventDefault();
+    apply(value + e.clipboardData.getData("text"));
   }
 
   return (
@@ -49,15 +68,25 @@ export function PinInput({
             ref={(el) => {
               refs.current[i] = el;
             }}
-            type="password"
+            type="text"
             inputMode="numeric"
-            autoComplete="off"
-            maxLength={1}
+            pattern="[0-9]*"
+            autoComplete="one-time-code"
+            name={`pin-digit-${i + 1}`}
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
             value={value[i] ?? ""}
-            onChange={(e) => handle(i, e.target.value)}
-            onKeyDown={(e) => onKeyDown(i, e)}
+            onChange={(e) => onInput(e.target.value)}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            onFocus={() => {
+              // Typing always continues at the first empty box.
+              if (i !== active) refs.current[active]?.focus();
+            }}
             className={cn(
               "h-12 w-12 rounded-xl border border-slate-300 bg-white text-center text-xl font-semibold text-slate-900 shadow-sm",
+              "caret-transparent [-webkit-text-security:disc]",
               "focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none",
             )}
           />

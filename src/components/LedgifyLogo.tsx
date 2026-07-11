@@ -1,8 +1,12 @@
+"use client";
+
+import { useState } from "react";
 import { cn } from "@/lib/format";
 
-/* The Ledgify identity, recreated as scalable SVG/CSS from the brand
-   artwork: a chalk gear holding a serif "L" on a deep-green chalkboard,
-   with the "Ledg-ify" wordmark (ify in chalk green). */
+/* The Ledgify identity. If the original artwork is present in the repo at
+   public/brand/logo-full.png it is used as-is; otherwise the logo is
+   recreated as scalable SVG/CSS: a chalk gear holding a serif "L" on a
+   deep-green chalkboard, with the "Ledg-ify" wordmark (ify in chalk green). */
 
 const CHALK = "#f2f6f1";
 const CHALK_GREEN = "#7fc98f";
@@ -47,43 +51,67 @@ export function LedgifyMark({
   );
 }
 
-/** The full chalkboard logo panel used on the login screen. */
+/** The full chalkboard logo panel used on the login screen. Prefers the
+ *  original artwork at /brand/logo-full.png when it exists in the repo;
+ *  the recreated SVG version shows until (and unless) it loads. */
 export function LedgifyLogoPanel({ className }: { className?: string }) {
+  const [art, setArt] = useState<"loading" | "original" | "recreated">("loading");
+
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-5 bg-gradient-to-br from-[#22483a] via-[#1c3b2f] to-[#132a21] px-8 py-10 text-center",
+        "flex flex-col items-center justify-center gap-5 px-6 py-8 text-center",
+        art === "original"
+          ? "bg-[#1d4033]"
+          : "bg-gradient-to-br from-[#22483a] via-[#1c3b2f] to-[#132a21]",
         className,
       )}
     >
-      <div className="relative">
-        <LedgifyMark className="h-32 w-32 drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)] sm:h-40 sm:w-40" />
-        {/* satellite gears */}
-        <LedgifyMark className="absolute -top-4 -left-8 h-10 w-10 opacity-50" />
-        <LedgifyMark className="absolute -right-9 top-3 h-8 w-8 opacity-40" />
-        <LedgifyMark className="absolute -bottom-3 -right-6 h-12 w-12 opacity-50" />
-      </div>
-      <div>
-        <p
-          className="text-5xl font-bold tracking-tight sm:text-6xl"
-          style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
-        >
-          <span style={{ color: CHALK }}>Ledg</span>
-          <span style={{ color: CHALK_GREEN }}>ify</span>
-        </p>
-        <p
-          className="mt-3 text-xs font-semibold tracking-[0.35em] uppercase sm:text-sm"
-          style={{ color: CHALK }}
-        >
-          Manage&thinsp;.&ensp;Organize&thinsp;.&ensp;Grow&thinsp;.
-        </p>
-        <p
-          className="mt-2 text-[10px] font-medium tracking-[0.3em] uppercase sm:text-xs"
-          style={{ color: CHALK_GREEN }}
-        >
-          CA Office Management Software
-        </p>
-      </div>
+      {art !== "recreated" && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src="/brand/logo-full.png"
+          alt="Ledgify — Manage. Organize. Grow. CA office management software"
+          onLoad={() => setArt("original")}
+          onError={() => setArt("recreated")}
+          className={cn(
+            "max-h-[70vh] w-full max-w-md rounded-2xl object-contain shadow-2xl lg:max-w-lg",
+            art === "loading" && "hidden",
+          )}
+        />
+      )}
+      {art !== "original" && (
+        <>
+          <div className="relative">
+            <LedgifyMark className="h-32 w-32 drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)] sm:h-40 sm:w-40" />
+            {/* satellite gears */}
+            <LedgifyMark className="absolute -top-4 -left-8 h-10 w-10 opacity-50" />
+            <LedgifyMark className="absolute -right-9 top-3 h-8 w-8 opacity-40" />
+            <LedgifyMark className="absolute -bottom-3 -right-6 h-12 w-12 opacity-50" />
+          </div>
+          <div>
+            <p
+              className="text-5xl font-bold tracking-tight sm:text-6xl"
+              style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
+            >
+              <span style={{ color: CHALK }}>Ledg</span>
+              <span style={{ color: CHALK_GREEN }}>ify</span>
+            </p>
+            <p
+              className="mt-3 text-xs font-semibold tracking-[0.35em] uppercase sm:text-sm"
+              style={{ color: CHALK }}
+            >
+              Manage&thinsp;.&ensp;Organize&thinsp;.&ensp;Grow&thinsp;.
+            </p>
+            <p
+              className="mt-2 text-[10px] font-medium tracking-[0.3em] uppercase sm:text-xs"
+              style={{ color: CHALK_GREEN }}
+            >
+              CA Office Management Software
+            </p>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { getDefaultOrg } from "@/lib/org";
 import { APP_NAME } from "@/lib/constants";
+import { brandIcon } from "@/lib/brand";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -32,7 +33,7 @@ export async function generateMetadata(): Promise<Metadata> {
     title: firm ? `${APP_NAME} · ${firm}` : APP_NAME,
     description:
       "Ledgify — office management for a Chartered Accountancy firm: clients, compliance, billing and team.",
-    icons: { icon: "/icon-192.png", apple: "/icon-192.png" },
+    icons: { icon: brandIcon(192), apple: brandIcon(192) },
     appleWebApp: { capable: true, title: APP_NAME, statusBarStyle: "default" },
   };
 }
