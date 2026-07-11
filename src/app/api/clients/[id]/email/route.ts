@@ -42,5 +42,5 @@ export const POST = route(async (req, ctx: Ctx) => {
     },
   });
   const cfg = await getEmailConfig();
-  return ok({ status, to, live: Boolean(cfg.apiKey) });
+  return ok({ status, to, live: cfg.live });
 });

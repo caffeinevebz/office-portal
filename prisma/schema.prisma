@@ -124,10 +124,14 @@ model Task {
 /// documents, invitations, password resets and alert emails.
 model EmailSettings {
   id           String   @id @default("default")
+  provider     String   @default("google") // google (Workspace/Gmail SMTP) or resend
   fromName     String? // display name, e.g. the firm's name
-  fromEmail    String? // official firm email (domain verified with the provider)
+  fromEmail    String? // official firm email
   replyTo      String?
-  resendApiKey String? // provider key; falls back to the RESEND_API_KEY env var
+  // google: an App Password for the fromEmail account (2-Step Verification
+  // required). resend: an API key; falls back to the RESEND_API_KEY env var.
+  appPassword  String?
+  resendApiKey String?
   updatedAt    DateTime @updatedAt
 }
 

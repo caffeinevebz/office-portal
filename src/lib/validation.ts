@@ -222,6 +222,9 @@ export const rolePermissionSchema = z.object({
 });
 
 export const emailSettingsSchema = z.object({
+  provider: z
+    .union([z.literal("google"), z.literal("resend")])
+    .optional(),
   fromName: optionalText,
   fromEmail: z
     .union([z.string().trim().email("Valid email required"), z.literal(""), z.null()])
@@ -231,7 +234,8 @@ export const emailSettingsSchema = z.object({
     .union([z.string().trim().email("Valid email required"), z.literal(""), z.null()])
     .optional()
     .transform((v) => (v ? v : null)),
-  // Blank/omitted = keep the stored key; the literal "clear" removes it.
+  // Blank/omitted = keep the stored secret; the literal "clear" removes it.
+  appPassword: z.string().trim().optional(),
   resendApiKey: z.string().trim().optional(),
 });
 

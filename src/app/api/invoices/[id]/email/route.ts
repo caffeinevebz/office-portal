@@ -66,5 +66,5 @@ export const POST = route(async (_req, ctx: Ctx) => {
     });
   }
   const cfg = await getEmailConfig();
-  return ok({ status, to, live: Boolean(cfg.apiKey), invoice: updated });
+  return ok({ status, to, live: cfg.live, invoice: updated });
 });
