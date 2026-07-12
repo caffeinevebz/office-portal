@@ -25,6 +25,11 @@ export type Client = {
   type: string;
   pan: string | null;
   gstin: string | null;
+  tan: string | null;
+  aadhaar: string | null;
+  cin: string | null;
+  llpin: string | null;
+  firmRegNo: string | null;
   email: string | null;
   phone: string | null;
   address: string | null;

@@ -17,6 +17,13 @@ model Client {
   type          String // Individual, Proprietorship, Partnership, LLP, Private Limited, Public Limited, HUF, Trust
   pan           String?
   gstin         String?
+  // Tax Deduction & Collection Account Number — applies to every client.
+  tan           String?
+  // Entity-specific statutory registration numbers (shown by client type):
+  aadhaar       String? // Individuals
+  cin           String? // companies (Private/Public Limited)
+  llpin         String? // LLPs — "LLP Registration No." (LLPIN)
+  firmRegNo     String? // Partnership firms — Registrar of Firms number
   email         String?
   phone         String?
   address       String?

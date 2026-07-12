@@ -41,6 +41,7 @@ import {
   CATEGORY_TONE,
   TASK_STATUS_TONE,
   INVOICE_STATUS_TONE,
+  entityRegField,
 } from "@/lib/constants";
 
 const withTax = (i: { amount: number; taxRate: number; gstMode?: string }) =>
@@ -115,6 +116,20 @@ export default function ClientDetailPage() {
                     GSTIN <span className="font-mono text-slate-700">{c.gstin}</span>
                   </span>
                 )}
+                {c.tan && (
+                  <span>
+                    TAN <span className="font-mono text-slate-700">{c.tan}</span>
+                  </span>
+                )}
+                {(() => {
+                  const reg = entityRegField(c.type);
+                  const val = reg ? (c[reg.key] as string | null) : null;
+                  return reg && val ? (
+                    <span>
+                      {reg.label} <span className="font-mono text-slate-700">{val}</span>
+                    </span>
+                  ) : null;
+                })()}
               </div>
             </div>
           </div>

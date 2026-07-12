@@ -112,6 +112,7 @@ export async function seedDemoData(prisma: PrismaClient) {
     prisma.client.create({
       data: {
         name: "Nimbus Technologies Pvt Ltd", type: "Private Limited", pan: "AABCN1234E", gstin: "27AABCN1234E1Z5",
+        tan: "MUMN12345E", cin: "U72200MH2015PTC265432",
         email: "accounts@nimbustech.in", phone: "+91 22 4123 5566", contactPerson: "Rohan Mehta",
         address: "Unit 402, Solaris Business Park, Andheri East, Mumbai 400069", status: "Active",
         groupId: nimbusGroup.id,
@@ -121,6 +122,7 @@ export async function seedDemoData(prisma: PrismaClient) {
     prisma.client.create({
       data: {
         name: "Greenleaf Organics LLP", type: "LLP", pan: "AAGFG5678K", gstin: "29AAGFG5678K1Z2",
+        tan: "BLRG08765K", llpin: "AAG-7788",
         email: "finance@greenleaf.co.in", phone: "+91 80 2345 6677", contactPerson: "Ananya Krishnan",
         address: "14, MG Road, Bengaluru 560001", status: "Active",
         groupId: southGroup.id,
@@ -138,7 +140,7 @@ export async function seedDemoData(prisma: PrismaClient) {
     }),
     prisma.client.create({
       data: {
-        name: "Dr. Meera Bhat", type: "Individual", pan: "AKLPB3456M",
+        name: "Dr. Meera Bhat", type: "Individual", pan: "AKLPB3456M", aadhaar: "4567 8901 2345",
         email: "meera.bhat@outlook.com", phone: "+91 98450 12345", contactPerson: "Dr. Meera Bhat",
         address: "22, Jayanagar 4th Block, Bengaluru 560011", status: "Active",
         notes: "Individual ITR + capital gains advisory.",
@@ -155,6 +157,7 @@ export async function seedDemoData(prisma: PrismaClient) {
     prisma.client.create({
       data: {
         name: "Vasudha Handlooms Partnership", type: "Partnership", pan: "AAEFV2233Q", gstin: "36AAEFV2233Q1Z4",
+        tan: "HYDV03344Q", firmRegNo: "TS/HYD/2018/4521",
         email: "vasudha.handlooms@gmail.com", phone: "+91 40 2789 5566", contactPerson: "Lakshmi Reddy",
         address: "Plot 45, Jubilee Hills, Hyderabad 500033", status: "Active",
         notes: "Partnership firm, tax audit applicable.",
