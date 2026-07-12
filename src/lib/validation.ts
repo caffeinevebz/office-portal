@@ -89,6 +89,13 @@ export const staffCreateSchema = z.object({
 });
 export const staffUpdateSchema = staffCreateSchema.partial();
 
+const optionalMonth = z
+  .preprocess(
+    (v) => (v === "" || v == null ? null : v),
+    z.coerce.number().int().min(1).max(12).nullable(),
+  )
+  .optional();
+
 export const taskCreateSchema = z.object({
   title: z.string().trim().min(1, "Title is required"),
   description: optionalText,
@@ -101,6 +108,20 @@ export const taskCreateSchema = z.object({
   isReturnFiling: z.boolean().optional(),
   filingDate: optionalDate,
   ackNumber: optionalText,
+  // Category-specific metadata (see constants for the option lists).
+  taskType: optionalText,
+  financialYear: optionalText,
+  periodMonth: optionalMonth,
+  periodQuarter: optionalText,
+  tdsForm: optionalText,
+  returnNature: optionalText,
+  gstReturnType: optionalText,
+  gstPeriodicity: optionalText,
+  // Json column: null/absent → omit (Prisma treats undefined as no-op).
+  checklist: z
+    .array(z.object({ label: z.string().trim().min(1), done: z.boolean() }))
+    .nullish()
+    .transform((v) => v ?? undefined),
 });
 export const taskUpdateSchema = taskCreateSchema.partial();
 

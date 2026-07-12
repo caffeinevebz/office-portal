@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Plus,
   Pencil,
@@ -15,7 +15,6 @@ import {
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
 import type { ComplianceSchedule, Client, Staff } from "@/lib/types";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -44,7 +43,11 @@ function nextDue(s: ComplianceSchedule) {
   return occ[0]?.dueDate ?? null;
 }
 
-export default function SchedulesPage() {
+/**
+ * The "Recurring" workspace — recurring obligations and the tools that turn
+ * them into dated tasks. Rendered inside the Tasks page as its second tab.
+ */
+export function RecurringPanel({ addSignal }: { addSignal?: number }) {
   const { can } = useAuth();
   const canManage = can("manageSchedules");
   const { data, loading, error, refresh } = useResource<ComplianceSchedule[]>("/api/schedules");
@@ -56,17 +59,23 @@ export default function SchedulesPage() {
   const [toDelete, setToDelete] = useState<ComplianceSchedule | null>(null);
 
   const [months, setMonths] = useState(3);
-  const [gen, setGen] = useState<{ busy: boolean; msg: string | null }>({
-    busy: false,
-    msg: null,
-  });
+  const [gen, setGen] = useState<{ busy: boolean; msg: string | null }>({ busy: false, msg: null });
+  const [sync, setSync] = useState<{ busy: boolean; msg: string | null }>({ busy: false, msg: null });
+
+  // The parent's "Add recurring" button bumps addSignal to open the form.
+  const seenSignal = useRef(addSignal);
+  useEffect(() => {
+    if (addSignal !== seenSignal.current) {
+      seenSignal.current = addSignal;
+      setEditing(null);
+      setFormOpen(true);
+    }
+  }, [addSignal]);
 
   async function generate() {
     setGen({ busy: true, msg: null });
     try {
-      const res = (await apiMutate("/api/schedules/generate", "POST", { months })) as {
-        created: number;
-      };
+      const res = (await apiMutate("/api/schedules/generate", "POST", { months })) as { created: number };
       setGen({
         busy: false,
         msg:
@@ -79,11 +88,6 @@ export default function SchedulesPage() {
       setGen({ busy: false, msg: e instanceof Error ? e.message : "Generation failed" });
     }
   }
-
-  const [sync, setSync] = useState<{ busy: boolean; msg: string | null }>({
-    busy: false,
-    msg: null,
-  });
 
   async function syncIncomeTax() {
     setSync({ busy: true, msg: null });
@@ -109,40 +113,18 @@ export default function SchedulesPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Recurring Compliance"
-        subtitle="A statutory calendar that auto-creates upcoming deadline tasks"
-        actions={
-          canManage ? (
-            <Button
-              onClick={() => {
-                setEditing(null);
-                setFormOpen(true);
-              }}
-            >
-              <Plus className="h-4 w-4" /> Add Obligation
-            </Button>
-          ) : undefined
-        }
-      />
-
       {canManage && (
         <Card className="mb-4">
           <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-2 text-sm text-slate-600">
               <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand-500" />
               <p>
-                Generate compliance tasks from every active obligation below.
-                Runs are <strong>safe to repeat</strong> — already-created
-                deadlines are skipped.
+                Turn every active recurring obligation below into dated tasks. Runs are{" "}
+                <strong>safe to repeat</strong> — already-created deadlines are skipped.
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <Select
-                value={String(months)}
-                onChange={(e) => setMonths(Number(e.target.value))}
-                className="w-auto"
-              >
+              <Select value={String(months)} onChange={(e) => setMonths(Number(e.target.value))} className="w-auto">
                 <option value="3">Next 3 months</option>
                 <option value="6">Next 6 months</option>
                 <option value="12">Next 12 months</option>
@@ -154,48 +136,38 @@ export default function SchedulesPage() {
             </div>
           </div>
           {gen.msg && (
-            <div className="border-t border-slate-100 bg-brand-50/50 px-4 py-2 text-xs text-brand-700">
-              {gen.msg}
-            </div>
+            <div className="border-t border-slate-100 bg-brand-50/50 px-4 py-2 text-xs text-brand-700">{gen.msg}</div>
           )}
           <div className="flex flex-col gap-3 border-t border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-2 text-sm text-slate-600">
               <Landmark className="mt-0.5 h-4 w-4 shrink-0 text-fern-600" />
               <p>
-                Pull the <strong>Income Tax Department&apos;s compliance
-                calendar</strong> (advance tax, TDS payments &amp; returns,
-                ITR &amp; audit due dates, Form 16, SFT) into this list.
-                Re-syncing updates dates in place, never duplicates.
+                Pull the <strong>Income Tax Department&apos;s compliance calendar</strong> (advance tax, TDS payments
+                &amp; returns, ITR &amp; audit due dates, Form 16, SFT) into this list. Re-syncing updates dates in
+                place, never duplicates.
               </p>
             </div>
-            <Button
-              variant="secondary"
-              onClick={syncIncomeTax}
-              disabled={sync.busy}
-              className="shrink-0"
-            >
+            <Button variant="secondary" onClick={syncIncomeTax} disabled={sync.busy} className="shrink-0">
               <RefreshCw className={`h-4 w-4 ${sync.busy ? "animate-spin" : ""}`} />
               {sync.busy ? "Syncing…" : "Sync income-tax calendar"}
             </Button>
           </div>
           {sync.msg && (
-            <div className="border-t border-slate-100 bg-fern-50/60 px-4 py-2 text-xs text-fern-700">
-              {sync.msg}
-            </div>
+            <div className="border-t border-slate-100 bg-fern-50/60 px-4 py-2 text-xs text-fern-700">{sync.msg}</div>
           )}
         </Card>
       )}
 
       <Card>
         {loading && !data ? (
-          <Loading label="Loading schedules…" />
+          <Loading label="Loading recurring tasks…" />
         ) : error ? (
           <p className="p-6 text-sm text-rose-600">Failed to load: {error}</p>
         ) : !data || data.length === 0 ? (
           <EmptyState
             icon={CalendarClock}
-            title="No recurring obligations yet"
-            message="Add an obligation from the statutory calendar to start auto-generating deadlines."
+            title="No recurring tasks yet"
+            message="Mark a task as recurring when you create it, or add an obligation here to auto-generate deadlines."
           />
         ) : (
           <div className="overflow-x-auto">
@@ -287,7 +259,7 @@ export default function SchedulesPage() {
       <ConfirmDialog
         open={!!toDelete}
         onClose={() => setToDelete(null)}
-        title="Delete obligation?"
+        title="Delete recurring obligation?"
         message={`"${toDelete?.title}" will be removed. Already-generated tasks are kept.`}
         onConfirm={async () => {
           if (toDelete) await apiMutate(`/api/schedules/${toDelete.id}`, "DELETE");
@@ -295,6 +267,15 @@ export default function SchedulesPage() {
         }}
       />
     </div>
+  );
+}
+
+/** A small toolbar button the parent renders to add a recurring obligation. */
+export function AddRecurringButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Button onClick={onClick}>
+      <Plus className="h-4 w-4" /> Add recurring
+    </Button>
   );
 }
 
@@ -325,8 +306,7 @@ function ScheduleForm({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const isEdit = !!initial;
-  const set = (k: keyof FormState, v: string | number | boolean) =>
-    setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: keyof FormState, v: string | number | boolean) => setForm((f) => ({ ...f, [k]: v }));
 
   function applyPreset(label: string) {
     const p = STATUTORY_PRESETS.find((x) => x.label === label);
@@ -374,8 +354,8 @@ function ScheduleForm({
       open
       onClose={onClose}
       size="lg"
-      title={isEdit ? "Edit Obligation" : "New Recurring Obligation"}
-      description="Define a statutory obligation; tasks are generated from it on demand."
+      title={isEdit ? "Edit recurring obligation" : "New recurring obligation"}
+      description="Define a recurring obligation; dated tasks are generated from it on demand."
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={busy}>
@@ -388,9 +368,7 @@ function ScheduleForm({
       }
     >
       {err && (
-        <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-200">
-          {err}
-        </div>
+        <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-200">{err}</div>
       )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {!isEdit && (
@@ -410,11 +388,7 @@ function ScheduleForm({
           </Field>
         )}
         <Field label="Title" required>
-          <Input
-            value={form.title ?? ""}
-            onChange={(e) => set("title", e.target.value)}
-            placeholder="e.g. GSTR-3B"
-          />
+          <Input value={form.title ?? ""} onChange={(e) => set("title", e.target.value)} placeholder="e.g. GSTR-3B" />
         </Field>
         <Field label="Category">
           <Select value={form.category ?? ""} onChange={(e) => set("category", e.target.value)}>
@@ -440,15 +414,8 @@ function ScheduleForm({
           />
         </Field>
         {showAnchor && (
-          <Field
-            label="Cycle anchor month"
-            hint="One due month; the cycle repeats from here."
-            className="sm:col-span-2"
-          >
-            <Select
-              value={String(form.anchorMonth ?? 4)}
-              onChange={(e) => set("anchorMonth", Number(e.target.value))}
-            >
+          <Field label="Cycle anchor month" hint="One due month; the cycle repeats from here." className="sm:col-span-2">
+            <Select value={String(form.anchorMonth ?? 4)} onChange={(e) => set("anchorMonth", Number(e.target.value))}>
               {MONTHS.map((m, i) => (
                 <option key={m} value={i + 1}>
                   {m}

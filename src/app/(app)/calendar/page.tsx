@@ -22,14 +22,16 @@ import { Loading } from "@/components/ui/EmptyState";
 import { cn } from "@/lib/format";
 
 const CATEGORY_DOT: Record<string, string> = {
-  GST: "bg-brand-500",
   "Income Tax": "bg-violet-500",
   TDS: "bg-blue-500",
-  "ROC/MCA": "bg-amber-500",
+  GST: "bg-brand-500",
+  "MCA/ROC": "bg-amber-500",
   Audit: "bg-rose-500",
-  Accounting: "bg-emerald-500",
   Registration: "bg-slate-500",
   Other: "bg-slate-400",
+  // legacy
+  "ROC/MCA": "bg-amber-500",
+  Accounting: "bg-emerald-500",
 };
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

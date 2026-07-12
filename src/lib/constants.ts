@@ -43,16 +43,102 @@ export function entityRegField(type: string | null | undefined): EntityRegField 
   }
 }
 
+// Master task groups. The first six are the firm's statutory practice areas;
+// "Other" is a catch-all for miscellaneous / legacy work.
 export const TASK_CATEGORIES = [
-  "GST",
   "Income Tax",
   "TDS",
-  "ROC/MCA",
+  "GST",
+  "MCA/ROC",
   "Audit",
-  "Accounting",
   "Registration",
   "Other",
 ] as const;
+
+// Legacy category values (pre-rename) mapped to their current master group.
+// Applied as an idempotent backfill so old rows show under the right group.
+export const LEGACY_CATEGORY_MAP: Record<string, (typeof TASK_CATEGORIES)[number]> = {
+  "ROC/MCA": "MCA/ROC",
+  Accounting: "Other",
+};
+
+// ── Income Tax ──────────────────────────────────────────────────────────────
+// The kinds of engagement an Income Tax task can represent.
+export const INCOME_TAX_TASK_TYPES = [
+  "ITR Filing",
+  "Rectification Application",
+  "Grievance Filing",
+  "PAN Application",
+  "TAN Application",
+  "Miscellaneous Applications",
+] as const;
+
+// ── TDS / TCS ───────────────────────────────────────────────────────────────
+// Quarterly TDS/TCS return statements. The Income-tax Act 2025 renumbered the
+// statements; we surface the new number alongside the erstwhile 1961-Act form.
+export type TdsReturnForm = { newNo: string; oldNo: string; label: string };
+export const TDS_RETURN_FORMS: TdsReturnForm[] = [
+  { newNo: "138", oldNo: "24Q", label: "TDS on salaries" },
+  { newNo: "140", oldNo: "26Q", label: "TDS on non-salary payments" },
+  { newNo: "144", oldNo: "27Q", label: "TDS on payments to non-residents" },
+  { newNo: "144A", oldNo: "27EQ", label: "TCS statement" },
+];
+/** Display label for a stored TDS form (keyed by the new-act number). */
+export function tdsFormLabel(newNo?: string | null): string {
+  const f = TDS_RETURN_FORMS.find((x) => x.newNo === newNo);
+  return f ? `Form ${f.newNo} / ${f.oldNo}` : "";
+}
+export const TDS_RETURN_NATURE = ["Original", "Revised"] as const;
+
+// ── GST ─────────────────────────────────────────────────────────────────────
+export const GST_RETURN_TYPES = ["GSTR-1", "GSTR-3B", "GSTR-2B", "GSTR-9", "GSTR-9C"] as const;
+export const GST_RETURN_LABELS: Record<string, string> = {
+  "GSTR-1": "GSTR-1 · outward supplies",
+  "GSTR-3B": "GSTR-3B · summary return",
+  "GSTR-2B": "GSTR-2B · ITC reconciliation & filing",
+  "GSTR-9": "GSTR-9 · annual return",
+  "GSTR-9C": "GSTR-9C · reconciliation statement",
+};
+// Returns that can be filed monthly or quarterly (the rest are annual).
+export const GST_PERIODIC_RETURNS = new Set(["GSTR-1", "GSTR-3B", "GSTR-2B"]);
+export const GST_PERIODICITY = ["Monthly", "Quarterly"] as const;
+
+// ── Periods ─────────────────────────────────────────────────────────────────
+// Indian financial-year quarters (Apr–Mar).
+export const QUARTERS = ["Q1", "Q2", "Q3", "Q4"] as const;
+export const QUARTER_LABELS: Record<string, string> = {
+  Q1: "Q1 · Apr–Jun",
+  Q2: "Q2 · Jul–Sep",
+  Q3: "Q3 · Oct–Dec",
+  Q4: "Q4 · Jan–Mar",
+};
+
+// A per-task checklist item.
+export type ChecklistItem = { label: string; done: boolean };
+
+/** The default checklist seeded for a new task, by category / kind. */
+export function defaultChecklist(
+  category: string,
+  opts: { taskType?: string | null; gstReturnType?: string | null } = {},
+): ChecklistItem[] {
+  const mk = (labels: string[]): ChecklistItem[] => labels.map((label) => ({ label, done: false }));
+  if (category === "TDS") {
+    return mk([
+      "Challans verified & mapped",
+      "Deductee PAN details validated",
+      "Statement validated (FVU / portal)",
+      "Return filed & token/PRN saved",
+      "TDS certificate for the quarter downloaded",
+    ]);
+  }
+  if (category === "GST") {
+    return mk(["Data reconciled with books", "Return prepared", "Return filed & ARN saved"]);
+  }
+  if (category === "Income Tax" && opts.taskType === "ITR Filing") {
+    return mk(["Documents collected", "Computation prepared & approved", "Return filed", "Return e-verified"]);
+  }
+  return [];
+}
 
 export const TASK_STATUSES = [
   "Pending",
@@ -140,6 +226,15 @@ export function incomeTaxYearLabel(fyLabel: string): string {
   return start >= 2026 ? `TY ${range(start)}` : `AY ${range(start + 1)}`;
 }
 
+/**
+ * Picker label combining the income-tax period with its financial year, e.g.
+ * "AY 2026-27 (FY 2025-26)" or "TY 2026-27 (FY 2026-27)". Lets a user pick the
+ * Assessment Year or Tax Year while the task is stored against the FY.
+ */
+export function taxPeriodOption(fyLabel: string): string {
+  return `${incomeTaxYearLabel(fyLabel)} (FY ${fyLabel})`;
+}
+
 /** Best-effort firm initials for invoice numbers, e.g.
  *  "Anil P.S.Bhansali & Co." → "APSB". Overridable in Firm Settings. */
 export function deriveInitials(name?: string | null): string {
@@ -220,12 +315,12 @@ export const STATUTORY_PRESETS: StatutoryPreset[] = [
   { label: "TDS Payment (Monthly)", title: "TDS Payment", category: "TDS", frequency: "Monthly", dueDay: 7, anchorMonth: 4, hint: "Deposit of TDS, due 7th" },
   { label: "TDS Return (Quarterly)", title: "TDS Return", category: "TDS", frequency: "Quarterly", dueDay: 31, anchorMonth: 7, hint: "Quarterly TDS statement" },
   { label: "Advance Tax (Quarterly)", title: "Advance Tax", category: "Income Tax", frequency: "Quarterly", dueDay: 15, anchorMonth: 6, hint: "Instalments: 15 Jun/Sep/Dec/Mar" },
-  { label: "PF & ESI (Monthly)", title: "PF & ESI Payment", category: "Accounting", frequency: "Monthly", dueDay: 15, anchorMonth: 4, hint: "Provident fund & ESI, due 15th" },
+  { label: "PF & ESI (Monthly)", title: "PF & ESI Payment", category: "Other", frequency: "Monthly", dueDay: 15, anchorMonth: 4, hint: "Provident fund & ESI, due 15th" },
   { label: "ITR Filing (Annual)", title: "Income Tax Return", category: "Income Tax", frequency: "Annually", dueDay: 31, anchorMonth: 7, hint: "Non-audit ITR, due 31 Jul" },
   { label: "Tax Audit (Annual)", title: "Tax Audit u/s 44AB", category: "Audit", frequency: "Annually", dueDay: 30, anchorMonth: 9, hint: "Due 30 Sep" },
-  { label: "ROC AOC-4 (Annual)", title: "ROC AOC-4", category: "ROC/MCA", frequency: "Annually", dueDay: 30, anchorMonth: 10, hint: "Financial statements filing" },
-  { label: "ROC MGT-7 (Annual)", title: "ROC MGT-7", category: "ROC/MCA", frequency: "Annually", dueDay: 29, anchorMonth: 11, hint: "Annual return filing" },
-  { label: "DIR-3 KYC (Annual)", title: "DIR-3 KYC", category: "ROC/MCA", frequency: "Annually", dueDay: 30, anchorMonth: 9, hint: "Director KYC, due 30 Sep" },
+  { label: "ROC AOC-4 (Annual)", title: "ROC AOC-4", category: "MCA/ROC", frequency: "Annually", dueDay: 30, anchorMonth: 10, hint: "Financial statements filing" },
+  { label: "ROC MGT-7 (Annual)", title: "ROC MGT-7", category: "MCA/ROC", frequency: "Annually", dueDay: 29, anchorMonth: 11, hint: "Annual return filing" },
+  { label: "DIR-3 KYC (Annual)", title: "DIR-3 KYC", category: "MCA/ROC", frequency: "Annually", dueDay: 30, anchorMonth: 9, hint: "Director KYC, due 30 Sep" },
 ];
 
 // Tailwind class fragments used for coloured status/category badges.
@@ -271,12 +366,14 @@ export const CLIENT_STATUS_TONE: Record<string, keyof typeof TONE> = {
 };
 
 export const CATEGORY_TONE: Record<string, keyof typeof TONE> = {
-  GST: "indigo",
   "Income Tax": "violet",
   TDS: "blue",
-  "ROC/MCA": "amber",
+  GST: "indigo",
+  "MCA/ROC": "amber",
   Audit: "red",
-  Accounting: "green",
   Registration: "slate",
   Other: "slate",
+  // legacy values still render until backfilled
+  "ROC/MCA": "amber",
+  Accounting: "green",
 };
