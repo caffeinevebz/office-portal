@@ -28,7 +28,7 @@ import {
 import { cn, initials } from "@/lib/format";
 import { AuthProvider, useAuth, type AuthUser } from "@/lib/auth/context";
 import { ROLE_ACCESS, type Permission } from "@/lib/auth/roles";
-import { LedgifyMark } from "@/components/LedgifyLogo";
+import { AppMark } from "@/components/LedgifyLogo";
 import { SetPinModal } from "@/components/SetPinModal";
 
 const NAV: { href: string; label: string; icon: typeof Users; perm?: Permission }[] = [
@@ -121,7 +121,7 @@ function Brand({
           className="h-9 w-9 shrink-0 rounded-lg bg-white object-contain p-0.5"
         />
       ) : (
-        <LedgifyMark className="h-9 w-9 shrink-0" />
+        <AppMark className="h-9 w-9 shrink-0 rounded-lg" />
       )}
       {!collapsed && (
         <div className="leading-tight">
@@ -307,9 +307,7 @@ export function AppShell({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src="/api/branding/logo" alt="" className="h-7 w-7 rounded-md object-contain" />
               ) : (
-                <span className="flex h-7 w-7 items-center justify-center rounded-md bg-brand-900">
-                  <LedgifyMark className="h-5 w-5" />
-                </span>
+                <AppMark className="h-7 w-7 rounded-md" />
               )}
               <span className="max-w-[46vw] truncate text-sm font-semibold text-slate-900">
                 {branding.name}
