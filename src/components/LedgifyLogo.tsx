@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/format";
 
 /* The Ledgify identity. If the original artwork is present in the repo at
@@ -10,6 +10,22 @@ import { cn } from "@/lib/format";
 
 const CHALK = "#f2f6f1";
 const CHALK_GREEN = "#7fc98f";
+
+/** Compact app mark for the sidebar / mobile header. Uses the uploaded
+ *  original app icon if present, else the recreated gear. */
+export function AppMark({ className }: { className?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <LedgifyMark className={className} />;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/icon-192.png"
+      alt=""
+      onError={() => setFailed(true)}
+      className={cn("object-contain", className)}
+    />
+  );
+}
 
 /** Chalk gear with the serif L — the compact mark (sidebar, tiles). */
 export function LedgifyMark({
@@ -51,11 +67,37 @@ export function LedgifyMark({
   );
 }
 
+// Where the uploaded original logo may live — first hit wins, then the
+// recreated SVG. Covers both public/ root and public/brand/.
+const LOGO_CANDIDATES = ["/logo-full.png", "/brand/logo-full.png"];
+
 /** The full chalkboard logo panel used on the login screen. Prefers the
- *  original artwork at /brand/logo-full.png when it exists in the repo;
- *  the recreated SVG version shows until (and unless) it loads. */
+ *  original uploaded artwork; the recreated SVG shows until (and unless)
+ *  one of the candidate files loads. */
 export function LedgifyLogoPanel({ className }: { className?: string }) {
   const [art, setArt] = useState<"loading" | "original" | "recreated">("loading");
+  const [candidate, setCandidate] = useState(0);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  function advance() {
+    setCandidate((c) => {
+      const next = c + 1;
+      if (next >= LOGO_CANDIDATES.length) setArt("recreated");
+      return next;
+    });
+  }
+
+  // The image can finish loading before React attaches its onLoad handler
+  // (cached / SSR paint), so reconcile from the element's own state on mount
+  // and whenever we try a new candidate.
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img) return;
+    if (img.complete) {
+      if (img.naturalWidth > 0) setArt("original");
+      else advance();
+    }
+  }, [candidate]);
 
   return (
     <div
@@ -67,16 +109,18 @@ export function LedgifyLogoPanel({ className }: { className?: string }) {
         className,
       )}
     >
-      {art !== "recreated" && (
+      {art !== "recreated" && candidate < LOGO_CANDIDATES.length && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src="/brand/logo-full.png"
+          key={LOGO_CANDIDATES[candidate]}
+          ref={imgRef}
+          src={LOGO_CANDIDATES[candidate]}
           alt="Ledgify — Manage. Organize. Grow. CA office management software"
           onLoad={() => setArt("original")}
-          onError={() => setArt("recreated")}
+          onError={advance}
           className={cn(
             "max-h-[70vh] w-full max-w-md rounded-2xl object-contain shadow-2xl lg:max-w-lg",
-            art === "loading" && "hidden",
+            art !== "original" && "hidden",
           )}
         />
       )}

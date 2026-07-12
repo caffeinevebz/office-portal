@@ -1,7 +1,8 @@
 # Original Ledgify artwork
 
-Drop the original logo PNGs in this folder (exact names below) and the app
-picks them up automatically — no code changes needed:
+Drop the original logo PNGs in **either the `public/` root or this
+`public/brand/` folder** (exact names below) and the app picks them up
+automatically — no code changes needed:
 
 | File | Used for | Recommended size |
 | --- | --- | --- |
