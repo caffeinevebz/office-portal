@@ -21,7 +21,7 @@ beside a clean sign-in card; stacked on phones).
 | --- | --- |
 | **Dashboard** | KPIs (active clients, open tasks, overdue deadlines, receivables), a 6-month billing vs. collections chart, task-status breakdown, upcoming deadlines and a compliance-mix view. |
 | **Clients** | Full client register (Individual / Proprietorship / Partnership / LLP / Pvt Ltd / HUF / Trust …) with PAN, GSTIN, **TAN** (all clients) and the **entity-specific statutory number** shown by type — **Aadhaar** for individuals, **CIN** for companies, **LLP Registration No.** for LLPs, **Firm Registration No.** for partnership firms — plus contacts. Search, filter, create, edit, delete, **bulk import from an Excel template**, and a per-client detail page. Each client can hold **multiple firm / trade names** (a proprietor's several concerns, or a company's brand name) — each with its own GSTIN/PAN/address. Clients can be organised into **groups** with a manually-assigned unique code, filterable across the register. |
-| **Compliance & Tasks** | Track engagements by category (GST, Income Tax, TDS, ROC/MCA, Audit, Accounting, Registration). Priorities, due dates with overdue highlighting, assignee, and inline status changes. **Return-filing tasks** (GST/ITR/TDS) complete automatically the moment the filing entry — filing date + acknowledgment number — is recorded, via a one-click "Record filing" action. |
+| **Tasks** | Track engagements under six master groups — **Income Tax, TDS, GST, MCA/ROC, Audit, Registration** (plus *Other*). Each task can be **one-time or recurring** (choose the cadence when creating it). Category-specific fields guide data entry: **Income Tax** picks a task type (ITR filing, rectification, grievance, PAN/TAN application, misc.) and an **Assessment / Tax Year** (labelled AY or TY per the Income-tax Act 2025); **TDS** picks the return form shown as *new / old* number (Form 138/24Q, 140/26Q, 144/27Q, 144A/27EQ), quarter, year and Original/Revised, with a checklist that includes downloading the quarter's TDS certificate; **GST** picks the return (GSTR-1, GSTR-3B, GSTR-2B, GSTR-9, GSTR-9C), monthly/quarterly periodicity and the FY/month/quarter. Per-task **checklists**, priorities, due dates with overdue highlighting, assignee, and inline status changes. **Return-filing tasks** (GST/ITR/TDS) complete automatically the moment the filing entry — filing date + acknowledgment number — is recorded, via a one-click "Record filing" action. A **Recurring** tab manages recurring obligations and generates their upcoming dated tasks (idempotently), and one click **syncs the Income Tax Department's compliance calendar** into the list. |
 | **Invoices** | Raise professional-fee invoices with GST, track Draft → Sent → Paid → Overdue. **Invoice numbers auto-generate** as `PREFIX/FY/NNN` (e.g. `APSB/26-27/001`) — the firm initials come from the billing organization, the sequence resets to 001 each financial year; **receipts** get the same number with an `R` (`APSB/26-27/R001`), assigned when an invoice is marked Paid. An invoice can be **billed under the client's legal name or one of their trade names** (using that concern's GSTIN & address). Pick the **billing organization** and **GST applicability**; download a GST **tax-invoice PDF** and a **payment-receipt PDF**. |
 | **ITR Filings** | Income-tax returns per client, keyed by **financial year**. The income-tax period label follows the Income-tax Act 2025 changeover: **FY 2025-26 and earlier show as `AY <fy+1>`** (e.g. AY 2026-27); **FY 2026-27 onwards show as `TY <fy>`** (Tax Year, e.g. TY 2026-27). ITR form type, regime, status pipeline, filing dates, acknowledgement numbers and refunds. |
 | **Firm Settings** | Manage one or more **billing organizations** (name, letterhead address, PAN/GSTIN, bank & UPI, invoice note) and upload a **logo** per organization. The default organization brands the app and the sign-in screen. |
@@ -31,7 +31,7 @@ beside a clean sign-in card; stacked on phones).
 | **DSC Register** | Digital Signature Certificates per client signatory: class, authority, serial, validity with expiry countdowns, and a physical-token custody in/out register stamped with the acting user. DSC expiries feed the reminders engine. |
 | **Inward/Outward Register** | The office's physical-document register, digitized: every packet of originals received gets an auto-issued inward number (IN-2627-001…) with contents, deliverer, mode/courier docket and storage location; returns/dispatches get outward numbers, and a full movement trail shows who handled what. Long-held packets (90+ days) are flagged. |
 | **Calendar** | A month view of every statutory due date across all clients, colour-coded by category. |
-| **Recurring compliance** | A statutory calendar of recurring obligations (monthly GST, quarterly TDS/advance tax, annual ITR/ROC…) that auto-generates the upcoming deadline tasks — idempotently. One click **syncs the Income Tax Department's compliance calendar** (advance tax installments, monthly TDS payments, quarterly TDS returns, ITR & tax-audit due dates, Form 16, SFT) into the list; re-syncing updates dates in place and never duplicates. |
+| **Recurring** *(a tab within Tasks)* | A statutory calendar of recurring obligations (monthly GST, quarterly TDS/advance tax, annual ITR/ROC…) that auto-generates the upcoming deadline tasks — idempotently. One click **syncs the Income Tax Department's compliance calendar** (advance tax installments, monthly TDS payments, quarterly TDS returns, ITR & tax-audit due dates, Form 16, SFT) into the list; re-syncing updates dates in place and never duplicates. |
 | **Deadline reminders** | Email & WhatsApp nudges for tasks that are due soon or overdue, to the assignee and/or client, with a preview, a delivery log and configurable lead time. |
 | **Login & roles** | Session-based sign-in with role-based access, enforced on both the API and the UI. Roles are dynamic: the built-in five ship with sensible defaults, and admins can add custom roles and adjust any role's permissions from **Access Control**. A **Forgot password?** flow emails a one-time reset link (60-minute expiry). |
 | **Mobile & PWA** | Fully responsive on phones, plus a web-app manifest: open the site on a phone and *Add to Home Screen* to install Ledgify like an app (full-screen, own icon). |
@@ -84,17 +84,17 @@ Then open <http://localhost:3000> — you'll be taken to the sign-in screen.
 
 ## Recurring compliance (statutory calendar)
 
-The **Recurring** page lets the firm define recurring statutory obligations
-per client — e.g. *GSTR-3B, monthly, due 20th* or *Advance Tax, quarterly,
-15 Jun/Sep/Dec/Mar*. A built-in library of common Indian obligations (GSTR-1/3B,
-CMP-08, TDS, advance tax, PF/ESI, ITR, tax audit, ROC AOC-4/MGT-7, DIR-3 KYC)
-pre-fills the form.
+The **Recurring** tab (inside **Tasks**) lets the firm define recurring statutory
+obligations per client — e.g. *GSTR-3B, monthly, due 20th* or *Advance Tax, quarterly,
+15 Jun/Sep/Dec/Mar*. You can also mark a task as recurring right from the New Task
+form. A built-in library of common Indian obligations (GSTR-1/3B, CMP-08, TDS,
+advance tax, PF/ESI, ITR, tax audit, ROC AOC-4/MGT-7, DIR-3 KYC) pre-fills the form.
 
 Clicking **Generate tasks** creates the actual deadline tasks for the next
 3 / 6 / 12 months, with correct due dates and period labels (e.g. "GSTR-3B —
 Jun 2026", "Advance Tax — Q2 FY 2026-27", "Tax Audit — FY 2025-26"). Generation
 is **idempotent**: each occurrence is keyed by schedule + period, so re-running
-never creates duplicates. Generated tasks show a ↻ marker on the Compliance page
+never creates duplicates. Generated tasks show a ↻ marker on the Tasks page
 and flow through to the dashboard and calendar like any other task. Managing
 obligations and generating tasks requires the `manageSchedules` permission
 (Partner / Admin / Manager).

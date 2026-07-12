@@ -25,7 +25,7 @@ export type Permission =
 
 export const PERMISSION_CATEGORIES = [
   "Clients",
-  "Compliance",
+  "Tasks",
   "Billing",
   "Documents & registers",
   "Reminders",
@@ -38,11 +38,11 @@ export const PERMISSION_META: Record<
 > = {
   manageClients: { label: "Add & edit clients (and import)", category: "Clients" },
   deleteClients: { label: "Delete clients", category: "Clients" },
-  manageTasks: { label: "Add & edit tasks, change status", category: "Compliance" },
-  deleteTasks: { label: "Delete tasks", category: "Compliance" },
-  manageSchedules: { label: "Manage recurring obligations & generate", category: "Compliance" },
-  manageItr: { label: "Manage ITR filings", category: "Compliance" },
-  deleteItr: { label: "Delete ITR filings", category: "Compliance" },
+  manageTasks: { label: "Add & edit tasks, change status", category: "Tasks" },
+  deleteTasks: { label: "Delete tasks", category: "Tasks" },
+  manageSchedules: { label: "Manage recurring obligations & generate", category: "Tasks" },
+  manageItr: { label: "Manage ITR filings", category: "Tasks" },
+  deleteItr: { label: "Delete ITR filings", category: "Tasks" },
   manageInvoices: { label: "Create, edit & delete invoices", category: "Billing" },
   manageDocuments: { label: "Manage documents", category: "Documents & registers" },
   deleteDocuments: { label: "Delete documents", category: "Documents & registers" },

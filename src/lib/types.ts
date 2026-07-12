@@ -96,6 +96,15 @@ export type Task = {
   isReturnFiling: boolean;
   filingDate: string | null;
   ackNumber: string | null;
+  taskType: string | null;
+  financialYear: string | null;
+  periodMonth: number | null;
+  periodQuarter: string | null;
+  tdsForm: string | null;
+  returnNature: string | null;
+  gstReturnType: string | null;
+  gstPeriodicity: string | null;
+  checklist: ChecklistItem[] | null;
   createdAt: string;
   clientId: string | null;
   assigneeId: string | null;
@@ -103,6 +112,8 @@ export type Task = {
   client?: Client | null;
   assignee?: Staff | null;
 };
+
+export type ChecklistItem = { label: string; done: boolean };
 
 export type ComplianceSchedule = {
   id: string;

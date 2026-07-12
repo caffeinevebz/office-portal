@@ -142,7 +142,7 @@ model Task {
   id          String    @id @default(cuid())
   title       String
   description String?
-  category    String    @default("Other") // GST, Income Tax, TDS, ROC/MCA, Audit, Accounting, Registration, Other
+  category    String    @default("Other") // Income Tax, TDS, GST, MCA/ROC, Audit, Registration, Other
   status      String    @default("Pending") // Pending, In Progress, Under Review, Completed
   priority    String    @default("Medium") // Low, Medium, High
   dueDate     DateTime?
@@ -151,6 +151,18 @@ model Task {
   isReturnFiling Boolean   @default(false)
   filingDate     DateTime?
   ackNumber      String?
+
+  // Category-specific metadata (all optional; populated by the task form):
+  taskType      String? // Income Tax: ITR Filing, Rectification, Grievance, PAN/TAN Application…
+  financialYear String? // e.g. "2025-26"; the AY/TY label is derived from it
+  periodMonth   Int? // 1-12, for monthly GST returns
+  periodQuarter String? // Q1-Q4, for TDS / quarterly GST returns
+  tdsForm       String? // new-act TDS statement number, e.g. "138" (= old 24Q)
+  returnNature  String? // TDS return: Original / Revised
+  gstReturnType String? // GSTR-1, GSTR-3B, GSTR-2B, GSTR-9, GSTR-9C
+  gstPeriodicity String? // Monthly / Quarterly (for periodic GST returns)
+  checklist     Json? // [{ label, done }] — e.g. TDS certificate downloaded
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

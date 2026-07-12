@@ -9,10 +9,12 @@ import {
   ClipboardList,
   Repeat,
   FileCheck2,
+  ListChecks,
+  X,
 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
-import type { Task, Client, Staff } from "@/lib/types";
+import type { Task, Client, Staff, ChecklistItem } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -21,24 +23,77 @@ import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Loading, EmptyState } from "@/components/ui/EmptyState";
+import { RecurringPanel, AddRecurringButton } from "@/components/RecurringPanel";
 import {
   TASK_CATEGORIES,
   TASK_STATUSES,
   TASK_PRIORITIES,
   CATEGORY_TONE,
   PRIORITY_TONE,
+  SCHEDULE_FREQUENCIES,
+  MONTHS,
+  QUARTERS,
+  QUARTER_LABELS,
+  INCOME_TAX_TASK_TYPES,
+  TDS_RETURN_FORMS,
+  TDS_RETURN_NATURE,
+  tdsFormLabel,
+  GST_RETURN_TYPES,
+  GST_RETURN_LABELS,
+  GST_PERIODIC_RETURNS,
+  GST_PERIODICITY,
+  incomeTaxYearLabel,
+  taxPeriodOption,
+  defaultChecklist,
 } from "@/lib/constants";
 import { dueLabel, daysUntil, toDateInput, formatDate, cn } from "@/lib/format";
 
 // Categories whose tasks are completed by recording a return-filing entry.
 const RETURN_CATEGORIES = ["GST", "Income Tax", "TDS"];
 
+// Recent financial years for period pickers: next FY down to six years back.
+function fyOptions(): string[] {
+  const now = new Date();
+  const start = now.getMonth() + 1 >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+  return Array.from({ length: 8 }, (_, i) => {
+    const s = start + 1 - i;
+    return `${s}-${String(s + 1).slice(2)}`;
+  });
+}
+
+// Short descriptors shown under a task title (form / return type / period …).
+function taskMeta(t: Task): string[] {
+  const bits: string[] = [];
+  if (t.taskType) bits.push(t.taskType);
+  if (t.tdsForm) bits.push(tdsFormLabel(t.tdsForm));
+  if (t.returnNature) bits.push(t.returnNature);
+  if (t.gstReturnType) bits.push(t.gstReturnType);
+  if (t.gstPeriodicity) bits.push(t.gstPeriodicity);
+  if (t.periodQuarter) bits.push(t.periodQuarter);
+  if (t.periodMonth) bits.push(MONTHS[t.periodMonth - 1]);
+  if (t.financialYear) {
+    // AY/TY nomenclature applies to income-tax & TDS; GST etc. use plain FY.
+    const taxYear = t.category === "Income Tax" || t.category === "TDS";
+    bits.push(taxYear ? `${incomeTaxYearLabel(t.financialYear)} · FY ${t.financialYear}` : `FY ${t.financialYear}`);
+  }
+  return bits;
+}
+
+function checklistDone(list: ChecklistItem[] | null | undefined) {
+  if (!list || list.length === 0) return null;
+  return { done: list.filter((i) => i.done).length, total: list.length };
+}
+
 type FormState = Partial<Task>;
+type Tab = "tasks" | "recurring";
 
 export default function TasksPage() {
   const { can } = useAuth();
   const canManage = can("manageTasks");
   const canDelete = can("deleteTasks");
+  const canRecur = can("manageSchedules");
+
+  const [tab, setTab] = useState<Tab>("tasks");
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("All");
   const [category, setCategory] = useState("All");
@@ -55,204 +110,224 @@ export default function TasksPage() {
   const [editing, setEditing] = useState<Task | null>(null);
   const [toDelete, setToDelete] = useState<Task | null>(null);
   const [filingFor, setFilingFor] = useState<Task | null>(null);
+  const [addRecurring, setAddRecurring] = useState(0);
 
   async function quickStatus(t: Task, newStatus: string) {
     await apiMutate(`/api/tasks/${t.id}`, "PATCH", { status: newStatus });
     refresh();
   }
 
+  const headerAction = !canManage
+    ? undefined
+    : tab === "tasks" ? (
+        <Button
+          onClick={() => {
+            setEditing(null);
+            setFormOpen(true);
+          }}
+        >
+          <Plus className="h-4 w-4" /> New Task
+        </Button>
+      ) : canRecur ? (
+        <AddRecurringButton onClick={() => setAddRecurring((n) => n + 1)} />
+      ) : undefined;
+
   return (
     <div>
       <PageHeader
-        title="Compliance & Tasks"
-        subtitle="Track GST, income-tax, audit, ROC and other engagements"
-        actions={
-          canManage ? (
-            <Button
-              onClick={() => {
-                setEditing(null);
-                setFormOpen(true);
-              }}
-            >
-              <Plus className="h-4 w-4" /> New Task
-            </Button>
-          ) : undefined
-        }
+        title="Tasks"
+        subtitle="Income-tax, TDS, GST, MCA/ROC, audit & registration engagements — one-time or recurring"
+        actions={headerAction}
       />
 
-      <Card className="mb-4">
-        <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="relative sm:col-span-2 lg:col-span-1">
-            <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search tasks…"
-              className="w-full rounded-lg border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
-            />
-          </div>
-          <FilterSelect value={status} onChange={setStatus} label="status" options={TASK_STATUSES} />
-          <FilterSelect value={category} onChange={setCategory} label="category" options={TASK_CATEGORIES} />
-          <select
-            value={assignee}
-            onChange={(e) => setAssignee(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
-          >
-            <option value="All">All assignees</option>
-            {staff?.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </Card>
+      <div className="mb-4 flex gap-1 border-b border-slate-200">
+        <TabButton active={tab === "tasks"} onClick={() => setTab("tasks")} icon={ClipboardList}>
+          Tasks
+        </TabButton>
+        <TabButton active={tab === "recurring"} onClick={() => setTab("recurring")} icon={Repeat}>
+          Recurring
+        </TabButton>
+      </div>
 
-      <Card>
-        {loading && !data ? (
-          <Loading label="Loading tasks…" />
-        ) : error ? (
-          <p className="p-6 text-sm text-rose-600">Failed to load: {error}</p>
-        ) : !data || data.length === 0 ? (
-          <EmptyState
-            icon={ClipboardList}
-            title="No tasks match"
-            message="Adjust the filters or create a new compliance task."
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-xs font-medium text-slate-500">
-                  <th className="px-5 py-3">Task</th>
-                  <th className="px-5 py-3">Client</th>
-                  <th className="px-5 py-3">Assignee</th>
-                  <th className="px-5 py-3">Due</th>
-                  <th className="px-5 py-3">Priority</th>
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {data.map((t) => {
-                  const overdue =
-                    t.status !== "Completed" && (daysUntil(t.dueDate) ?? 0) < 0;
-                  return (
-                    <tr key={t.id} className="hover:bg-slate-50">
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-2">
-                          {t.scheduleId && (
-                            <Repeat
-                              className="h-3.5 w-3.5 shrink-0 text-brand-400"
-                              aria-label="Recurring"
-                            />
-                          )}
-                          <span className="font-medium text-slate-800">{t.title}</span>
-                          <Badge tone={CATEGORY_TONE[t.category]}>{t.category}</Badge>
-                        </div>
-                        {t.description && (
-                          <p className="mt-0.5 max-w-md truncate text-xs text-slate-500">
-                            {t.description}
-                          </p>
-                        )}
-                        {t.isReturnFiling && t.filingDate && (
-                          <p className="mt-0.5 flex items-center gap-1 text-xs text-fern-700">
-                            <FileCheck2 className="h-3 w-3 shrink-0" />
-                            Filed {formatDate(t.filingDate)}
-                            {t.ackNumber && <span className="text-slate-400">· Ack {t.ackNumber}</span>}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-5 py-3 text-slate-600">
-                        {t.client?.name ?? <span className="text-slate-400">—</span>}
-                      </td>
-                      <td className="px-5 py-3 text-slate-600">
-                        {t.assignee?.name ?? <span className="text-slate-400">Unassigned</span>}
-                      </td>
-                      <td className="px-5 py-3">
-                        <span className={cn("text-xs", overdue ? "font-medium text-rose-600" : "text-slate-600")}>
-                          {t.dueDate ? dueLabel(t.dueDate) : "—"}
-                        </span>
-                      </td>
-                      <td className="px-5 py-3">
-                        <Badge tone={PRIORITY_TONE[t.priority]}>{t.priority}</Badge>
-                      </td>
-                      <td className="px-5 py-3">
-                        {canManage ? (
-                          <select
-                            value={t.status}
-                            onChange={(e) => quickStatus(t, e.target.value)}
-                            className={cn(
-                              "cursor-pointer rounded-full border-0 px-2 py-1 text-xs font-medium ring-1 ring-inset focus:ring-2 focus:ring-brand-300 focus:outline-none",
-                              statusPillClass(t.status),
-                            )}
-                          >
-                            {TASK_STATUSES.map((s) => (
-                              <option key={s}>{s}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span
-                            className={cn(
-                              "inline-block rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset",
-                              statusPillClass(t.status),
-                            )}
-                          >
-                            {t.status}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-5 py-3">
-                        <div className="flex items-center justify-end gap-1">
-                          {canManage && t.isReturnFiling && t.status !== "Completed" && (
-                            <button
-                              onClick={() => setFilingFor(t)}
-                              className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-fern-700 hover:bg-fern-50"
-                              title="Record return filing"
-                            >
-                              <FileCheck2 className="h-4 w-4" /> Record filing
-                            </button>
-                          )}
-                          {canManage && (
-                            <button
-                              onClick={() => {
-                                setEditing(t);
-                                setFormOpen(true);
-                              }}
-                              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                              title="Edit"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                          )}
-                          {canDelete && (
-                            <button
-                              onClick={() => setToDelete(t)}
-                              className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                              title="Delete"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          )}
-                          {!canManage && !canDelete && (
-                            <span className="text-xs text-slate-300">—</span>
-                          )}
-                        </div>
-                      </td>
+      {tab === "recurring" ? (
+        <RecurringPanel addSignal={addRecurring} />
+      ) : (
+        <>
+          <Card className="mb-4">
+            <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="relative sm:col-span-2 lg:col-span-1">
+                <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Search tasks…"
+                  className="w-full rounded-lg border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+                />
+              </div>
+              <FilterSelect value={status} onChange={setStatus} label="status" options={TASK_STATUSES} />
+              <FilterSelect value={category} onChange={setCategory} label="category" options={TASK_CATEGORIES} />
+              <select
+                value={assignee}
+                onChange={(e) => setAssignee(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+              >
+                <option value="All">All assignees</option>
+                {staff?.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </Card>
+
+          <Card>
+            {loading && !data ? (
+              <Loading label="Loading tasks…" />
+            ) : error ? (
+              <p className="p-6 text-sm text-rose-600">Failed to load: {error}</p>
+            ) : !data || data.length === 0 ? (
+              <EmptyState icon={ClipboardList} title="No tasks match" message="Adjust the filters or create a new task." />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-left text-xs font-medium text-slate-500">
+                      <th className="px-5 py-3">Task</th>
+                      <th className="px-5 py-3">Client</th>
+                      <th className="px-5 py-3">Assignee</th>
+                      <th className="px-5 py-3">Due</th>
+                      <th className="px-5 py-3">Priority</th>
+                      <th className="px-5 py-3">Status</th>
+                      <th className="px-5 py-3 text-right">Actions</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {data.map((t) => {
+                      const overdue = t.status !== "Completed" && (daysUntil(t.dueDate) ?? 0) < 0;
+                      const meta = taskMeta(t);
+                      const chk = checklistDone(t.checklist);
+                      return (
+                        <tr key={t.id} className="hover:bg-slate-50">
+                          <td className="px-5 py-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {t.scheduleId && (
+                                <Repeat className="h-3.5 w-3.5 shrink-0 text-brand-400" aria-label="Recurring" />
+                              )}
+                              <span className="font-medium text-slate-800">{t.title}</span>
+                              <Badge tone={CATEGORY_TONE[t.category]}>{t.category}</Badge>
+                              {chk && (
+                                <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                                  <ListChecks className="h-3.5 w-3.5" />
+                                  {chk.done}/{chk.total}
+                                </span>
+                              )}
+                            </div>
+                            {meta.length > 0 && (
+                              <p className="mt-0.5 text-xs text-slate-500">{meta.join("  ·  ")}</p>
+                            )}
+                            {t.description && (
+                              <p className="mt-0.5 max-w-md truncate text-xs text-slate-400">{t.description}</p>
+                            )}
+                            {t.isReturnFiling && t.filingDate && (
+                              <p className="mt-0.5 flex items-center gap-1 text-xs text-fern-700">
+                                <FileCheck2 className="h-3 w-3 shrink-0" />
+                                Filed {formatDate(t.filingDate)}
+                                {t.ackNumber && <span className="text-slate-400">· Ack {t.ackNumber}</span>}
+                              </p>
+                            )}
+                          </td>
+                          <td className="px-5 py-3 text-slate-600">
+                            {t.client?.name ?? <span className="text-slate-400">—</span>}
+                          </td>
+                          <td className="px-5 py-3 text-slate-600">
+                            {t.assignee?.name ?? <span className="text-slate-400">Unassigned</span>}
+                          </td>
+                          <td className="px-5 py-3">
+                            <span className={cn("text-xs", overdue ? "font-medium text-rose-600" : "text-slate-600")}>
+                              {t.dueDate ? dueLabel(t.dueDate) : "—"}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3">
+                            <Badge tone={PRIORITY_TONE[t.priority]}>{t.priority}</Badge>
+                          </td>
+                          <td className="px-5 py-3">
+                            {canManage ? (
+                              <select
+                                value={t.status}
+                                onChange={(e) => quickStatus(t, e.target.value)}
+                                className={cn(
+                                  "cursor-pointer rounded-full border-0 px-2 py-1 text-xs font-medium ring-1 ring-inset focus:ring-2 focus:ring-brand-300 focus:outline-none",
+                                  statusPillClass(t.status),
+                                )}
+                              >
+                                {TASK_STATUSES.map((s) => (
+                                  <option key={s}>{s}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span
+                                className={cn(
+                                  "inline-block rounded-full px-2 py-1 text-xs font-medium ring-1 ring-inset",
+                                  statusPillClass(t.status),
+                                )}
+                              >
+                                {t.status}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3">
+                            <div className="flex items-center justify-end gap-1">
+                              {canManage && t.isReturnFiling && t.status !== "Completed" && (
+                                <button
+                                  onClick={() => setFilingFor(t)}
+                                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-fern-700 hover:bg-fern-50"
+                                  title="Record return filing"
+                                >
+                                  <FileCheck2 className="h-4 w-4" /> Record filing
+                                </button>
+                              )}
+                              {canManage && (
+                                <button
+                                  onClick={() => {
+                                    setEditing(t);
+                                    setFormOpen(true);
+                                  }}
+                                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                                  title="Edit"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </button>
+                              )}
+                              {canDelete && (
+                                <button
+                                  onClick={() => setToDelete(t)}
+                                  className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              )}
+                              {!canManage && !canDelete && <span className="text-xs text-slate-300">—</span>}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        </>
+      )}
 
       {formOpen && (
         <TaskForm
           initial={editing}
           clients={clients ?? []}
           staff={staff ?? []}
+          canRecur={canRecur}
           onClose={() => setFormOpen(false)}
           onSaved={() => {
             setFormOpen(false);
@@ -283,6 +358,33 @@ export default function TasksPage() {
         }}
       />
     </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  icon: Icon,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: typeof ClipboardList;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "-mb-px flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium",
+        active
+          ? "border-brand-500 text-brand-700"
+          : "border-transparent text-slate-500 hover:text-slate-700",
+      )}
+    >
+      <Icon className="h-4 w-4" />
+      {children}
+    </button>
   );
 }
 
@@ -328,32 +430,102 @@ function TaskForm({
   initial,
   clients,
   staff,
+  canRecur,
   onClose,
   onSaved,
 }: {
   initial: Task | null;
   clients: Client[];
   staff: Staff[];
+  canRecur: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [form, setForm] = useState<FormState>(
-    initial ?? { category: "GST", status: "Pending", priority: "Medium" },
+    initial ?? { category: "Income Tax", status: "Pending", priority: "Medium" },
   );
+  // Recurring definition fields (only used when the recurring toggle is on).
+  const [recurring, setRecurring] = useState(false);
+  const [freq, setFreq] = useState("Monthly");
+  const [dueDay, setDueDay] = useState(20);
+  const [anchorMonth, setAnchorMonth] = useState(4);
+
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const isEdit = !!initial;
-  const set = (k: keyof FormState, v: string | boolean) =>
+  const FYS = fyOptions();
+
+  function set<K extends keyof FormState>(k: K, v: FormState[K]) {
     setForm((f) => ({ ...f, [k]: v }));
+  }
+
+  // Seed the standard checklist when it's still empty for this category/kind.
+  function seedChecklist(next: FormState) {
+    if (next.checklist && next.checklist.length > 0) return next.checklist;
+    const dc = defaultChecklist(next.category ?? "", {
+      taskType: next.taskType,
+      gstReturnType: next.gstReturnType,
+    });
+    return dc.length > 0 ? dc : next.checklist;
+  }
+
+  function setCategory(v: string) {
+    setForm((f) => {
+      const next = { ...f, category: v, taskType: null, gstReturnType: null };
+      return { ...next, checklist: seedChecklist(next) };
+    });
+  }
+  function setTaskType(v: string) {
+    setForm((f) => {
+      const next = { ...f, taskType: v || null, title: f.title || v };
+      return { ...next, checklist: seedChecklist(next) };
+    });
+  }
+  function setGstReturn(v: string) {
+    setForm((f) => {
+      const label = v ? (GST_RETURN_LABELS[v] ?? v) : "";
+      const next = { ...f, gstReturnType: v || null, title: f.title || label.split(" · ")[0] };
+      return { ...next, checklist: seedChecklist(next) };
+    });
+  }
+
+  function setTdsForm(v: string) {
+    setForm((f) => ({
+      ...f,
+      tdsForm: v || null,
+      title: f.title || (v ? `TDS Return · ${tdsFormLabel(v)}` : ""),
+      checklist: seedChecklist({ ...f, tdsForm: v || null }),
+    }));
+  }
 
   // Return-filing defaults on for GST / ITR / TDS categories until toggled.
-  const isReturnFiling =
-    form.isReturnFiling ?? RETURN_CATEGORIES.includes(form.category ?? "");
+  const isReturnFiling = form.isReturnFiling ?? RETURN_CATEGORIES.includes(form.category ?? "");
+  const cat = form.category ?? "";
+  const gstPeriodic = form.gstReturnType ? GST_PERIODIC_RETURNS.has(form.gstReturnType) : false;
 
   async function submit() {
     setBusy(true);
     setErr(null);
     try {
+      if (recurring && !isEdit) {
+        // Create a recurring obligation and generate its upcoming tasks.
+        await apiMutate("/api/schedules", "POST", {
+          title: form.title,
+          category: form.category,
+          frequency: freq,
+          dueDay: Number(dueDay) || 1,
+          anchorMonth: Number(anchorMonth) || 4,
+          priority: form.priority,
+          active: true,
+          clientId: form.clientId || null,
+          assigneeId: form.assigneeId || null,
+          notes: form.description || null,
+        });
+        await apiMutate("/api/schedules/generate", "POST", { months: 3 });
+        onSaved();
+        return;
+      }
+
       const payload = {
         title: form.title,
         description: form.description,
@@ -363,6 +535,18 @@ function TaskForm({
         dueDate: form.dueDate || null,
         clientId: form.clientId || null,
         assigneeId: form.assigneeId || null,
+        taskType: cat === "Income Tax" ? form.taskType || null : null,
+        financialYear: form.financialYear || null,
+        periodMonth: cat === "GST" && gstPeriodic && form.gstPeriodicity === "Monthly" ? form.periodMonth ?? null : null,
+        periodQuarter:
+          cat === "TDS" || (cat === "GST" && gstPeriodic && form.gstPeriodicity === "Quarterly")
+            ? form.periodQuarter || null
+            : null,
+        tdsForm: cat === "TDS" ? form.tdsForm || null : null,
+        returnNature: cat === "TDS" ? form.returnNature || null : null,
+        gstReturnType: cat === "GST" ? form.gstReturnType || null : null,
+        gstPeriodicity: cat === "GST" && gstPeriodic ? form.gstPeriodicity || null : null,
+        checklist: form.checklist ?? null,
         isReturnFiling,
         filingDate: isReturnFiling ? form.filingDate || null : null,
         ackNumber: isReturnFiling ? form.ackNumber || null : null,
@@ -382,22 +566,20 @@ function TaskForm({
       open
       onClose={onClose}
       size="lg"
-      title={isEdit ? "Edit Task" : "New Compliance Task"}
+      title={isEdit ? "Edit Task" : "New Task"}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
           <Button onClick={submit} disabled={busy || !form.title}>
-            {busy ? "Saving…" : isEdit ? "Save changes" : "Create task"}
+            {busy ? "Saving…" : isEdit ? "Save changes" : recurring ? "Create recurring task" : "Create task"}
           </Button>
         </>
       }
     >
       {err && (
-        <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-200">
-          {err}
-        </div>
+        <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-200">{err}</div>
       )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Title" required className="sm:col-span-2">
@@ -408,7 +590,7 @@ function TaskForm({
           />
         </Field>
         <Field label="Category" required>
-          <Select value={form.category ?? ""} onChange={(e) => set("category", e.target.value)}>
+          <Select value={form.category ?? ""} onChange={(e) => setCategory(e.target.value)}>
             {TASK_CATEGORIES.map((c) => (
               <option key={c}>{c}</option>
             ))}
@@ -422,10 +604,7 @@ function TaskForm({
           </Select>
         </Field>
         <Field label="Client">
-          <Select
-            value={form.clientId ?? ""}
-            onChange={(e) => set("clientId", e.target.value)}
-          >
+          <Select value={form.clientId ?? ""} onChange={(e) => set("clientId", e.target.value)}>
             <option value="">— Internal / none —</option>
             {clients.map((c) => (
               <option key={c.id} value={c.id}>
@@ -435,10 +614,7 @@ function TaskForm({
           </Select>
         </Field>
         <Field label="Assignee">
-          <Select
-            value={form.assigneeId ?? ""}
-            onChange={(e) => set("assigneeId", e.target.value)}
-          >
+          <Select value={form.assigneeId ?? ""} onChange={(e) => set("assigneeId", e.target.value)}>
             <option value="">— Unassigned —</option>
             {staff.map((s) => (
               <option key={s.id} value={s.id}>
@@ -447,64 +623,321 @@ function TaskForm({
             ))}
           </Select>
         </Field>
-        <Field label="Status">
-          <Select value={form.status ?? ""} onChange={(e) => set("status", e.target.value)}>
-            {TASK_STATUSES.map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Due date">
-          <Input
-            type="date"
-            value={toDateInput(form.dueDate)}
-            onChange={(e) => set("dueDate", e.target.value)}
-          />
-        </Field>
-        <Field label="Description" className="sm:col-span-2">
-          <Textarea
-            value={form.description ?? ""}
-            onChange={(e) => set("description", e.target.value)}
-            placeholder="Scope, notes, checklist…"
-          />
-        </Field>
 
-        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:col-span-2">
-          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
-            <input
-              type="checkbox"
-              checked={isReturnFiling}
-              onChange={(e) => set("isReturnFiling", e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+        {/* One-time vs recurring */}
+        {!isEdit && canRecur && (
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:col-span-2">
+            <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+              <input
+                type="checkbox"
+                checked={recurring}
+                onChange={(e) => setRecurring(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+              />
+              <Repeat className="h-4 w-4 text-brand-600" />
+              Make this a recurring task
+            </label>
+            <p className="mt-1 pl-6 text-xs text-slate-500">
+              Recurring tasks are generated automatically each period from the cadence below; the exact period is set
+              on each occurrence.
+            </p>
+            {recurring && (
+              <div className="mt-3 grid grid-cols-1 gap-4 pl-6 sm:grid-cols-2">
+                <Field label="Frequency">
+                  <Select value={freq} onChange={(e) => setFreq(e.target.value)}>
+                    {SCHEDULE_FREQUENCIES.map((f) => (
+                      <option key={f}>{f}</option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Due day of month" hint="1–31 (clamped to shorter months)">
+                  <Input type="number" min={1} max={31} value={dueDay} onChange={(e) => setDueDay(Number(e.target.value))} />
+                </Field>
+                {freq !== "Monthly" && (
+                  <Field label="Cycle anchor month" className="sm:col-span-2">
+                    <Select value={String(anchorMonth)} onChange={(e) => setAnchorMonth(Number(e.target.value))}>
+                      {MONTHS.map((m, i) => (
+                        <option key={m} value={i + 1}>
+                          {m}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* One-time task: status, due date, and category-specific fields */}
+        {!recurring && (
+          <>
+            <Field label="Status">
+              <Select value={form.status ?? ""} onChange={(e) => set("status", e.target.value)}>
+                {TASK_STATUSES.map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Due date">
+              <Input type="date" value={toDateInput(form.dueDate)} onChange={(e) => set("dueDate", e.target.value)} />
+            </Field>
+
+            {cat === "Income Tax" && (
+              <>
+                <Field label="Income-tax task type">
+                  <Select value={form.taskType ?? ""} onChange={(e) => setTaskType(e.target.value)}>
+                    <option value="">— Select —</option>
+                    {INCOME_TAX_TASK_TYPES.map((t) => (
+                      <option key={t}>{t}</option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Assessment / Tax Year" hint="Labelled AY or TY per the Income-tax Act 2025.">
+                  <Select value={form.financialYear ?? ""} onChange={(e) => set("financialYear", e.target.value)}>
+                    <option value="">— Select year —</option>
+                    {FYS.map((fy) => (
+                      <option key={fy} value={fy}>
+                        {taxPeriodOption(fy)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </>
+            )}
+
+            {cat === "TDS" && (
+              <>
+                <Field label="TDS return form" hint="New Income-tax Act 2025 / erstwhile 1961-Act number.">
+                  <Select value={form.tdsForm ?? ""} onChange={(e) => setTdsForm(e.target.value)}>
+                    <option value="">— Select form —</option>
+                    {TDS_RETURN_FORMS.map((f) => (
+                      <option key={f.newNo} value={f.newNo}>
+                        Form {f.newNo} / {f.oldNo} · {f.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Quarter">
+                  <Select value={form.periodQuarter ?? ""} onChange={(e) => set("periodQuarter", e.target.value)}>
+                    <option value="">— Select quarter —</option>
+                    {QUARTERS.map((qk) => (
+                      <option key={qk} value={qk}>
+                        {QUARTER_LABELS[qk]}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Assessment / Tax Year">
+                  <Select value={form.financialYear ?? ""} onChange={(e) => set("financialYear", e.target.value)}>
+                    <option value="">— Select year —</option>
+                    {FYS.map((fy) => (
+                      <option key={fy} value={fy}>
+                        {taxPeriodOption(fy)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Return nature">
+                  <Select value={form.returnNature ?? ""} onChange={(e) => set("returnNature", e.target.value)}>
+                    <option value="">— Select —</option>
+                    {TDS_RETURN_NATURE.map((n) => (
+                      <option key={n}>{n}</option>
+                    ))}
+                  </Select>
+                </Field>
+              </>
+            )}
+
+            {cat === "GST" && (
+              <>
+                <Field label="GST return">
+                  <Select value={form.gstReturnType ?? ""} onChange={(e) => setGstReturn(e.target.value)}>
+                    <option value="">— Select return —</option>
+                    {GST_RETURN_TYPES.map((g) => (
+                      <option key={g} value={g}>
+                        {GST_RETURN_LABELS[g] ?? g}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                {gstPeriodic ? (
+                  <>
+                    <Field label="Periodicity">
+                      <Select
+                        value={form.gstPeriodicity ?? ""}
+                        onChange={(e) => set("gstPeriodicity", e.target.value)}
+                      >
+                        <option value="">— Select —</option>
+                        {GST_PERIODICITY.map((p) => (
+                          <option key={p}>{p}</option>
+                        ))}
+                      </Select>
+                    </Field>
+                    {form.gstPeriodicity === "Monthly" && (
+                      <Field label="Month">
+                        <Select
+                          value={form.periodMonth ? String(form.periodMonth) : ""}
+                          onChange={(e) => set("periodMonth", e.target.value ? Number(e.target.value) : null)}
+                        >
+                          <option value="">— Select month —</option>
+                          {MONTHS.map((m, i) => (
+                            <option key={m} value={i + 1}>
+                              {m}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                    )}
+                    {form.gstPeriodicity === "Quarterly" && (
+                      <Field label="Quarter">
+                        <Select value={form.periodQuarter ?? ""} onChange={(e) => set("periodQuarter", e.target.value)}>
+                          <option value="">— Select quarter —</option>
+                          {QUARTERS.map((qk) => (
+                            <option key={qk} value={qk}>
+                              {QUARTER_LABELS[qk]}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                    )}
+                  </>
+                ) : null}
+                <Field label="Financial year">
+                  <Select value={form.financialYear ?? ""} onChange={(e) => set("financialYear", e.target.value)}>
+                    <option value="">— Select FY —</option>
+                    {FYS.map((fy) => (
+                      <option key={fy} value={fy}>
+                        FY {fy}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </>
+            )}
+
+            <Field label="Description" className="sm:col-span-2">
+              <Textarea
+                value={form.description ?? ""}
+                onChange={(e) => set("description", e.target.value)}
+                placeholder="Scope, notes…"
+              />
+            </Field>
+
+            {/* Checklist */}
+            <ChecklistEditor
+              items={form.checklist ?? []}
+              onChange={(list) => set("checklist", list)}
             />
-            <FileCheck2 className="h-4 w-4 text-fern-600" />
-            Return-filing task (GST, ITR, TDS…)
-          </label>
-          <p className="mt-1 pl-6 text-xs text-slate-500">
-            Enter the filing date &amp; acknowledgment to record the return — the
-            task is then marked complete automatically.
-          </p>
-          {isReturnFiling && (
-            <div className="mt-3 grid grid-cols-1 gap-4 pl-6 sm:grid-cols-2">
-              <Field label="Filing date" hint="Setting this completes the task.">
-                <Input
-                  type="date"
-                  value={toDateInput(form.filingDate)}
-                  onChange={(e) => set("filingDate", e.target.value)}
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:col-span-2">
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={isReturnFiling}
+                  onChange={(e) => set("isReturnFiling", e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                 />
-              </Field>
-              <Field label="Acknowledgment no.">
-                <Input
-                  value={form.ackNumber ?? ""}
-                  onChange={(e) => set("ackNumber", e.target.value)}
-                  placeholder="e.g. 123456780123456"
-                />
-              </Field>
+                <FileCheck2 className="h-4 w-4 text-fern-600" />
+                Return-filing task (GST, ITR, TDS…)
+              </label>
+              <p className="mt-1 pl-6 text-xs text-slate-500">
+                Enter the filing date &amp; acknowledgment to record the return — the task is then marked complete
+                automatically.
+              </p>
+              {isReturnFiling && (
+                <div className="mt-3 grid grid-cols-1 gap-4 pl-6 sm:grid-cols-2">
+                  <Field label="Filing date" hint="Setting this completes the task.">
+                    <Input
+                      type="date"
+                      value={toDateInput(form.filingDate)}
+                      onChange={(e) => set("filingDate", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Acknowledgment no.">
+                    <Input
+                      value={form.ackNumber ?? ""}
+                      onChange={(e) => set("ackNumber", e.target.value)}
+                      placeholder="e.g. 123456780123456"
+                    />
+                  </Field>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </>
+        )}
       </div>
     </Modal>
+  );
+}
+
+function ChecklistEditor({
+  items,
+  onChange,
+}: {
+  items: ChecklistItem[];
+  onChange: (list: ChecklistItem[]) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const toggle = (i: number) =>
+    onChange(items.map((it, idx) => (idx === i ? { ...it, done: !it.done } : it)));
+  const remove = (i: number) => onChange(items.filter((_, idx) => idx !== i));
+  const add = () => {
+    const label = draft.trim();
+    if (!label) return;
+    onChange([...items, { label, done: false }]);
+    setDraft("");
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3 sm:col-span-2">
+      <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+        <ListChecks className="h-4 w-4 text-brand-600" />
+        Checklist
+        <span className="text-xs font-normal text-slate-400">
+          {items.length > 0 ? `${items.filter((i) => i.done).length}/${items.length} done` : "optional"}
+        </span>
+      </div>
+      {items.length > 0 && (
+        <ul className="mb-2 space-y-1">
+          {items.map((it, i) => (
+            <li key={i} className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={it.done}
+                onChange={() => toggle(i)}
+                className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+              />
+              <span className={cn("flex-1", it.done && "text-slate-400 line-through")}>{it.label}</span>
+              <button
+                type="button"
+                onClick={() => remove(i)}
+                className="rounded p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-500"
+                title="Remove"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex items-center gap-2">
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              add();
+            }
+          }}
+          placeholder="Add a checklist step…"
+        />
+        <Button type="button" variant="secondary" onClick={add} disabled={!draft.trim()}>
+          <Plus className="h-4 w-4" /> Add
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -517,9 +950,7 @@ function RecordFilingModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [filingDate, setFilingDate] = useState(
-    toDateInput(task.filingDate) || toDateInput(new Date()),
-  );
+  const [filingDate, setFilingDate] = useState(toDateInput(task.filingDate) || toDateInput(new Date()));
   const [ackNumber, setAckNumber] = useState(task.ackNumber ?? "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -556,27 +987,17 @@ function RecordFilingModal({
       }
     >
       {err && (
-        <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-200">
-          {err}
-        </div>
+        <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-200">{err}</div>
       )}
       <div className="rounded-lg bg-fern-50 px-3 py-2 text-xs text-fern-800 ring-1 ring-fern-200">
         Recording the filing marks this task as <strong>Completed</strong>.
       </div>
       <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Filing date" required>
-          <Input
-            type="date"
-            value={filingDate}
-            onChange={(e) => setFilingDate(e.target.value)}
-          />
+          <Input type="date" value={filingDate} onChange={(e) => setFilingDate(e.target.value)} />
         </Field>
         <Field label="Acknowledgment no.">
-          <Input
-            value={ackNumber}
-            onChange={(e) => setAckNumber(e.target.value)}
-            placeholder="e.g. 123456780123456"
-          />
+          <Input value={ackNumber} onChange={(e) => setAckNumber(e.target.value)} placeholder="e.g. 123456780123456" />
         </Field>
       </div>
     </Modal>

@@ -2,10 +2,21 @@ import { prisma } from "@/lib/prisma";
 import { ok, parse, route } from "@/lib/api";
 import { requireUser, requirePermission } from "@/lib/auth/session";
 import { taskCreateSchema } from "@/lib/validation";
+import { LEGACY_CATEGORY_MAP } from "@/lib/constants";
 import type { Prisma } from "@prisma/client";
+
+// Migrate legacy category values (ROC/MCA, Accounting) to the current master
+// groups in place. Idempotent and cheap — a no-op once everything is migrated.
+async function backfillCategories() {
+  for (const [oldVal, newVal] of Object.entries(LEGACY_CATEGORY_MAP)) {
+    await prisma.task.updateMany({ where: { category: oldVal }, data: { category: newVal } });
+    await prisma.complianceSchedule.updateMany({ where: { category: oldVal }, data: { category: newVal } });
+  }
+}
 
 export const GET = route(async (req) => {
   await requireUser();
+  await backfillCategories();
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status")?.trim();
   const category = searchParams.get("category")?.trim();
