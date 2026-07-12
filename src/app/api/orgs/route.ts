@@ -7,7 +7,7 @@ import { organizationSchema } from "@/lib/validation";
 const LIST_SELECT = {
   id: true, name: true, tagline: true, address: true, phone: true, email: true,
   pan: true, gstin: true, sacCode: true, bankName: true, bankAccount: true,
-  bankIfsc: true, bankUpi: true, invoiceNote: true, isDefault: true,
+  bankIfsc: true, bankUpi: true, invoiceNote: true, invoicePrefix: true, isDefault: true,
   logoMime: true, createdAt: true,
   _count: { select: { invoices: true } },
 } as const;

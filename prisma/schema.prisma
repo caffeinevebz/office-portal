@@ -26,6 +26,9 @@ model Client {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  groupId String?
+  group   ClientGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
   tasks      Task[]
   invoices   Invoice[]
   documents  Document[]
@@ -33,6 +36,40 @@ model Client {
   dscs       Dsc[]
   packets    DocPacket[]
   itrFilings ItrFiling[]
+  tradeNames TradeName[]
+}
+
+/// A physical/logical grouping of clients (e.g. a family or business group).
+/// Each group has a short unique code assigned manually by the firm.
+model ClientGroup {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique // manually assigned short code, e.g. "BHNS"
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clients Client[]
+}
+
+/// A firm / trade name a client operates under. A client (often a
+/// proprietor) may run one or more concerns, each possibly with its own
+/// GSTIN and address; an invoice can be billed under one of these instead
+/// of the client's legal name.
+model TradeName {
+  id        String   @id @default(cuid())
+  name      String
+  gstin     String?
+  pan       String?
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clientId String
+  client   Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+
+  @@index([clientId])
 }
 
 /// A pending email invitation to join the firm's team.
@@ -298,6 +335,8 @@ model Organization {
   bankIfsc      String?
   bankUpi       String?
   invoiceNote   String?
+  // Short initials used to build invoice / receipt numbers, e.g. "APSB".
+  invoicePrefix String?
   isDefault     Boolean  @default(false)
   logo          Bytes? // small PNG/JPEG shown in the app and on PDFs
   logoMime      String?
@@ -319,18 +358,25 @@ model Invoice {
   issueDate     DateTime  @default(now())
   dueDate       DateTime?
   paidDate      DateTime?
+  receiptNumber String?   @unique // assigned when marked Paid, e.g. APSB/26-27/R001
   createdAt     DateTime  @default(now())
 
   clientId       String
   client         Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   organizationId String?
   organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  // Bill under a client trade name instead of the legal name (optional).
+  tradeNameId    String?
+  tradeName      TradeName?    @relation(fields: [tradeNameId], references: [id], onDelete: SetNull)
 }
 
-/// An Income Tax Return engagement for a client, per assessment year.
+/// An Income Tax Return engagement for a client, keyed by financial year.
+/// The income-tax period label (AY 2026-27 vs TY 2026-27) is derived from
+/// the financial year — see incomeTaxYearLabel().
 model ItrFiling {
   id             String    @id @default(cuid())
-  assessmentYear String // e.g. "2026-27"
+  financialYear  String? // e.g. "2025-26" (backfilled from legacy assessmentYear)
+  assessmentYear String? // legacy; retained for backfill, no longer used in the UI
   formType       String    @default("ITR-1") // ITR-1 … ITR-7
   regime         String    @default("New") // New, Old
   status         String    @default("Documents Awaited") // Documents Awaited, In Preparation, Filed, E-Verified, Processed, Defective
@@ -346,7 +392,7 @@ model ItrFiling {
   assigneeId String?
   assignee   Staff?  @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
 
-  @@unique([clientId, assessmentYear])
+  @@unique([clientId, financialYear])
 }
 
 /// A document record tracked for a client.

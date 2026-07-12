@@ -15,8 +15,10 @@ export const GET = route(async (_req, ctx: Ctx) => {
         orderBy: [{ status: "asc" }, { dueDate: "asc" }],
         include: { assignee: true },
       },
-      invoices: { orderBy: { issueDate: "desc" } },
+      invoices: { orderBy: { issueDate: "desc" }, include: { tradeName: true } },
       documents: { orderBy: { uploadedAt: "desc" } },
+      tradeNames: { orderBy: { name: "asc" } },
+      group: true,
     },
   });
   if (!client) return fail("Client not found", 404);

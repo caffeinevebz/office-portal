@@ -179,7 +179,18 @@ export default function InvoicesPage() {
                         </p>
                       )}
                     </td>
-                    <td className="px-5 py-3 text-slate-600">{i.client?.name ?? "—"}</td>
+                    <td className="px-5 py-3 text-slate-600">
+                      {i.tradeName ? (
+                        <>
+                          <span className="text-slate-800">{i.tradeName.name}</span>
+                          <span className="block text-[11px] text-slate-400">
+                            {i.client?.name}
+                          </span>
+                        </>
+                      ) : (
+                        (i.client?.name ?? "—")
+                      )}
+                    </td>
                     <td className="px-5 py-3 text-slate-600">{formatDate(i.issueDate)}</td>
                     <td className="px-5 py-3 text-slate-600">{formatDate(i.dueDate)}</td>
                     <td className="px-5 py-3 text-right">
@@ -355,11 +366,10 @@ function InvoiceForm({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const suggested = `INV-2627-${String(Math.floor(Math.random() * 900) + 100)}`;
   const defaultOrgId = orgs.find((o) => o.isDefault)?.id ?? orgs[0]?.id ?? "";
   const [form, setForm] = useState<FormState>(
     initial ?? {
-      invoiceNumber: suggested,
+      invoiceNumber: "",
       taxRate: 18,
       gstMode: "Auto",
       status: "Draft",
@@ -378,13 +388,17 @@ function InvoiceForm({
   const gstMode = form.gstMode ?? "Auto";
   const total = withTax({ amount, taxRate: rate, gstMode });
 
+  const selectedClient = clients.find((c) => c.id === form.clientId);
+  const tradeNames = selectedClient?.tradeNames ?? [];
+
   async function submit() {
     setBusy(true);
     setErr(null);
     try {
       const payload = {
-        invoiceNumber: form.invoiceNumber,
+        invoiceNumber: form.invoiceNumber || null, // blank → auto-generated
         clientId: form.clientId,
+        tradeNameId: form.tradeNameId || null,
         organizationId: form.organizationId || null,
         description: form.description,
         amount,
@@ -415,7 +429,7 @@ function InvoiceForm({
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={busy || !form.invoiceNumber || !form.clientId}>
+          <Button onClick={submit} disabled={busy || !form.clientId}>
             {busy ? "Saving…" : isEdit ? "Save changes" : "Create invoice"}
           </Button>
         </>
@@ -427,14 +441,24 @@ function InvoiceForm({
         </div>
       )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Invoice number" required>
+        <Field
+          label="Invoice number"
+          hint={isEdit ? undefined : "Leave blank to auto-generate (e.g. APSB/26-27/001)"}
+        >
           <Input
             value={form.invoiceNumber ?? ""}
             onChange={(e) => set("invoiceNumber", e.target.value)}
+            placeholder={isEdit ? "" : "Auto"}
           />
         </Field>
         <Field label="Client" required>
-          <Select value={form.clientId ?? ""} onChange={(e) => set("clientId", e.target.value)}>
+          <Select
+            value={form.clientId ?? ""}
+            onChange={(e) => {
+              set("clientId", e.target.value);
+              set("tradeNameId", ""); // reset bill-to when the client changes
+            }}
+          >
             <option value="">— Select client —</option>
             {clients.map((c) => (
               <option key={c.id} value={c.id}>
@@ -443,6 +467,23 @@ function InvoiceForm({
             ))}
           </Select>
         </Field>
+        {selectedClient && tradeNames.length > 0 && (
+          <Field
+            label="Bill to"
+            hint="Raise this invoice under the client's legal name or a trade name"
+            className="sm:col-span-2"
+          >
+            <Select value={form.tradeNameId ?? ""} onChange={(e) => set("tradeNameId", e.target.value)}>
+              <option value="">{selectedClient.name} (legal name)</option>
+              {tradeNames.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                  {t.gstin ? ` · GSTIN ${t.gstin}` : ""}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         {orgs.length > 0 && (
           <Field
             label="Billing organization"

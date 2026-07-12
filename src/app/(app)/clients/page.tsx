@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, Plus, Pencil, Trash2, Eye, Users, FileUp, Download } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Eye, Users, FileUp, Download, FolderTree } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
-import type { Client } from "@/lib/types";
+import type { Client, ClientGroup } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -26,13 +26,16 @@ export default function ClientsPage() {
   const canDelete = can("deleteClients");
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("All");
-  const url = `/api/clients?q=${encodeURIComponent(q)}&status=${status}`;
+  const [group, setGroup] = useState("All");
+  const url = `/api/clients?q=${encodeURIComponent(q)}&status=${status}&groupId=${group}`;
   const { data, loading, error, refresh } = useResource<Client[]>(url);
+  const groups = useResource<ClientGroup[]>("/api/client-groups");
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
   const [toDelete, setToDelete] = useState<Client | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [groupsOpen, setGroupsOpen] = useState(false);
 
   function openCreate() {
     setEditing(null);
@@ -51,6 +54,9 @@ export default function ClientsPage() {
         actions={
           canManage ? (
             <>
+              <Button variant="secondary" onClick={() => setGroupsOpen(true)}>
+                <FolderTree className="h-4 w-4" /> Groups
+              </Button>
               <Button variant="secondary" onClick={() => setImportOpen(true)}>
                 <FileUp className="h-4 w-4" /> Import Excel
               </Button>
@@ -73,6 +79,19 @@ export default function ClientsPage() {
               className="w-full rounded-lg border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
             />
           </div>
+          <select
+            value={group}
+            onChange={(e) => setGroup(e.target.value)}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+          >
+            <option value="All">All groups</option>
+            <option value="None">Ungrouped</option>
+            {(groups.data ?? []).map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.code} · {g.name}
+              </option>
+            ))}
+          </select>
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
@@ -110,6 +129,7 @@ export default function ClientsPage() {
               <thead>
                 <tr className="border-b border-slate-100 text-left text-xs font-medium text-slate-500">
                   <th className="px-5 py-3">Client</th>
+                  <th className="px-5 py-3">Group</th>
                   <th className="px-5 py-3">PAN</th>
                   <th className="px-5 py-3">GSTIN</th>
                   <th className="px-5 py-3">Open Tasks</th>
@@ -135,6 +155,13 @@ export default function ClientsPage() {
                           </span>
                         </span>
                       </Link>
+                    </td>
+                    <td className="px-5 py-3">
+                      {c.group ? (
+                        <Badge tone="indigo">{c.group.code}</Badge>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
                     </td>
                     <td className="px-5 py-3 font-mono text-xs text-slate-600">
                       {c.pan ?? "—"}
@@ -188,9 +215,21 @@ export default function ClientsPage() {
       {formOpen && (
         <ClientForm
           initial={editing}
+          groups={groups.data ?? []}
           onClose={() => setFormOpen(false)}
           onSaved={() => {
             setFormOpen(false);
+            refresh();
+          }}
+        />
+      )}
+
+      {groupsOpen && (
+        <GroupsModal
+          groups={groups.data ?? []}
+          onClose={() => setGroupsOpen(false)}
+          onChanged={() => {
+            groups.refresh();
             refresh();
           }}
         />
@@ -219,10 +258,12 @@ export default function ClientsPage() {
 
 function ClientForm({
   initial,
+  groups,
   onClose,
   onSaved,
 }: {
   initial: Client | null;
+  groups: ClientGroup[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -248,6 +289,7 @@ function ClientForm({
         phone: form.phone,
         contactPerson: form.contactPerson,
         address: form.address,
+        groupId: form.groupId || null,
         notes: form.notes,
       };
       if (isEdit) await apiMutate(`/api/clients/${initial!.id}`, "PUT", payload);
@@ -305,6 +347,16 @@ function ClientForm({
           >
             {CLIENT_STATUSES.map((s) => (
               <option key={s}>{s}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Client group" hint="Manage groups from the Groups button" className="sm:col-span-2">
+          <Select value={form.groupId ?? ""} onChange={(e) => set("groupId", e.target.value)}>
+            <option value="">— No group —</option>
+            {groups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.code} · {g.name}
+              </option>
             ))}
           </Select>
         </Field>
@@ -479,6 +531,149 @@ function ImportModal({
           </p>
         </div>
       )}
+    </Modal>
+  );
+}
+
+function GroupsModal({
+  groups,
+  onClose,
+  onChanged,
+}: {
+  groups: ClientGroup[];
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [form, setForm] = useState<{ id?: string; code: string; name: string; notes: string }>({
+    code: "",
+    name: "",
+    notes: "",
+  });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const editing = !!form.id;
+
+  function reset() {
+    setForm({ code: "", name: "", notes: "" });
+    setErr(null);
+  }
+
+  async function save() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const body = { code: form.code, name: form.name, notes: form.notes };
+      if (editing) await apiMutate(`/api/client-groups/${form.id}`, "PUT", body);
+      else await apiMutate("/api/client-groups", "POST", body);
+      reset();
+      onChanged();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to save the group");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(g: ClientGroup) {
+    setBusy(true);
+    try {
+      await apiMutate(`/api/client-groups/${g.id}`, "DELETE");
+      if (form.id === g.id) reset();
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="lg"
+      title="Client groups"
+      description="Physically segregate clients into groups, each with a short unique code you assign."
+      footer={<Button variant="secondary" onClick={onClose}>Close</Button>}
+    >
+      {err && (
+        <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-200">
+          {err}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[7rem_1fr_auto] sm:items-end">
+        <Field label="Code" required>
+          <Input
+            value={form.code}
+            onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
+            placeholder="BHNS"
+            maxLength={16}
+          />
+        </Field>
+        <Field label="Group name" required>
+          <Input
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="e.g. Bhansali Family Group"
+          />
+        </Field>
+        <div className="flex gap-2">
+          {editing && (
+            <Button variant="secondary" onClick={reset} disabled={busy}>
+              Cancel
+            </Button>
+          )}
+          <Button onClick={save} disabled={busy || !form.code.trim() || !form.name.trim()}>
+            {editing ? "Save" : "Add group"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
+        {groups.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-slate-400">No groups yet.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-medium text-slate-500">
+                <th className="px-4 py-2.5">Code</th>
+                <th className="px-4 py-2.5">Name</th>
+                <th className="px-4 py-2.5">Clients</th>
+                <th className="px-4 py-2.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {groups.map((g) => (
+                <tr key={g.id} className="hover:bg-slate-50">
+                  <td className="px-4 py-2.5">
+                    <Badge tone="indigo">{g.code}</Badge>
+                  </td>
+                  <td className="px-4 py-2.5 text-slate-700">{g.name}</td>
+                  <td className="px-4 py-2.5 text-slate-500">{g._count?.clients ?? 0}</td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => setForm({ id: g.id, code: g.code, name: g.name, notes: g.notes ?? "" })}
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                        title="Edit"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => remove(g)}
+                        disabled={busy}
+                        className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </Modal>
   );
 }

@@ -45,9 +45,30 @@ export const clientCreateSchema = z.object({
   phone: optionalText,
   address: optionalText,
   contactPerson: optionalText,
+  groupId: optionalText,
   notes: optionalText,
 });
 export const clientUpdateSchema = clientCreateSchema.partial();
+
+// A firm / trade name a client operates under.
+export const tradeNameSchema = z.object({
+  name: z.string().trim().min(1, "Trade name is required"),
+  gstin: optionalText,
+  pan: optionalText,
+  address: optionalText,
+});
+
+// A client group with a manually-assigned unique code.
+export const clientGroupSchema = z.object({
+  name: z.string().trim().min(1, "Group name is required"),
+  code: z
+    .string()
+    .trim()
+    .min(1, "Code is required")
+    .max(16)
+    .regex(/^[A-Za-z0-9-]+$/, "Use letters, numbers and hyphens only"),
+  notes: optionalText,
+});
 
 export const staffCreateSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
@@ -85,8 +106,10 @@ export const taskFilingSchema = z.object({
 });
 
 export const invoiceCreateSchema = z.object({
-  invoiceNumber: z.string().trim().min(1, "Invoice number is required"),
+  // Optional: auto-generated (PREFIX/FY/NNN) when blank.
+  invoiceNumber: optionalText,
   clientId: z.string().trim().min(1, "Client is required"),
+  tradeNameId: optionalText,
   organizationId: optionalText,
   description: optionalText,
   amount: z.coerce.number().min(0, "Amount must be positive"),
@@ -177,15 +200,23 @@ export const organizationSchema = z.object({
   bankIfsc: optionalText,
   bankUpi: optionalText,
   invoiceNote: optionalText,
+  invoicePrefix: z
+    .union([
+      z.string().trim().max(10).regex(/^[A-Za-z0-9]+$/, "Letters and numbers only"),
+      z.literal(""),
+      z.null(),
+    ])
+    .optional()
+    .transform((v) => (v ? v.toUpperCase() : null)),
 });
 export const organizationUpdateSchema = organizationSchema.partial();
 
 export const itrCreateSchema = z.object({
   clientId: z.string().trim().min(1, "Client is required"),
-  assessmentYear: z
+  financialYear: z
     .string()
     .trim()
-    .regex(/^\d{4}-\d{2}$/, "Assessment year must look like 2026-27"),
+    .regex(/^\d{4}-\d{2}$/, "Financial year must look like 2025-26"),
   formType: oneOf(ITR_FORMS, "ITR form").default("ITR-1"),
   regime: oneOf(ITR_REGIMES, "regime").default("New"),
   status: oneOf(ITR_STATUSES, "status").default("Documents Awaited"),

@@ -12,14 +12,19 @@ import {
   Receipt,
   ClipboardList,
   Send,
+  Plus,
+  Pencil,
+  Trash2,
+  Building2,
 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
-import type { ClientDetail } from "@/lib/types";
+import type { ClientDetail, TradeName } from "@/lib/types";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Field, Input, Textarea } from "@/components/ui/Field";
 import { Loading } from "@/components/ui/EmptyState";
 import {
@@ -44,7 +49,7 @@ const withTax = (i: { amount: number; taxRate: number; gstMode?: string }) =>
 export default function ClientDetailPage() {
   const params = useParams<{ id: string }>();
   const { can } = useAuth();
-  const { data: c, loading, error } = useResource<ClientDetail>(
+  const { data: c, loading, error, refresh } = useResource<ClientDetail>(
     `/api/clients/${params.id}`,
   );
   const [composeOpen, setComposeOpen] = useState(false);
@@ -89,6 +94,11 @@ export default function ClientDetailPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-lg font-semibold text-slate-900">{c.name}</h1>
                 <Badge tone={CLIENT_STATUS_TONE[c.status]}>{c.status}</Badge>
+                {c.group && (
+                  <Badge tone="indigo">
+                    {c.group.code} · {c.group.name}
+                  </Badge>
+                )}
               </div>
               <p className="mt-0.5 text-sm text-slate-500">
                 {c.type}
@@ -138,6 +148,8 @@ export default function ClientDetailPage() {
           </div>
         )}
       </Card>
+
+      <TradeNamesCard client={c} canManage={can("manageClients")} onChanged={refresh} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Tasks */}
@@ -347,5 +359,183 @@ function Empty({
     <div className="flex items-center gap-2 px-5 py-8 text-sm text-slate-400">
       <Icon className="h-4 w-4" /> {label}
     </div>
+  );
+}
+
+function TradeNamesCard({
+  client,
+  canManage,
+  onChanged,
+}: {
+  client: ClientDetail;
+  canManage: boolean;
+  onChanged: () => void;
+}) {
+  const [editing, setEditing] = useState<TradeName | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [toDelete, setToDelete] = useState<TradeName | null>(null);
+  const tradeNames = client.tradeNames ?? [];
+
+  return (
+    <Card className="mb-4">
+      <CardHeader
+        title={
+          <span className="flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-brand-500" /> Firm / trade names
+          </span>
+        }
+        subtitle="Proprietorship concerns or brand names this client operates under"
+        action={
+          canManage ? (
+            <Button size="sm" variant="secondary" onClick={() => setAdding(true)}>
+              <Plus className="h-3.5 w-3.5" /> Add
+            </Button>
+          ) : undefined
+        }
+      />
+      {tradeNames.length === 0 ? (
+        <p className="px-5 py-6 text-sm text-slate-400">
+          No trade names yet. Add one to bill invoices under it.
+        </p>
+      ) : (
+        <ul className="divide-y divide-slate-100">
+          {tradeNames.map((t) => (
+            <li key={t.id} className="flex flex-wrap items-start justify-between gap-2 px-5 py-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-slate-800">{t.name}</p>
+                <p className="mt-0.5 flex flex-wrap gap-x-4 text-xs text-slate-500">
+                  {t.gstin && <span>GSTIN {t.gstin}</span>}
+                  {t.pan && <span>PAN {t.pan}</span>}
+                </p>
+                {t.address && <p className="mt-0.5 text-xs text-slate-400">{t.address}</p>}
+              </div>
+              {canManage && (
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => setEditing(t)}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    title="Edit"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setToDelete(t)}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                    title="Delete"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {(adding || editing) && (
+        <TradeNameModal
+          clientId={client.id}
+          initial={editing}
+          onClose={() => {
+            setAdding(false);
+            setEditing(null);
+          }}
+          onSaved={() => {
+            setAdding(false);
+            setEditing(null);
+            onChanged();
+          }}
+        />
+      )}
+
+      <ConfirmDialog
+        open={!!toDelete}
+        onClose={() => setToDelete(null)}
+        title={`Delete trade name "${toDelete?.name}"?`}
+        message="Invoices already billed under it keep their details."
+        onConfirm={async () => {
+          if (toDelete)
+            await apiMutate(`/api/clients/${client.id}/trade-names/${toDelete.id}`, "DELETE");
+          onChanged();
+        }}
+      />
+    </Card>
+  );
+}
+
+function TradeNameModal({
+  clientId,
+  initial,
+  onClose,
+  onSaved,
+}: {
+  clientId: string;
+  initial: TradeName | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState({
+    name: initial?.name ?? "",
+    gstin: initial?.gstin ?? "",
+    pan: initial?.pan ?? "",
+    address: initial?.address ?? "",
+  });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  async function submit() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const url = initial
+        ? `/api/clients/${clientId}/trade-names/${initial.id}`
+        : `/api/clients/${clientId}/trade-names`;
+      await apiMutate(url, initial ? "PUT" : "POST", form);
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={initial ? "Edit trade name" : "Add trade name"}
+      description="A proprietorship concern or brand name. It can carry its own GSTIN and address for invoicing."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={busy || !form.name.trim()}>
+            {busy ? "Saving…" : initial ? "Save changes" : "Add trade name"}
+          </Button>
+        </>
+      }
+    >
+      {err && (
+        <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-200">
+          {err}
+        </div>
+      )}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Firm / trade name" required className="sm:col-span-2">
+          <Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Sunrise Traders" />
+        </Field>
+        <Field label="GSTIN" hint="If this concern has its own GST registration">
+          <Input value={form.gstin} onChange={(e) => set("gstin", e.target.value.toUpperCase())} maxLength={15} />
+        </Field>
+        <Field label="PAN">
+          <Input value={form.pan} onChange={(e) => set("pan", e.target.value.toUpperCase())} maxLength={10} />
+        </Field>
+        <Field label="Address" className="sm:col-span-2">
+          <Textarea value={form.address} onChange={(e) => set("address", e.target.value)} />
+        </Field>
+      </div>
+    </Modal>
   );
 }

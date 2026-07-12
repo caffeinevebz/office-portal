@@ -17,7 +17,7 @@ export const POST = route(async (_req, ctx: Ctx) => {
   const { id } = await ctx.params;
   const invoice = await prisma.invoice.findUnique({
     where: { id },
-    include: { client: true, organization: true },
+    include: { client: true, organization: true, tradeName: true },
   });
   if (!invoice) return fail("Invoice not found", 404);
   const to = invoice.client.email?.trim();
@@ -62,7 +62,7 @@ export const POST = route(async (_req, ctx: Ctx) => {
     updated = await prisma.invoice.update({
       where: { id },
       data: { status: "Sent" },
-      include: { client: true, organization: true },
+      include: { client: true, organization: true, tradeName: true },
     });
   }
   const cfg = await getEmailConfig();

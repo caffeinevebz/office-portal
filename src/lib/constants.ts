@@ -79,13 +79,56 @@ export const ITR_STATUS_TONE: Record<string, keyof typeof TONE> = {
   Defective: "red",
 };
 
-/** Assessment years for the ITR register: current AY and the two before. */
-export function assessmentYears(now = new Date()): string[] {
-  const fyStart = now.getMonth() + 1 >= 4 ? now.getFullYear() : now.getFullYear() - 1;
-  return [0, 1, 2].map((back) => {
-    const s = fyStart - back;
+/** Financial-year label for a date (Indian FY, Apr–Mar), e.g. "2026-27". */
+export function financialYearLabel(d = new Date()): string {
+  const y = d.getFullYear();
+  const start = d.getMonth() + 1 >= 4 ? y : y - 1;
+  return `${start}-${String(start + 1).slice(2)}`;
+}
+
+/** Short FY label for invoice/receipt numbers, e.g. "26-27". */
+export function fyShort(d = new Date()): string {
+  return financialYearLabel(d).slice(2);
+}
+
+/** Recent financial years (most recent first) for the ITR register. */
+export function financialYears(now = new Date(), count = 5): string[] {
+  const start = now.getMonth() + 1 >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+  return Array.from({ length: count }, (_, i) => {
+    const s = start - i;
     return `${s}-${String(s + 1).slice(2)}`;
   });
+}
+
+/**
+ * Income-tax period label for a financial year. India's Income-tax Act 2025
+ * replaces "Assessment Year" with "Tax Year" from FY 2026-27 onwards:
+ *   FY 2025-26 and earlier → "AY <fy+1>"  (e.g. FY 2025-26 → AY 2026-27)
+ *   FY 2026-27 and onwards → "TY <fy>"    (e.g. FY 2026-27 → TY 2026-27)
+ */
+export function incomeTaxYearLabel(fyLabel: string): string {
+  const start = parseInt(fyLabel.slice(0, 4), 10);
+  if (Number.isNaN(start)) return fyLabel;
+  const range = (s: number) => `${s}-${String(s + 1).slice(2)}`;
+  return start >= 2026 ? `TY ${range(start)}` : `AY ${range(start + 1)}`;
+}
+
+/** Best-effort firm initials for invoice numbers, e.g.
+ *  "Anil P.S.Bhansali & Co." → "APSB". Overridable in Firm Settings. */
+export function deriveInitials(name?: string | null): string {
+  if (!name) return "INV";
+  const STOP = new Set([
+    "and", "co", "company", "associates", "associate", "chartered",
+    "accountants", "accountant", "llp", "pvt", "private", "ltd", "limited", "the",
+  ]);
+  const initials = name
+    .split(/[^A-Za-z]+/)
+    .filter(Boolean)
+    .filter((t) => !STOP.has(t.toLowerCase()))
+    .map((t) => t[0]!.toUpperCase())
+    .join("")
+    .slice(0, 6);
+  return initials || "INV";
 }
 
 export const DOC_CATEGORIES = [

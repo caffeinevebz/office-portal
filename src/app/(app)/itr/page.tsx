@@ -28,7 +28,8 @@ import {
   ITR_REGIMES,
   ITR_STATUSES,
   ITR_STATUS_TONE,
-  assessmentYears,
+  financialYears,
+  incomeTaxYearLabel,
 } from "@/lib/constants";
 import { formatCurrency, formatDate, toDateInput, cn } from "@/lib/format";
 
@@ -55,12 +56,12 @@ export default function ItrPage() {
   const { can } = useAuth();
   const canManage = can("manageItr");
   const canDelete = can("deleteItr");
-  const ays = assessmentYears();
-
-  const [ay, setAy] = useState(ays[0]);
+  const fys = financialYears();
+  // Default to the year currently being filed (previous FY, e.g. FY 2025-26).
+  const [fy, setFy] = useState(fys[1] ?? fys[0]);
   const [status, setStatus] = useState("All");
   const [q, setQ] = useState("");
-  const url = `/api/itr?ay=${encodeURIComponent(ay)}&status=${encodeURIComponent(status)}&q=${encodeURIComponent(q)}`;
+  const url = `/api/itr?fy=${encodeURIComponent(fy)}&status=${encodeURIComponent(status)}&q=${encodeURIComponent(q)}`;
   const { data, loading, error, refresh } = useResource<ItrFiling[]>(url);
   const { data: clients } = useResource<Client[]>("/api/clients");
   const { data: staff } = useResource<Staff[]>("/api/staff");
@@ -87,7 +88,7 @@ export default function ItrPage() {
     <div>
       <PageHeader
         title="ITR Filings"
-        subtitle="Income-tax returns per client, by assessment year"
+        subtitle="Income-tax returns per client, by financial year (AY / Tax Year)"
         actions={
           canManage ? (
             <Button
@@ -103,7 +104,7 @@ export default function ItrPage() {
       />
 
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label={`Returns · AY ${ay}`} value={all.length} icon={Landmark} accent="indigo" />
+        <StatCard label={`Returns · FY ${fy} (${incomeTaxYearLabel(fy)})`} value={all.length} icon={Landmark} accent="indigo" />
         <StatCard
           label="Filed / verified / processed"
           value={filedOrBetter.length}
@@ -136,16 +137,16 @@ export default function ItrPage() {
             />
           </div>
           <select
-            value={ay}
-            onChange={(e) => setAy(e.target.value)}
+            value={fy}
+            onChange={(e) => setFy(e.target.value)}
             className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
           >
-            {ays.map((a) => (
+            {fys.map((a) => (
               <option key={a} value={a}>
-                AY {a}
+                FY {a} · {incomeTaxYearLabel(a)}
               </option>
             ))}
-            <option value="All">All assessment years</option>
+            <option value="All">All financial years</option>
           </select>
           <select
             value={status}
@@ -177,7 +178,7 @@ export default function ItrPage() {
               <thead>
                 <tr className="border-b border-slate-100 text-left text-xs font-medium text-slate-500">
                   <th className="px-5 py-3">Client</th>
-                  <th className="px-5 py-3">AY / Form</th>
+                  <th className="px-5 py-3">Year / Form</th>
                   <th className="px-5 py-3">Assignee</th>
                   <th className="px-5 py-3">Filed on</th>
                   <th className="px-5 py-3">Ack. no. / refund</th>
@@ -195,7 +196,12 @@ export default function ItrPage() {
                       </p>
                     </td>
                     <td className="px-5 py-3">
-                      <p className="text-slate-700">AY {f.assessmentYear}</p>
+                      <p className="text-slate-700">
+                        {f.financialYear ? incomeTaxYearLabel(f.financialYear) : "—"}
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        {f.financialYear ? `FY ${f.financialYear}` : ""}
+                      </p>
                       <Badge tone="slate">{f.formType}</Badge>
                     </td>
                     <td className="px-5 py-3 text-slate-600">
@@ -269,7 +275,7 @@ export default function ItrPage() {
           initial={editing}
           clients={clients ?? []}
           staff={staff ?? []}
-          defaultAy={ay === "All" ? ays[0] : ay}
+          defaultFy={fy === "All" ? (fys[1] ?? fys[0]) : fy}
           onClose={() => setFormOpen(false)}
           onSaved={() => {
             setFormOpen(false);
@@ -282,7 +288,7 @@ export default function ItrPage() {
         open={!!toDelete}
         onClose={() => setToDelete(null)}
         title="Delete filing?"
-        message={`The AY ${toDelete?.assessmentYear} filing for ${toDelete?.client?.name} will be removed.`}
+        message={`The FY ${toDelete?.financialYear} filing for ${toDelete?.client?.name} will be removed.`}
         onConfirm={async () => {
           if (toDelete) await apiMutate(`/api/itr/${toDelete.id}`, "DELETE");
           refresh();
@@ -296,20 +302,20 @@ function ItrForm({
   initial,
   clients,
   staff,
-  defaultAy,
+  defaultFy,
   onClose,
   onSaved,
 }: {
   initial: ItrFiling | null;
   clients: Client[];
   staff: Staff[];
-  defaultAy: string;
+  defaultFy: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [form, setForm] = useState<FormState>(
     initial ?? {
-      assessmentYear: defaultAy,
+      financialYear: defaultFy,
       formType: "ITR-1",
       regime: "New",
       status: "Documents Awaited",
@@ -327,7 +333,7 @@ function ItrForm({
     try {
       const payload = {
         clientId: form.clientId,
-        assessmentYear: form.assessmentYear,
+        financialYear: form.financialYear,
         formType: form.formType,
         regime: form.regime,
         status: form.status,
@@ -353,13 +359,13 @@ function ItrForm({
       onClose={onClose}
       size="lg"
       title={isEdit ? "Edit ITR Filing" : "New ITR Filing"}
-      description="One filing per client per assessment year."
+      description="One filing per client per financial year."
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={busy || !form.clientId || !form.assessmentYear}>
+          <Button onClick={submit} disabled={busy || !form.clientId || !form.financialYear}>
             {busy ? "Saving…" : isEdit ? "Save changes" : "Create filing"}
           </Button>
         </>
@@ -381,11 +387,19 @@ function ItrForm({
             ))}
           </Select>
         </Field>
-        <Field label="Assessment year" required hint="e.g. 2026-27">
+        <Field
+          label="Financial year"
+          required
+          hint={
+            form.financialYear && /^\d{4}-\d{2}$/.test(form.financialYear)
+              ? `Income-tax year: ${incomeTaxYearLabel(form.financialYear)}`
+              : "e.g. 2025-26"
+          }
+        >
           <Input
-            value={form.assessmentYear ?? ""}
-            onChange={(e) => set("assessmentYear", e.target.value)}
-            placeholder="2026-27"
+            value={form.financialYear ?? ""}
+            onChange={(e) => set("financialYear", e.target.value)}
+            placeholder="2025-26"
           />
         </Field>
         <Field label="ITR form">
