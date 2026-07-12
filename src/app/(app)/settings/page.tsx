@@ -304,6 +304,7 @@ function OrgForm({
         pan: form.pan,
         gstin: form.gstin,
         sacCode: form.sacCode || "9982",
+        invoicePrefix: form.invoicePrefix,
         bankName: form.bankName,
         bankAccount: form.bankAccount,
         bankIfsc: form.bankIfsc,
@@ -370,6 +371,17 @@ function OrgForm({
         </Field>
         <Field label="SAC code">
           <Input value={form.sacCode ?? ""} onChange={(e) => set("sacCode", e.target.value)} />
+        </Field>
+        <Field
+          label="Invoice prefix (initials)"
+          hint="Used in invoice numbers, e.g. APSB → APSB/26-27/001"
+        >
+          <Input
+            value={form.invoicePrefix ?? ""}
+            onChange={(e) => set("invoicePrefix", e.target.value.toUpperCase())}
+            maxLength={10}
+            placeholder="Auto from name"
+          />
         </Field>
         <Field label="Bank name & branch">
           <Input value={form.bankName ?? ""} onChange={(e) => set("bankName", e.target.value)} />

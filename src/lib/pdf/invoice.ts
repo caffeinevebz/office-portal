@@ -1,6 +1,6 @@
 import "server-only";
 import { rgb } from "pdf-lib";
-import type { Invoice, Client, Organization } from "@prisma/client";
+import type { Invoice, Client, Organization, TradeName } from "@prisma/client";
 import { getDefaultOrg, toLetterhead, type Letterhead } from "@/lib/org";
 import { rupeesInWords } from "./words";
 import {
@@ -23,6 +23,7 @@ import {
 export type InvoiceForPdf = Invoice & {
   client: Client;
   organization?: Organization | null;
+  tradeName?: TradeName | null;
 };
 
 const fmtDate = (d: Date | null | undefined) =>
@@ -30,16 +31,29 @@ const fmtDate = (d: Date | null | undefined) =>
     ? d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
     : "—";
 
+/** The party billed on an invoice: the chosen trade name, else the client's
+ *  own details (a trade name may carry its own GSTIN / PAN / address). */
+export function billedParty(inv: InvoiceForPdf) {
+  const t = inv.tradeName;
+  return {
+    name: t?.name ?? inv.client.name,
+    gstin: t?.gstin ?? inv.client.gstin,
+    pan: t?.pan ?? inv.client.pan,
+    address: t?.address ?? inv.client.address,
+    contactPerson: inv.client.contactPerson,
+  };
+}
+
 /**
  * GST breakdown for an invoice. `gstMode` overrides the automatic
- * intra/inter-state detection: Auto (compare client GSTIN state with the
- * billing organization's), Intra (CGST+SGST), Inter (IGST), None (no GST).
+ * intra/inter-state detection: Auto (compare the billed party's GSTIN state
+ * with the billing organization's), Intra (CGST+SGST), Inter (IGST), None.
  */
 export function taxBreakdown(inv: InvoiceForPdf, orgStateCode: string | null) {
   const mode = inv.gstMode ?? "Auto";
   const none = mode === "None" || inv.taxRate <= 0;
 
-  const clientState = inv.client.gstin?.slice(0, 2);
+  const clientState = billedParty(inv).gstin?.slice(0, 2);
   const interState =
     mode === "Inter"
       ? true
@@ -73,7 +87,7 @@ export async function buildInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   let y = await firmHeader(pdf, "TAX INVOICE", lh);
 
   // ---- Meta: Bill To (left) & invoice facts (right) ----
-  const c = inv.client;
+  const c = billedParty(inv);
   const tax = taxBreakdown(inv, lh.stateCode);
 
   text(page, "BILLED TO", { x: MARGIN, y, size: 7.5, font: bold, color: FAINT });

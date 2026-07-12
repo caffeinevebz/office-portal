@@ -1,6 +1,6 @@
 import "server-only";
 import { rupeesInWords } from "./words";
-import { taxBreakdown, letterheadFor, type InvoiceForPdf } from "./invoice";
+import { taxBreakdown, letterheadFor, billedParty, type InvoiceForPdf } from "./invoice";
 import {
   A4,
   MARGIN,
@@ -21,11 +21,15 @@ const fmtDate = (d: Date | null | undefined) =>
     ? d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
     : "—";
 
-/** Receipt number derived 1:1 from the invoice number (INV-… -> RCT-…). */
-export function receiptNumber(invoiceNumber: string): string {
-  return invoiceNumber.startsWith("INV-")
-    ? invoiceNumber.replace(/^INV-/, "RCT-")
-    : `RCT-${invoiceNumber}`;
+/** Fallback receipt number for legacy invoices without a stored one.
+ *  New invoices carry an assigned receiptNumber (PREFIX/FY/RNNN). */
+export function receiptNumber(inv: InvoiceForPdf): string {
+  if (inv.receiptNumber) return inv.receiptNumber;
+  const n = inv.invoiceNumber;
+  // Insert an "R" before the trailing sequence, e.g. APSB/26-27/001 → …/R001.
+  const m = n.match(/^(.*\/)(\d+)$/);
+  if (m) return `${m[1]}R${m[2]}`;
+  return n.startsWith("INV-") ? n.replace(/^INV-/, "RCT-") : `RCT-${n}`;
 }
 
 export async function buildReceiptPdf(inv: InvoiceForPdf): Promise<Uint8Array> {
@@ -38,9 +42,10 @@ export async function buildReceiptPdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   const tax = taxBreakdown(inv, lh.stateCode);
   const paidOn = inv.paidDate ?? new Date();
 
+  const party = billedParty(inv);
   // Facts row
   const facts: [string, string][] = [
-    ["Receipt No.", receiptNumber(inv.invoiceNumber)],
+    ["Receipt No.", receiptNumber(inv)],
     ["Receipt Date", fmtDate(paidOn)],
     ["Against Invoice", `${inv.invoiceNumber} dated ${fmtDate(inv.issueDate)}`],
   ];
@@ -56,8 +61,8 @@ export async function buildReceiptPdf(inv: InvoiceForPdf): Promise<Uint8Array> {
 
   // Narrative body
   const paragraphs = [
-    `Received with thanks from ${inv.client.name}${
-      inv.client.address ? `, ${inv.client.address}` : ""
+    `Received with thanks from ${party.name}${
+      party.address ? `, ${party.address}` : ""
     }, the sum of ${money(tax.grand)} (${rupeesInWords(tax.grand)}) against invoice ${
       inv.invoiceNumber
     } towards ${inv.description?.trim() || "professional services rendered"}.`,

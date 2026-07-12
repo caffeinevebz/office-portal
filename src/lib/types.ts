@@ -1,5 +1,24 @@
 // Shapes returned by the API routes (dates arrive as ISO strings over JSON).
 
+export type TradeName = {
+  id: string;
+  name: string;
+  gstin: string | null;
+  pan: string | null;
+  address: string | null;
+  clientId: string;
+  createdAt: string;
+};
+
+export type ClientGroup = {
+  id: string;
+  name: string;
+  code: string;
+  notes: string | null;
+  createdAt: string;
+  _count?: { clients: number };
+};
+
 export type Client = {
   id: string;
   name: string;
@@ -12,6 +31,9 @@ export type Client = {
   contactPerson: string | null;
   status: string;
   notes: string | null;
+  groupId: string | null;
+  group?: ClientGroup | null;
+  tradeNames?: TradeName[];
   createdAt: string;
   updatedAt: string;
   _count?: { tasks: number; invoices: number; documents: number };
@@ -112,6 +134,7 @@ export type Organization = {
   bankIfsc: string | null;
   bankUpi: string | null;
   invoiceNote: string | null;
+  invoicePrefix: string | null;
   isDefault: boolean;
   hasLogo: boolean;
   createdAt: string;
@@ -129,15 +152,18 @@ export type Invoice = {
   issueDate: string;
   dueDate: string | null;
   paidDate: string | null;
+  receiptNumber: string | null;
   clientId: string;
   client?: Client | null;
+  tradeNameId: string | null;
+  tradeName?: TradeName | null;
   organizationId: string | null;
   organization?: { id: string; name: string } | null;
 };
 
 export type ItrFiling = {
   id: string;
-  assessmentYear: string;
+  financialYear: string | null;
   formType: string;
   regime: string;
   status: string;

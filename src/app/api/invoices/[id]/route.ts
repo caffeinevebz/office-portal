@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, fail, parse, route } from "@/lib/api";
 import { requirePermission } from "@/lib/auth/session";
 import { invoiceUpdateSchema } from "@/lib/validation";
+import { nextReceiptNumber, orgForInvoice } from "@/lib/numbering";
 import type { Prisma } from "@prisma/client";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -11,7 +12,13 @@ async function applyUpdate(id: string, data: Prisma.InvoiceUncheckedUpdateInput)
   if (typeof data.status === "string") {
     if (data.status === "Paid") {
       const current = await prisma.invoice.findUnique({ where: { id } });
-      if (current && !current.paidDate) patch.paidDate = new Date();
+      const paidDate = current?.paidDate ?? new Date();
+      if (current && !current.paidDate) patch.paidDate = paidDate;
+      // Assign a receipt number the first time it is marked Paid.
+      if (current && !current.receiptNumber) {
+        const org = await orgForInvoice(current.organizationId);
+        patch.receiptNumber = await nextReceiptNumber(org, paidDate);
+      }
     } else {
       patch.paidDate = null;
     }
@@ -19,7 +26,7 @@ async function applyUpdate(id: string, data: Prisma.InvoiceUncheckedUpdateInput)
   return prisma.invoice.update({
     where: { id },
     data: patch,
-    include: { client: true },
+    include: { client: true, tradeName: true },
   });
 }
 

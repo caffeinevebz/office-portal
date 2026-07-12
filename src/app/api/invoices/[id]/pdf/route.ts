@@ -10,7 +10,7 @@ export const GET = route(async (_req, ctx: Ctx) => {
   const { id } = await ctx.params;
   const invoice = await prisma.invoice.findUnique({
     where: { id },
-    include: { client: true, organization: true },
+    include: { client: true, organization: true, tradeName: true },
   });
   if (!invoice) return fail("Invoice not found", 404);
 
@@ -18,7 +18,7 @@ export const GET = route(async (_req, ctx: Ctx) => {
   return new Response(Buffer.from(bytes), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="${invoice.invoiceNumber}.pdf"`,
+      "Content-Disposition": `inline; filename="${invoice.invoiceNumber.replace(/\//g, "-")}.pdf"`,
       "Cache-Control": "no-store",
     },
   });

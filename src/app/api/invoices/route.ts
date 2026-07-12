@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, parse, route } from "@/lib/api";
 import { requireUser, requirePermission } from "@/lib/auth/session";
 import { invoiceCreateSchema } from "@/lib/validation";
+import { nextInvoiceNumber, nextReceiptNumber, orgForInvoice } from "@/lib/numbering";
 import type { Prisma } from "@prisma/client";
 
 export const GET = route(async (req) => {
@@ -26,6 +27,7 @@ export const GET = route(async (req) => {
     orderBy: { issueDate: "desc" },
     include: {
       client: true,
+      tradeName: true,
       organization: { select: { id: true, name: true } },
     },
   });
@@ -35,13 +37,28 @@ export const GET = route(async (req) => {
 export const POST = route(async (req) => {
   await requirePermission("manageInvoices");
   const data = await parse(req, invoiceCreateSchema);
-  const invoice = await prisma.invoice.create({
-    data: {
-      ...data,
-      issueDate: data.issueDate ?? new Date(),
-      paidDate: data.status === "Paid" ? new Date() : null,
-    },
-    include: { client: true },
-  });
-  return ok(invoice, 201);
+  const issueDate = data.issueDate ?? new Date();
+  const org = await orgForInvoice(data.organizationId);
+  const paid = data.status === "Paid";
+  const paidDate = paid ? new Date() : null;
+
+  // Auto-generate the invoice number (and receipt number if already paid),
+  // retrying on the rare unique-collision from concurrent creates.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const invoiceNumber = data.invoiceNumber?.trim() || (await nextInvoiceNumber(org, issueDate));
+    const receiptNumber = paid ? await nextReceiptNumber(org, paidDate!) : null;
+    try {
+      const invoice = await prisma.invoice.create({
+        data: { ...data, invoiceNumber, issueDate, paidDate, receiptNumber },
+        include: { client: true, tradeName: true },
+      });
+      return ok(invoice, 201);
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      // P2002 = unique constraint; regenerate only for auto numbers.
+      if (code === "P2002" && !data.invoiceNumber?.trim() && attempt < 4) continue;
+      throw e;
+    }
+  }
+  throw new Error("Could not allocate an invoice number");
 });

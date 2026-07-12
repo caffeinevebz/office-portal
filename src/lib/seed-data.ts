@@ -3,7 +3,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { hashPassword } from "./auth/password";
 import { ensureSystemRoles } from "./auth/ensure-roles";
-import { assessmentYears } from "./constants";
+import { financialYears } from "./constants";
 
 // Helper: date offset by N days from now.
 const daysFromNow = (n: number) => {
@@ -28,7 +28,9 @@ export async function seedDemoData(prisma: PrismaClient) {
   await prisma.invitation.deleteMany();
   await prisma.rolePermission.deleteMany();
   await prisma.role.deleteMany();
+  await prisma.tradeName.deleteMany();
   await prisma.client.deleteMany();
+  await prisma.clientGroup.deleteMany();
   await prisma.staff.deleteMany();
 
   console.log("Seeding roles...");
@@ -45,6 +47,7 @@ export async function seedDemoData(prisma: PrismaClient) {
       pan: "AAKFS3121L",
       gstin: "27AAKFS3121L1Z6",
       sacCode: "9982",
+      invoicePrefix: "SA",
       bankName: "HDFC Bank, Andheri West Branch",
       bankAccount: "50200011223344",
       bankIfsc: "HDFC0000239",
@@ -91,6 +94,19 @@ export async function seedDemoData(prisma: PrismaClient) {
     }),
   ]);
 
+  console.log("Seeding client groups...");
+  const [nimbusGroup, southGroup, patelGroup] = await Promise.all([
+    prisma.clientGroup.create({
+      data: { code: "NMB", name: "Nimbus Group", notes: "Nimbus family of companies." },
+    }),
+    prisma.clientGroup.create({
+      data: { code: "STH", name: "South Region", notes: "Clients handled by the Bengaluru & Kochi desks." },
+    }),
+    prisma.clientGroup.create({
+      data: { code: "PTL", name: "Patel Concerns", notes: "Suresh Patel's proprietorship concerns." },
+    }),
+  ]);
+
   console.log("Seeding clients...");
   const clients = await Promise.all([
     prisma.client.create({
@@ -98,6 +114,7 @@ export async function seedDemoData(prisma: PrismaClient) {
         name: "Nimbus Technologies Pvt Ltd", type: "Private Limited", pan: "AABCN1234E", gstin: "27AABCN1234E1Z5",
         email: "accounts@nimbustech.in", phone: "+91 22 4123 5566", contactPerson: "Rohan Mehta",
         address: "Unit 402, Solaris Business Park, Andheri East, Mumbai 400069", status: "Active",
+        groupId: nimbusGroup.id,
         notes: "Monthly retainer client. GST + TDS + Annual audit.",
       },
     }),
@@ -106,15 +123,17 @@ export async function seedDemoData(prisma: PrismaClient) {
         name: "Greenleaf Organics LLP", type: "LLP", pan: "AAGFG5678K", gstin: "29AAGFG5678K1Z2",
         email: "finance@greenleaf.co.in", phone: "+91 80 2345 6677", contactPerson: "Ananya Krishnan",
         address: "14, MG Road, Bengaluru 560001", status: "Active",
+        groupId: southGroup.id,
         notes: "GST filings + LLP ROC compliance.",
       },
     }),
     prisma.client.create({
       data: {
-        name: "Sunrise Traders", type: "Proprietorship", pan: "BXYPS9012L", gstin: "24BXYPS9012L1Z9",
+        name: "Suresh Patel", type: "Proprietorship", pan: "BXYPS9012L", gstin: "24BXYPS9012L1Z9",
         email: "sunrise.traders@gmail.com", phone: "+91 79 2211 3344", contactPerson: "Suresh Patel",
         address: "Shop 8, Ashram Road, Ahmedabad 380009", status: "Active",
-        notes: "Quarterly GST, composition scheme.",
+        groupId: patelGroup.id,
+        notes: "Proprietor running two concerns — Sunrise Traders & Patel Agro. Quarterly GST, composition scheme.",
       },
     }),
     prisma.client.create({
@@ -177,6 +196,22 @@ export async function seedDemoData(prisma: PrismaClient) {
 
   const [nimbus, greenleaf, sunrise, meera, apex, vasudha, coastal, trust, zephyr, huf] = clients;
 
+  // Map the Kochi proprietor into the South region group as well.
+  await prisma.client.update({ where: { id: coastal.id }, data: { groupId: southGroup.id } });
+
+  console.log("Seeding trade names...");
+  // Suresh Patel (proprietor) runs multiple concerns, each with its own GSTIN.
+  const sunriseTrade = await prisma.tradeName.create({
+    data: { clientId: sunrise.id, name: "Sunrise Traders", gstin: "24BXYPS9012L1Z9", pan: "BXYPS9012L", address: "Shop 8, Ashram Road, Ahmedabad 380009" },
+  });
+  await prisma.tradeName.create({
+    data: { clientId: sunrise.id, name: "Patel Agro Industries", gstin: "24BXYPS9012L2Z8", pan: "BXYPS9012L", address: "Plot 21, GIDC, Vatva, Ahmedabad 382445" },
+  });
+  // A company that trades under a brand different from its legal name.
+  await prisma.tradeName.create({
+    data: { clientId: coastal.id, name: "Kurian Marine Exports", gstin: "32CQWPS4455R1Z8", pan: "CQWPS4455R", address: "Harbour Road, Kochi 682003" },
+  });
+
   console.log("Seeding tasks...");
   const taskData = [
     // Overdue / urgent
@@ -217,14 +252,15 @@ export async function seedDemoData(prisma: PrismaClient) {
 
   console.log("Seeding invoices...");
   const invoiceData = [
-    { invoiceNumber: "INV-2627-001", clientId: nimbus.id, description: "Retainership fee – Apr to Jun 2026", amount: 45000, taxRate: 18, status: "Paid", issueDate: daysFromNow(-40), dueDate: daysFromNow(-25), paidDate: daysFromNow(-20) },
-    { invoiceNumber: "INV-2627-002", clientId: apex.id, description: "Statutory audit fee – FY 2025-26 (advance)", amount: 125000, taxRate: 18, status: "Sent", issueDate: daysFromNow(-15), dueDate: daysFromNow(15) },
-    { invoiceNumber: "INV-2627-003", clientId: greenleaf.id, description: "GST compliance – Q1 FY26-27", amount: 22000, taxRate: 18, status: "Overdue", issueDate: daysFromNow(-35), dueDate: daysFromNow(-5) },
-    { invoiceNumber: "INV-2627-004", clientId: meera.id, description: "ITR filing & advisory – AY 2026-27", amount: 8000, taxRate: 18, status: "Paid", issueDate: daysFromNow(-12), dueDate: daysFromNow(3), paidDate: daysFromNow(-8) },
-    { invoiceNumber: "INV-2627-005", clientId: coastal.id, organizationId: advisoryOrg.id, description: "Advisory: GST export refund filing", amount: 18000, taxRate: 18, status: "Sent", issueDate: daysFromNow(-8), dueDate: daysFromNow(22) },
-    { invoiceNumber: "INV-2627-006", clientId: vasudha.id, description: "Tax audit fee – FY 2025-26 (advance)", amount: 60000, taxRate: 18, gstMode: "None", status: "Draft", issueDate: daysFromNow(-2) },
-    { invoiceNumber: "INV-2627-007", clientId: sunrise.id, description: "Quarterly GST + accounting", amount: 12000, taxRate: 18, status: "Paid", issueDate: daysFromNow(-30), dueDate: daysFromNow(-15), paidDate: daysFromNow(-14) },
-    { invoiceNumber: "INV-2627-008", clientId: trust.id, description: "12A/80G renewal & Form 10B", amount: 35000, taxRate: 18, status: "Overdue", issueDate: daysFromNow(-50), dueDate: daysFromNow(-20) },
+    { invoiceNumber: "SA/26-27/001", clientId: nimbus.id, description: "Retainership fee – Apr to Jun 2026", amount: 45000, taxRate: 18, status: "Paid", issueDate: daysFromNow(-40), dueDate: daysFromNow(-25), paidDate: daysFromNow(-20), receiptNumber: "SA/26-27/R001" },
+    { invoiceNumber: "SA/26-27/002", clientId: apex.id, description: "Statutory audit fee – FY 2025-26 (advance)", amount: 125000, taxRate: 18, status: "Sent", issueDate: daysFromNow(-15), dueDate: daysFromNow(15) },
+    { invoiceNumber: "SA/26-27/003", clientId: greenleaf.id, description: "GST compliance – Q1 FY26-27", amount: 22000, taxRate: 18, status: "Overdue", issueDate: daysFromNow(-35), dueDate: daysFromNow(-5) },
+    { invoiceNumber: "SA/26-27/004", clientId: meera.id, description: "ITR filing & advisory – AY 2026-27", amount: 8000, taxRate: 18, status: "Paid", issueDate: daysFromNow(-12), dueDate: daysFromNow(3), paidDate: daysFromNow(-8), receiptNumber: "SA/26-27/R002" },
+    { invoiceNumber: "SA/26-27/005", clientId: coastal.id, organizationId: advisoryOrg.id, description: "Advisory: GST export refund filing", amount: 18000, taxRate: 18, status: "Sent", issueDate: daysFromNow(-8), dueDate: daysFromNow(22) },
+    { invoiceNumber: "SA/26-27/006", clientId: vasudha.id, description: "Tax audit fee – FY 2025-26 (advance)", amount: 60000, taxRate: 18, gstMode: "None", status: "Draft", issueDate: daysFromNow(-2) },
+    // Billed under the proprietor's trade name "Sunrise Traders".
+    { invoiceNumber: "SA/26-27/007", clientId: sunrise.id, tradeNameId: sunriseTrade.id, description: "Quarterly GST + accounting", amount: 12000, taxRate: 18, status: "Paid", issueDate: daysFromNow(-30), dueDate: daysFromNow(-15), paidDate: daysFromNow(-14), receiptNumber: "SA/26-27/R003" },
+    { invoiceNumber: "SA/26-27/008", clientId: trust.id, description: "12A/80G renewal & Form 10B", amount: 35000, taxRate: 18, status: "Overdue", issueDate: daysFromNow(-50), dueDate: daysFromNow(-20) },
   ];
   for (const inv of invoiceData) {
     await prisma.invoice.create({ data: { organizationId: mainOrg.id, ...inv } });
@@ -302,15 +338,17 @@ export async function seedDemoData(prisma: PrismaClient) {
   });
 
   console.log("Seeding ITR filings...");
-  const [ayNow, ayPrev] = assessmentYears();
+  // Current filing season (July 2026) covers FY 2025-26 (→ AY 2026-27); the
+  // prior year's processed returns are for FY 2024-25 (→ AY 2025-26).
+  const [, fyCurrent, fyPrev] = financialYears();
   const itrData = [
-    { clientId: meera.id, assessmentYear: ayNow, formType: "ITR-2", regime: "New", status: "In Preparation", assigneeId: senior.id, notes: "Capital gains statements received; broker P&L pending." },
-    { clientId: huf.id, assessmentYear: ayNow, formType: "ITR-2", regime: "Old", status: "Documents Awaited", assigneeId: accountant.id, notes: "House property rent receipts awaited." },
-    { clientId: sunrise.id, assessmentYear: ayNow, formType: "ITR-3", regime: "New", status: "Documents Awaited", assigneeId: accountant.id },
-    { clientId: vasudha.id, assessmentYear: ayNow, formType: "ITR-5", regime: "New", status: "In Preparation", assigneeId: manager.id, notes: "To file after tax audit sign-off." },
-    { clientId: coastal.id, assessmentYear: ayNow, formType: "ITR-3", regime: "New", status: "Filed", filedOn: daysFromNow(-3), ackNumber: "445566778899001", assigneeId: senior.id },
-    { clientId: meera.id, assessmentYear: ayPrev, formType: "ITR-2", regime: "New", status: "Processed", filedOn: daysFromNow(-345), ackNumber: "123456789012345", refundAmount: 18450, assigneeId: senior.id },
-    { clientId: sunrise.id, assessmentYear: ayPrev, formType: "ITR-3", regime: "New", status: "E-Verified", filedOn: daysFromNow(-350), ackNumber: "987654321098765", assigneeId: accountant.id },
+    { clientId: meera.id, financialYear: fyCurrent, formType: "ITR-2", regime: "New", status: "In Preparation", assigneeId: senior.id, notes: "Capital gains statements received; broker P&L pending." },
+    { clientId: huf.id, financialYear: fyCurrent, formType: "ITR-2", regime: "Old", status: "Documents Awaited", assigneeId: accountant.id, notes: "House property rent receipts awaited." },
+    { clientId: sunrise.id, financialYear: fyCurrent, formType: "ITR-3", regime: "New", status: "Documents Awaited", assigneeId: accountant.id },
+    { clientId: vasudha.id, financialYear: fyCurrent, formType: "ITR-5", regime: "New", status: "In Preparation", assigneeId: manager.id, notes: "To file after tax audit sign-off." },
+    { clientId: coastal.id, financialYear: fyCurrent, formType: "ITR-3", regime: "New", status: "Filed", filedOn: daysFromNow(-3), ackNumber: "445566778899001", assigneeId: senior.id },
+    { clientId: meera.id, financialYear: fyPrev, formType: "ITR-2", regime: "New", status: "Processed", filedOn: daysFromNow(-345), ackNumber: "123456789012345", refundAmount: 18450, assigneeId: senior.id },
+    { clientId: sunrise.id, financialYear: fyPrev, formType: "ITR-3", regime: "New", status: "E-Verified", filedOn: daysFromNow(-350), ackNumber: "987654321098765", assigneeId: accountant.id },
   ];
   for (const f of itrData) {
     await prisma.itrFiling.create({ data: f });
