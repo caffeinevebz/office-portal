@@ -14,7 +14,7 @@ import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Loading, EmptyState } from "@/components/ui/EmptyState";
-import { CLIENT_TYPES, CLIENT_STATUSES, CLIENT_STATUS_TONE } from "@/lib/constants";
+import { CLIENT_TYPES, CLIENT_STATUSES, CLIENT_STATUS_TONE, entityRegField } from "@/lib/constants";
 import { initials } from "@/lib/format";
 
 type FormState = Partial<Client>;
@@ -271,6 +271,9 @@ function ClientForm({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const isEdit = !!initial;
+  // The entity-specific registration field (Aadhaar / CIN / LLPIN / Firm Reg.)
+  // shown for the currently selected entity type.
+  const reg = entityRegField(form.type);
 
   const set = (k: keyof FormState, v: string) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -285,6 +288,11 @@ function ClientForm({
         status: form.status ?? "Active",
         pan: form.pan,
         gstin: form.gstin,
+        tan: form.tan,
+        aadhaar: form.aadhaar,
+        cin: form.cin,
+        llpin: form.llpin,
+        firmRegNo: form.firmRegNo,
         email: form.email,
         phone: form.phone,
         contactPerson: form.contactPerson,
@@ -376,6 +384,26 @@ function ClientForm({
             maxLength={15}
           />
         </Field>
+        <Field label="TAN" hint="Tax deduction account no.">
+          <Input
+            value={form.tan ?? ""}
+            onChange={(e) => set("tan", e.target.value.toUpperCase())}
+            placeholder="MUMA12345B"
+            maxLength={10}
+          />
+        </Field>
+        {reg && (
+          <Field label={reg.label}>
+            <Input
+              value={(form[reg.key] as string | null | undefined) ?? ""}
+              onChange={(e) =>
+                set(reg.key, reg.key === "aadhaar" ? e.target.value : e.target.value.toUpperCase())
+              }
+              placeholder={reg.placeholder}
+              maxLength={reg.maxLength}
+            />
+          </Field>
+        )}
         <Field label="Contact person">
           <Input
             value={form.contactPerson ?? ""}

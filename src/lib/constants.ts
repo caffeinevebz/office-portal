@@ -16,6 +16,33 @@ export const CLIENT_TYPES = [
 
 export const CLIENT_STATUSES = ["Active", "Inactive"] as const;
 
+// The entity-specific statutory registration number that applies to a client
+// of the given type, besides PAN / GSTIN / TAN (which are common to all).
+// `key` is the Client column it maps to. Returns null for types that have no
+// such number (Proprietorship, HUF, Trust) — they carry TAN + PAN/GSTIN only.
+export type EntityRegField = {
+  key: "aadhaar" | "cin" | "llpin" | "firmRegNo";
+  label: string;
+  placeholder: string;
+  maxLength: number;
+};
+
+export function entityRegField(type: string | null | undefined): EntityRegField | null {
+  switch (type) {
+    case "Individual":
+      return { key: "aadhaar", label: "Aadhaar No.", placeholder: "1234 5678 9012", maxLength: 14 };
+    case "Private Limited":
+    case "Public Limited":
+      return { key: "cin", label: "CIN", placeholder: "U74999MH2016PTC123456", maxLength: 21 };
+    case "LLP":
+      return { key: "llpin", label: "LLP Registration No.", placeholder: "AAB-1234", maxLength: 12 };
+    case "Partnership":
+      return { key: "firmRegNo", label: "Firm Registration No.", placeholder: "Registrar of Firms no.", maxLength: 40 };
+    default:
+      return null;
+  }
+}
+
 export const TASK_CATEGORIES = [
   "GST",
   "Income Tax",

@@ -20,6 +20,7 @@ export const GET = route(async (req) => {
       { name: { contains: q, mode: "insensitive" } },
       { pan: { contains: q, mode: "insensitive" } },
       { gstin: { contains: q, mode: "insensitive" } },
+      { tan: { contains: q, mode: "insensitive" } },
       { contactPerson: { contains: q, mode: "insensitive" } },
       { tradeNames: { some: { name: { contains: q, mode: "insensitive" } } } },
     ];
