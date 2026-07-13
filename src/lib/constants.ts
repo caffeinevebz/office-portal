@@ -103,6 +103,104 @@ export const GST_RETURN_LABELS: Record<string, string> = {
 export const GST_PERIODIC_RETURNS = new Set(["GSTR-1", "GSTR-3B", "GSTR-2B"]);
 export const GST_PERIODICITY = ["Monthly", "Quarterly"] as const;
 
+// ── Audit ───────────────────────────────────────────────────────────────────
+// The kinds of audit engagement (stored on an Audit task's `taskType`).
+export const AUDIT_SUBCATEGORIES = [
+  "Statutory Audit",
+  "Tax Audit",
+  "Internal Audit",
+  "GST Audit",
+  "Bank Audit",
+  "Management Audit",
+  "Trust and NGO Audit",
+  "Cost Audit",
+  "Special Audits",
+  "Liquidation/Insolvency Audit",
+  "Corporate Secretarial/Compliance Audit",
+] as const;
+
+// Default work-programme for each audit sub-category (editable per task).
+export const AUDIT_CHECKLISTS: Record<string, string[]> = {
+  "Statutory Audit": [
+    "Engagement letter signed",
+    "Books, ledgers & schedules obtained",
+    "Vouching & verification completed",
+    "Financial statements & notes finalized",
+    "Audit report & CARO finalized (UDIN generated)",
+    "Adopted by Board/AGM & filed with MCA",
+  ],
+  "Tax Audit": [
+    "Books & tax computation obtained",
+    "Form 3CA/3CB & 3CD prepared",
+    "Clause-wise verification completed",
+    "Management representation obtained",
+    "Report uploaded & UDIN generated",
+  ],
+  "Internal Audit": [
+    "Audit scope & plan agreed",
+    "Process walkthroughs performed",
+    "Controls tested & gaps noted",
+    "Draft report discussed with management",
+    "Final report issued & tracker updated",
+  ],
+  "GST Audit": [
+    "Turnover reconciled (books vs returns)",
+    "ITC reconciled (GSTR-2B vs books)",
+    "GSTR-9 prepared",
+    "GSTR-9C reconciliation prepared",
+    "Filed & DSC affixed",
+  ],
+  "Bank Audit": [
+    "Appointment & scope confirmed",
+    "Advances & NPA classification verified",
+    "LFAR prepared",
+    "Tax audit & certificates issued",
+    "Report submitted to the bank",
+  ],
+  "Management Audit": [
+    "Objectives & scope defined",
+    "Functional reviews completed",
+    "Efficiency & effectiveness assessed",
+    "Recommendations drafted",
+    "Report presented to management",
+  ],
+  "Trust and NGO Audit": [
+    "12A/80G & registrations verified",
+    "Receipts & payments / income & expenditure prepared",
+    "Form 10B/10BB prepared",
+    "Application of income verified",
+    "Report issued & UDIN generated",
+  ],
+  "Cost Audit": [
+    "Cost records obtained",
+    "Cost sheets & reconciliation verified",
+    "Form CRA-3 prepared",
+    "Board approval obtained",
+    "CRA-4 filed with MCA",
+  ],
+  "Special Audits": [
+    "Terms of reference obtained",
+    "Scope-specific procedures performed",
+    "Findings documented",
+    "Draft report reviewed",
+    "Final report issued",
+  ],
+  "Liquidation/Insolvency Audit": [
+    "Appointment & CIRP details verified",
+    "Books & records obtained",
+    "Claims & transactions reviewed",
+    "Report prepared per IBC",
+    "Submitted to RP / liquidator",
+  ],
+  "Corporate Secretarial/Compliance Audit": [
+    "Statutory registers verified",
+    "Board/AGM minutes reviewed",
+    "ROC filings checked",
+    "Secretarial audit (MR-3) prepared",
+    "Report finalized & UDIN generated",
+  ],
+};
+
 // ── Periods ─────────────────────────────────────────────────────────────────
 // Indian financial-year quarters (Apr–Mar).
 export const QUARTERS = ["Q1", "Q2", "Q3", "Q4"] as const;
@@ -136,6 +234,10 @@ export function defaultChecklist(
   }
   if (category === "Income Tax" && opts.taskType === "ITR Filing") {
     return mk(["Documents collected", "Computation prepared & approved", "Return filed", "Return e-verified"]);
+  }
+  if (category === "Audit") {
+    const items = AUDIT_CHECKLISTS[opts.taskType ?? ""];
+    return items ? mk(items) : [];
   }
   return [];
 }

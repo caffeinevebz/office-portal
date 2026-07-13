@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, Plus, Pencil, Trash2, Eye, Users, FileUp, Download, FolderTree } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Eye, Users, FileUp, Download, FolderTree, Building2, X } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
 import type { Client, ClientGroup } from "@/lib/types";
@@ -18,6 +18,7 @@ import { CLIENT_TYPES, CLIENT_STATUSES, CLIENT_STATUS_TONE, entityRegField } fro
 import { initials } from "@/lib/format";
 
 type FormState = Partial<Client>;
+type TradeNameDraft = { id?: string; name: string; gstin: string; pan: string; address: string };
 const EMPTY: FormState = { type: "Private Limited", status: "Active" };
 
 export default function ClientsPage() {
@@ -275,6 +276,22 @@ function ClientForm({
   // shown for the currently selected entity type.
   const reg = entityRegField(form.type);
 
+  // Firm / trade names the client operates under (add as many as needed).
+  const [tradeNames, setTradeNames] = useState<TradeNameDraft[]>(
+    (initial?.tradeNames ?? []).map((t) => ({
+      id: t.id,
+      name: t.name,
+      gstin: t.gstin ?? "",
+      pan: t.pan ?? "",
+      address: t.address ?? "",
+    })),
+  );
+  const addTradeName = () =>
+    setTradeNames((ts) => [...ts, { name: "", gstin: "", pan: "", address: "" }]);
+  const updateTradeName = (i: number, key: keyof TradeNameDraft, v: string) =>
+    setTradeNames((ts) => ts.map((t, idx) => (idx === i ? { ...t, [key]: v } : t)));
+  const removeTradeName = (i: number) => setTradeNames((ts) => ts.filter((_, idx) => idx !== i));
+
   const set = (k: keyof FormState, v: string) =>
     setForm((f) => ({ ...f, [k]: v }));
 
@@ -299,6 +316,15 @@ function ClientForm({
         address: form.address,
         groupId: form.groupId || null,
         notes: form.notes,
+        tradeNames: tradeNames
+          .filter((t) => t.name.trim())
+          .map((t) => ({
+            id: t.id,
+            name: t.name.trim(),
+            gstin: t.gstin.trim() || null,
+            pan: t.pan.trim() || null,
+            address: t.address.trim() || null,
+          })),
       };
       if (isEdit) await apiMutate(`/api/clients/${initial!.id}`, "PUT", payload);
       else await apiMutate("/api/clients", "POST", payload);
@@ -426,6 +452,69 @@ function ClientForm({
             onChange={(e) => set("address", e.target.value)}
           />
         </Field>
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:col-span-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <Building2 className="h-4 w-4 text-brand-600" />
+              Firm / trade names
+              {tradeNames.length > 0 && (
+                <span className="text-xs font-normal text-slate-400">{tradeNames.length} added</span>
+              )}
+            </div>
+            <Button type="button" variant="secondary" size="sm" onClick={addTradeName}>
+              <Plus className="h-4 w-4" /> Add trade name
+            </Button>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            A proprietorship concern or brand name the client operates under. Add as many as needed — each can carry
+            its own GSTIN/PAN/address for invoicing.
+          </p>
+          {tradeNames.length > 0 && (
+            <div className="mt-3 space-y-3">
+              {tradeNames.map((t, i) => (
+                <div key={i} className="rounded-lg border border-slate-200 bg-white p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-500">Trade name {i + 1}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeTradeName(i)}
+                      className="rounded p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-500"
+                      title="Remove"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Field label="Name" required className="sm:col-span-2">
+                      <Input
+                        value={t.name}
+                        onChange={(e) => updateTradeName(i, "name", e.target.value)}
+                        placeholder="e.g. Sunrise Traders"
+                      />
+                    </Field>
+                    <Field label="GSTIN">
+                      <Input
+                        value={t.gstin}
+                        onChange={(e) => updateTradeName(i, "gstin", e.target.value.toUpperCase())}
+                        maxLength={15}
+                      />
+                    </Field>
+                    <Field label="PAN">
+                      <Input
+                        value={t.pan}
+                        onChange={(e) => updateTradeName(i, "pan", e.target.value.toUpperCase())}
+                        maxLength={10}
+                      />
+                    </Field>
+                    <Field label="Address" className="sm:col-span-2">
+                      <Input value={t.address} onChange={(e) => updateTradeName(i, "address", e.target.value)} />
+                    </Field>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <Field label="Notes" className="sm:col-span-2">
           <Textarea
             value={form.notes ?? ""}

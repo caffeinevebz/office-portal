@@ -29,6 +29,10 @@ export const GET = route(async (req) => {
       client: true,
       tradeName: true,
       organization: { select: { id: true, name: true } },
+      lineItems: {
+        orderBy: { createdAt: "asc" },
+        include: { task: { select: { id: true, title: true, category: true } } },
+      },
     },
   });
   return ok(invoices);
@@ -36,11 +40,17 @@ export const GET = route(async (req) => {
 
 export const POST = route(async (req) => {
   await requirePermission("manageInvoices");
-  const data = await parse(req, invoiceCreateSchema);
+  const { lineItems, ...data } = await parse(req, invoiceCreateSchema);
   const issueDate = data.issueDate ?? new Date();
   const org = await orgForInvoice(data.organizationId);
   const paid = data.status === "Paid";
   const paidDate = paid ? new Date() : null;
+  // The invoice amount is the sum of its line items (falls back to the single
+  // amount when no line items are supplied).
+  const amount =
+    lineItems && lineItems.length
+      ? lineItems.reduce((s, li) => s + (li.amount || 0), 0)
+      : (data.amount ?? 0);
 
   // Auto-generate the invoice number (and receipt number if already paid),
   // retrying on the rare unique-collision from concurrent creates.
@@ -49,8 +59,23 @@ export const POST = route(async (req) => {
     const receiptNumber = paid ? await nextReceiptNumber(org, paidDate!) : null;
     try {
       const invoice = await prisma.invoice.create({
-        data: { ...data, invoiceNumber, issueDate, paidDate, receiptNumber },
-        include: { client: true, tradeName: true },
+        data: {
+          ...data,
+          amount,
+          invoiceNumber,
+          issueDate,
+          paidDate,
+          receiptNumber,
+          lineItems:
+            lineItems && lineItems.length
+              ? { create: lineItems.map(({ id: _id, ...li }) => li) }
+              : undefined,
+        },
+        include: {
+          client: true,
+          tradeName: true,
+          lineItems: { include: { task: { select: { id: true, title: true, category: true } } } },
+        },
       });
       return ok(invoice, 201);
     } catch (e) {

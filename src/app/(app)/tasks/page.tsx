@@ -10,6 +10,7 @@ import {
   Repeat,
   FileCheck2,
   ListChecks,
+  Receipt,
   X,
 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
@@ -35,6 +36,7 @@ import {
   QUARTERS,
   QUARTER_LABELS,
   INCOME_TAX_TASK_TYPES,
+  AUDIT_SUBCATEGORIES,
   TDS_RETURN_FORMS,
   TDS_RETURN_NATURE,
   tdsFormLabel,
@@ -207,6 +209,9 @@ export default function TasksPage() {
                       const overdue = t.status !== "Completed" && (daysUntil(t.dueDate) ?? 0) < 0;
                       const meta = taskMeta(t);
                       const chk = checklistDone(t.checklist);
+                      const billedNos = (t.invoiceLines ?? [])
+                        .map((l) => l.invoice?.invoiceNumber)
+                        .filter((n): n is string => !!n);
                       return (
                         <tr key={t.id} className="hover:bg-slate-50">
                           <td className="px-5 py-3">
@@ -221,6 +226,12 @@ export default function TasksPage() {
                                   <ListChecks className="h-3.5 w-3.5" />
                                   {chk.done}/{chk.total}
                                 </span>
+                              )}
+                              {billedNos.length > 0 && (
+                                <Badge tone="green">
+                                  <Receipt className="h-3 w-3" />
+                                  {billedNos.length === 1 ? `Billed · ${billedNos[0]}` : `Billed ×${billedNos.length}`}
+                                </Badge>
                               )}
                             </div>
                             {meta.length > 0 && (
@@ -535,7 +546,7 @@ function TaskForm({
         dueDate: form.dueDate || null,
         clientId: form.clientId || null,
         assigneeId: form.assigneeId || null,
-        taskType: cat === "Income Tax" ? form.taskType || null : null,
+        taskType: cat === "Income Tax" || cat === "Audit" ? form.taskType || null : null,
         financialYear: form.financialYear || null,
         periodMonth: cat === "GST" && gstPeriodic && form.gstPeriodicity === "Monthly" ? form.periodMonth ?? null : null,
         periodQuarter:
@@ -699,6 +710,29 @@ function TaskForm({
                     {FYS.map((fy) => (
                       <option key={fy} value={fy}>
                         {taxPeriodOption(fy)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </>
+            )}
+
+            {cat === "Audit" && (
+              <>
+                <Field label="Audit type" hint="Picks a default work-programme checklist.">
+                  <Select value={form.taskType ?? ""} onChange={(e) => setTaskType(e.target.value)}>
+                    <option value="">— Select audit —</option>
+                    {AUDIT_SUBCATEGORIES.map((a) => (
+                      <option key={a}>{a}</option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Financial year">
+                  <Select value={form.financialYear ?? ""} onChange={(e) => set("financialYear", e.target.value)}>
+                    <option value="">— Select FY —</option>
+                    {FYS.map((fy) => (
+                      <option key={fy} value={fy}>
+                        FY {fy}
                       </option>
                     ))}
                   </Select>
@@ -881,6 +915,8 @@ function ChecklistEditor({
   const [draft, setDraft] = useState("");
   const toggle = (i: number) =>
     onChange(items.map((it, idx) => (idx === i ? { ...it, done: !it.done } : it)));
+  const edit = (i: number, label: string) =>
+    onChange(items.map((it, idx) => (idx === i ? { ...it, label } : it)));
   const remove = (i: number) => onChange(items.filter((_, idx) => idx !== i));
   const add = () => {
     const label = draft.trim();
@@ -908,7 +944,15 @@ function ChecklistEditor({
                 onChange={() => toggle(i)}
                 className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
               />
-              <span className={cn("flex-1", it.done && "text-slate-400 line-through")}>{it.label}</span>
+              <input
+                value={it.label}
+                onChange={(e) => edit(i, e.target.value)}
+                aria-label="Checklist step"
+                className={cn(
+                  "flex-1 rounded border border-transparent bg-transparent px-1.5 py-0.5 text-sm hover:border-slate-200 focus:border-brand-300 focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-200",
+                  it.done && "text-slate-400 line-through",
+                )}
+              />
               <button
                 type="button"
                 onClick={() => remove(i)}

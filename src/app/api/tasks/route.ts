@@ -39,7 +39,12 @@ export const GET = route(async (req) => {
   const tasks = await prisma.task.findMany({
     where,
     orderBy: [{ dueDate: "asc" }],
-    include: { client: true, assignee: true },
+    include: {
+      client: true,
+      assignee: true,
+      // Whether (and on which invoice) this task has been billed.
+      invoiceLines: { include: { invoice: { select: { id: true, invoiceNumber: true } } } },
+    },
   });
   return ok(tasks);
 });

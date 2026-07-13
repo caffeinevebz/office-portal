@@ -221,14 +221,14 @@ export async function seedDemoData(prisma: PrismaClient) {
     { title: "GSTR-3B – June 2026", category: "GST", status: "In Progress", priority: "High", dueDate: daysFromNow(-2), clientId: nimbus.id, assigneeId: senior.id, description: "Monthly GST return for June 2026. Reconcile ITC before filing.", gstReturnType: "GSTR-3B", gstPeriodicity: "Monthly", periodMonth: 6, financialYear: "2026-27" },
     { title: "TDS Return – Form 138 / 24Q – Q1 FY26-27", category: "TDS", status: "Pending", priority: "High", dueDate: daysFromNow(22), clientId: apex.id, assigneeId: accountant.id, description: "Quarterly TDS return on salaries.", tdsForm: "138", periodQuarter: "Q1", returnNature: "Original", financialYear: "2026-27", checklist: [{ label: "Challans verified & mapped", done: true }, { label: "Deductee PAN details validated", done: false }, { label: "Statement validated (FVU / portal)", done: false }, { label: "Return filed & token/PRN saved", done: false }, { label: "TDS certificate for the quarter downloaded", done: false }] },
     { title: "GSTR-1 – June 2026", category: "GST", status: "Under Review", priority: "Medium", dueDate: daysFromNow(2), clientId: greenleaf.id, assigneeId: senior.id, description: "Outward supplies return." },
-    { title: "Tax Audit u/s 44AB – FY 2025-26", category: "Audit", status: "Pending", priority: "High", dueDate: daysFromNow(75), clientId: vasudha.id, assigneeId: manager.id, description: "Turnover exceeds threshold. Form 3CD preparation." },
-    { title: "Statutory Audit – FY 2025-26", category: "Audit", status: "In Progress", priority: "High", dueDate: daysFromNow(60), clientId: apex.id, assigneeId: partner.id, description: "Companies Act statutory audit. Fieldwork ongoing." },
+    { title: "Tax Audit u/s 44AB – FY 2025-26", category: "Audit", status: "Pending", priority: "High", dueDate: daysFromNow(75), clientId: vasudha.id, assigneeId: manager.id, description: "Turnover exceeds threshold. Form 3CD preparation.", taskType: "Tax Audit", financialYear: "2025-26" },
+    { title: "Statutory Audit – FY 2025-26", category: "Audit", status: "In Progress", priority: "High", dueDate: daysFromNow(60), clientId: apex.id, assigneeId: partner.id, description: "Companies Act statutory audit. Fieldwork ongoing.", taskType: "Statutory Audit", financialYear: "2025-26", checklist: [{ label: "Engagement letter signed", done: true }, { label: "Books, ledgers & schedules obtained", done: true }, { label: "Vouching & verification completed", done: false }, { label: "Financial statements & notes finalized", done: false }, { label: "Audit report & CARO finalized (UDIN generated)", done: false }, { label: "Adopted by Board/AGM & filed with MCA", done: false }] },
     { title: "ITR Filing – AY 2026-27", category: "Income Tax", status: "Pending", priority: "Medium", dueDate: daysFromNow(21), clientId: meera.id, assigneeId: senior.id, description: "Individual return with capital gains from equity.", taskType: "ITR Filing", financialYear: "2025-26" },
     { title: "ITR & HUF Filing – AY 2026-27", category: "Income Tax", status: "Pending", priority: "Low", dueDate: daysFromNow(21), clientId: huf.id, assigneeId: accountant.id, description: "HUF return, house property income." },
     { title: "GST LUT Renewal – FY 2026-27", category: "GST", status: "Completed", priority: "Medium", dueDate: daysFromNow(-90), completedAt: daysFromNow(-88), clientId: coastal.id, assigneeId: senior.id, description: "Letter of Undertaking for export without payment of tax." },
     { title: "DIR-3 KYC – Directors", category: "MCA/ROC", status: "Pending", priority: "Medium", dueDate: daysFromNow(80), clientId: nimbus.id, assigneeId: manager.id, description: "Annual KYC of directors on MCA portal." },
     { title: "Form 11 – LLP Annual Return", category: "MCA/ROC", status: "Pending", priority: "Low", dueDate: daysFromNow(45), clientId: greenleaf.id, assigneeId: article.id, description: "LLP annual return filing." },
-    { title: "Form 10B Audit – Trust", category: "Audit", status: "Pending", priority: "Medium", dueDate: daysFromNow(85), clientId: trust.id, assigneeId: manager.id, description: "Audit report for charitable trust u/s 12A." },
+    { title: "Form 10B Audit – Trust", category: "Audit", status: "Pending", priority: "Medium", dueDate: daysFromNow(85), clientId: trust.id, assigneeId: manager.id, description: "Audit report for charitable trust u/s 12A.", taskType: "Trust and NGO Audit", financialYear: "2025-26" },
     { title: "GSTR-3B – Q1 (Composition)", category: "GST", status: "Completed", priority: "Low", dueDate: daysFromNow(-25), completedAt: daysFromNow(-26), clientId: sunrise.id, assigneeId: accountant.id, description: "CMP-08 quarterly statement." },
     { title: "Book-keeping – June 2026", category: "Other", status: "In Progress", priority: "Medium", dueDate: daysFromNow(5), clientId: nimbus.id, assigneeId: accountant.id, description: "Monthly accounting and bank reconciliation." },
     { title: "GST Registration Amendment", category: "Registration", status: "Under Review", priority: "Low", dueDate: daysFromNow(10), clientId: coastal.id, assigneeId: article.id, description: "Add additional place of business." },
@@ -256,7 +256,7 @@ export async function seedDemoData(prisma: PrismaClient) {
   console.log("Seeding invoices...");
   const invoiceData = [
     { invoiceNumber: "SA/26-27/001", clientId: nimbus.id, description: "Retainership fee – Apr to Jun 2026", amount: 45000, taxRate: 18, status: "Paid", issueDate: daysFromNow(-40), dueDate: daysFromNow(-25), paidDate: daysFromNow(-20), receiptNumber: "SA/26-27/R001" },
-    { invoiceNumber: "SA/26-27/002", clientId: apex.id, description: "Statutory audit fee – FY 2025-26 (advance)", amount: 125000, taxRate: 18, status: "Sent", issueDate: daysFromNow(-15), dueDate: daysFromNow(15) },
+    { invoiceNumber: "SA/26-27/002", clientId: apex.id, amount: 125000, taxRate: 18, status: "Sent", issueDate: daysFromNow(-15), dueDate: daysFromNow(15), lines: [{ description: "Statutory audit fee – FY 2025-26", amount: 90000 }, { description: "Tax audit fee u/s 44AB – FY 2025-26", amount: 35000 }] },
     { invoiceNumber: "SA/26-27/003", clientId: greenleaf.id, description: "GST compliance – Q1 FY26-27", amount: 22000, taxRate: 18, status: "Overdue", issueDate: daysFromNow(-35), dueDate: daysFromNow(-5) },
     { invoiceNumber: "SA/26-27/004", clientId: meera.id, description: "ITR filing & advisory – AY 2026-27", amount: 8000, taxRate: 18, status: "Paid", issueDate: daysFromNow(-12), dueDate: daysFromNow(3), paidDate: daysFromNow(-8), receiptNumber: "SA/26-27/R002" },
     { invoiceNumber: "SA/26-27/005", clientId: coastal.id, organizationId: advisoryOrg.id, description: "Advisory: GST export refund filing", amount: 18000, taxRate: 18, status: "Sent", issueDate: daysFromNow(-8), dueDate: daysFromNow(22) },
@@ -266,7 +266,16 @@ export async function seedDemoData(prisma: PrismaClient) {
     { invoiceNumber: "SA/26-27/008", clientId: trust.id, description: "12A/80G renewal & Form 10B", amount: 35000, taxRate: 18, status: "Overdue", issueDate: daysFromNow(-50), dueDate: daysFromNow(-20) },
   ];
   for (const inv of invoiceData) {
-    await prisma.invoice.create({ data: { organizationId: mainOrg.id, ...inv } });
+    const { lines, ...rest } = inv as (typeof inv) & {
+      lines?: { description: string; amount: number }[];
+    };
+    await prisma.invoice.create({
+      data: {
+        organizationId: mainOrg.id,
+        ...rest,
+        ...(lines && lines.length ? { lineItems: { create: lines } } : {}),
+      },
+    });
   }
 
   console.log("Seeding documents...");

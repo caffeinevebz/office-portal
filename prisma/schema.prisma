@@ -176,6 +176,9 @@ model Task {
   schedule   ComplianceSchedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
   periodKey  String? // e.g. "2026-07"; unique per schedule occurrence for idempotent generation
 
+  // Invoice lines that bill this task (to show whether it has been billed).
+  invoiceLines InvoiceLineItem[]
+
   @@unique([scheduleId, periodKey])
 }
 
@@ -387,6 +390,28 @@ model Invoice {
   // Bill under a client trade name instead of the legal name (optional).
   tradeNameId    String?
   tradeName      TradeName?    @relation(fields: [tradeNameId], references: [id], onDelete: SetNull)
+  // Service line items; `amount` above is kept in sync as their sum.
+  lineItems      InvoiceLineItem[]
+}
+
+/// One billed service on an invoice. An invoice can bill several services at
+/// once, and each line can be mapped to the Task it settles so the firm knows
+/// which engagement has been billed.
+model InvoiceLineItem {
+  id          String   @id @default(cuid())
+  description String
+  amount      Float    @default(0) // pre-tax amount for this line
+  sacCode     String? // optional per-line SAC (falls back to the org's SAC)
+  createdAt   DateTime @default(now())
+
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  // The engagement this line bills (optional).
+  taskId    String?
+  task      Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@index([taskId])
 }
 
 /// An Income Tax Return engagement for a client, keyed by financial year.

@@ -52,6 +52,20 @@ export const clientCreateSchema = z.object({
   contactPerson: optionalText,
   groupId: optionalText,
   notes: optionalText,
+  // Firm / trade names to sync with the client (add/edit inline). An item
+  // with an id updates that trade name; without an id it is created; existing
+  // trade names absent from the list are removed.
+  tradeNames: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        name: z.string().trim().min(1, "Trade name is required"),
+        gstin: optionalText,
+        pan: optionalText,
+        address: optionalText,
+      }),
+    )
+    .optional(),
 });
 export const clientUpdateSchema = clientCreateSchema.partial();
 
@@ -138,12 +152,25 @@ export const invoiceCreateSchema = z.object({
   tradeNameId: optionalText,
   organizationId: optionalText,
   description: optionalText,
-  amount: z.coerce.number().min(0, "Amount must be positive"),
+  // Kept in sync with the sum of line items when those are provided.
+  amount: z.coerce.number().min(0).optional(),
   taxRate: z.coerce.number().min(0).max(100).default(18),
   gstMode: oneOf(GST_MODES, "GST mode").default("Auto"),
   status: oneOf(INVOICE_STATUSES, "status").default("Draft"),
   issueDate: optionalDate,
   dueDate: optionalDate,
+  // Service line items; each can optionally map to the Task it bills.
+  lineItems: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        description: z.string().trim().min(1, "Description is required"),
+        amount: z.coerce.number().min(0),
+        sacCode: optionalText,
+        taskId: optionalText,
+      }),
+    )
+    .optional(),
 });
 export const invoiceUpdateSchema = invoiceCreateSchema.partial();
 

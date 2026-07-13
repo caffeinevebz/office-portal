@@ -26,14 +26,32 @@ async function applyUpdate(id: string, data: Prisma.InvoiceUncheckedUpdateInput)
   return prisma.invoice.update({
     where: { id },
     data: patch,
-    include: { client: true, tradeName: true },
+    include: {
+      client: true,
+      tradeName: true,
+      lineItems: { include: { task: { select: { id: true, title: true, category: true } } } },
+    },
   });
 }
 
 export const PUT = route(async (req, ctx: Ctx) => {
   await requirePermission("manageInvoices");
   const { id } = await ctx.params;
-  const data = await parse(req, invoiceUpdateSchema);
+  const { lineItems, ...data } = await parse(req, invoiceUpdateSchema);
+  // Sync line items when the form provides them, and keep `amount` = their sum.
+  if (lineItems) {
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.invoiceLineItem.findMany({ where: { invoiceId: id }, select: { id: true } });
+      const keep = new Set(lineItems.filter((l) => l.id).map((l) => l.id));
+      const remove = existing.filter((e) => !keep.has(e.id)).map((e) => e.id);
+      if (remove.length) await tx.invoiceLineItem.deleteMany({ where: { id: { in: remove } } });
+      for (const { id: lid, ...fields } of lineItems) {
+        if (lid) await tx.invoiceLineItem.update({ where: { id: lid }, data: fields });
+        else await tx.invoiceLineItem.create({ data: { ...fields, invoiceId: id } });
+      }
+    });
+    data.amount = lineItems.reduce((s, l) => s + (l.amount || 0), 0);
+  }
   const invoice = await applyUpdate(id, data as Prisma.InvoiceUncheckedUpdateInput);
   return ok(invoice);
 });
