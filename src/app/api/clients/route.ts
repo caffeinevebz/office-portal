@@ -46,7 +46,16 @@ export const GET = route(async (req) => {
 
 export const POST = route(async (req) => {
   await requirePermission("manageClients");
-  const data = await parse(req, clientCreateSchema);
-  const client = await prisma.client.create({ data });
+  const { tradeNames, ...data } = await parse(req, clientCreateSchema);
+  const client = await prisma.client.create({
+    data: {
+      ...data,
+      tradeNames:
+        tradeNames && tradeNames.length
+          ? { create: tradeNames.map(({ id: _id, ...t }) => t) }
+          : undefined,
+    },
+    include: { group: true, tradeNames: { orderBy: { name: "asc" } } },
+  });
   return ok(client, 201);
 });

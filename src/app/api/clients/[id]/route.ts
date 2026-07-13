@@ -28,8 +28,26 @@ export const GET = route(async (_req, ctx: Ctx) => {
 export const PUT = route(async (req, ctx: Ctx) => {
   await requirePermission("manageClients");
   const { id } = await ctx.params;
-  const data = await parse(req, clientUpdateSchema);
-  const client = await prisma.client.update({ where: { id }, data });
+  const { tradeNames, ...data } = await parse(req, clientUpdateSchema);
+  await prisma.$transaction(async (tx) => {
+    await tx.client.update({ where: { id }, data });
+    // When the form sends a trade-name list, sync to it: update by id, create
+    // new ones, and remove any the user deleted (invoices keep, link nulled).
+    if (tradeNames) {
+      const existing = await tx.tradeName.findMany({ where: { clientId: id }, select: { id: true } });
+      const keep = new Set(tradeNames.filter((t) => t.id).map((t) => t.id));
+      const remove = existing.filter((e) => !keep.has(e.id)).map((e) => e.id);
+      if (remove.length) await tx.tradeName.deleteMany({ where: { id: { in: remove } } });
+      for (const { id: tid, ...fields } of tradeNames) {
+        if (tid) await tx.tradeName.update({ where: { id: tid }, data: fields });
+        else await tx.tradeName.create({ data: { ...fields, clientId: id } });
+      }
+    }
+  });
+  const client = await prisma.client.findUnique({
+    where: { id },
+    include: { group: true, tradeNames: { orderBy: { name: "asc" } } },
+  });
   return ok(client);
 });
 

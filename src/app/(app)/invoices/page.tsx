@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Search, Plus, Pencil, Trash2, Receipt, FileDown, FileCheck2, Mail } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
-import type { Invoice, Client, Organization } from "@/lib/types";
+import type { Invoice, Client, Organization, Task } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -23,7 +23,19 @@ import {
 
 const withTax = (i: { amount: number; taxRate: number; gstMode?: string }) =>
   invoiceGross(i.amount, i.taxRate, i.gstMode);
+
+// A short summary of an invoice's billed services (line items, else its note).
+function servicesSummary(i: Invoice): string {
+  if (i.lineItems && i.lineItems.length > 0) return i.lineItems.map((l) => l.description).join(", ");
+  return i.description ?? "";
+}
+// How many line items are mapped to a task.
+function billedTaskCount(i: Invoice): number {
+  return (i.lineItems ?? []).filter((l) => l.taskId).length;
+}
+
 type FormState = Partial<Invoice>;
+type LineDraft = { id?: string; description: string; amount: number; taskId: string };
 
 export default function InvoicesPage() {
   const { can } = useAuth();
@@ -34,6 +46,7 @@ export default function InvoicesPage() {
   const { data, loading, error, refresh } = useResource<Invoice[]>(url);
   const { data: clients } = useResource<Client[]>("/api/clients");
   const { data: orgs } = useResource<Organization[]>("/api/orgs");
+  const { data: tasks } = useResource<Task[]>("/api/tasks");
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Invoice | null>(null);
@@ -168,9 +181,14 @@ export default function InvoicesPage() {
                   <tr key={i.id} className="hover:bg-slate-50">
                     <td className="px-5 py-3">
                       <p className="font-medium text-slate-800">{i.invoiceNumber}</p>
-                      {i.description && (
+                      {servicesSummary(i) && (
                         <p className="mt-0.5 max-w-xs truncate text-xs text-slate-500">
-                          {i.description}
+                          {servicesSummary(i)}
+                        </p>
+                      )}
+                      {billedTaskCount(i) > 0 && (
+                        <p className="mt-0.5 text-[11px] text-fern-600">
+                          {billedTaskCount(i)} task{billedTaskCount(i) === 1 ? "" : "s"} mapped
                         </p>
                       )}
                       {i.organization && (
@@ -296,6 +314,7 @@ export default function InvoicesPage() {
           initial={editing}
           clients={clients ?? []}
           orgs={orgs ?? []}
+          tasks={tasks ?? []}
           onClose={() => setFormOpen(false)}
           onSaved={() => {
             setFormOpen(false);
@@ -357,12 +376,14 @@ function InvoiceForm({
   initial,
   clients,
   orgs,
+  tasks,
   onClose,
   onSaved,
 }: {
   initial: Invoice | null;
   clients: Client[];
   orgs: Organization[];
+  tasks: Task[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -373,23 +394,44 @@ function InvoiceForm({
       taxRate: 18,
       gstMode: "Auto",
       status: "Draft",
-      amount: 0,
       organizationId: defaultOrgId,
     },
   );
+  const [lineItems, setLineItems] = useState<LineDraft[]>(() => {
+    if (initial?.lineItems && initial.lineItems.length > 0) {
+      return initial.lineItems.map((l) => ({
+        id: l.id,
+        description: l.description,
+        amount: l.amount,
+        taskId: l.taskId ?? "",
+      }));
+    }
+    if (initial) {
+      // Legacy invoice: seed a single line from its amount/description.
+      return [{ description: initial.description ?? "", amount: initial.amount ?? 0, taskId: "" }];
+    }
+    return [{ description: "", amount: 0, taskId: "" }];
+  });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const isEdit = !!initial;
-  const set = (k: keyof FormState, v: string | number) =>
-    setForm((f) => ({ ...f, [k]: v }));
+  const set = (k: keyof FormState, v: string | number) => setForm((f) => ({ ...f, [k]: v }));
 
-  const amount = Number(form.amount) || 0;
+  const addLine = () => setLineItems((ls) => [...ls, { description: "", amount: 0, taskId: "" }]);
+  const removeLine = (i: number) => setLineItems((ls) => ls.filter((_, idx) => idx !== i));
+  const updateLine = (i: number, key: keyof LineDraft, v: string | number) =>
+    setLineItems((ls) => ls.map((l, idx) => (idx === i ? { ...l, [key]: v } : l)));
+
   const rate = Number(form.taxRate) || 0;
   const gstMode = form.gstMode ?? "Auto";
-  const total = withTax({ amount, taxRate: rate, gstMode });
+  const subtotal = lineItems.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+  const total = withTax({ amount: subtotal, taxRate: rate, gstMode });
 
   const selectedClient = clients.find((c) => c.id === form.clientId);
   const tradeNames = selectedClient?.tradeNames ?? [];
+  const clientTasks = form.clientId ? tasks.filter((t) => t.clientId === form.clientId) : [];
+
+  const validLines = lineItems.filter((l) => l.description.trim());
 
   async function submit() {
     setBusy(true);
@@ -400,13 +442,19 @@ function InvoiceForm({
         clientId: form.clientId,
         tradeNameId: form.tradeNameId || null,
         organizationId: form.organizationId || null,
-        description: form.description,
-        amount,
+        description: null,
+        amount: subtotal,
         taxRate: rate,
         gstMode,
         status: form.status,
         issueDate: form.issueDate || null,
         dueDate: form.dueDate || null,
+        lineItems: validLines.map((l) => ({
+          id: l.id,
+          description: l.description.trim(),
+          amount: Number(l.amount) || 0,
+          taskId: l.taskId || null,
+        })),
       };
       if (isEdit) await apiMutate(`/api/invoices/${initial!.id}`, "PUT", payload);
       else await apiMutate("/api/invoices", "POST", payload);
@@ -429,7 +477,7 @@ function InvoiceForm({
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={busy || !form.clientId}>
+          <Button onClick={submit} disabled={busy || !form.clientId || validLines.length === 0}>
             {busy ? "Saving…" : isEdit ? "Save changes" : "Create invoice"}
           </Button>
         </>
@@ -503,21 +551,70 @@ function InvoiceForm({
             </Select>
           </Field>
         )}
-        <Field label="Description" className="sm:col-span-2">
-          <Input
-            value={form.description ?? ""}
-            onChange={(e) => set("description", e.target.value)}
-            placeholder="e.g. Statutory audit fee – FY 2025-26"
-          />
-        </Field>
-        <Field label="Fee amount (₹)" required>
-          <Input
-            type="number"
-            min={0}
-            value={form.amount ?? 0}
-            onChange={(e) => set("amount", e.target.value)}
-          />
-        </Field>
+
+        {/* Service line items — bill several services on one invoice, each
+            optionally mapped to the Task it settles. */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:col-span-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-slate-700">Services billed</span>
+            <Button type="button" variant="secondary" size="sm" onClick={addLine}>
+              <Plus className="h-4 w-4" /> Add service
+            </Button>
+          </div>
+          <div className="mt-3 space-y-2">
+            {lineItems.map((l, i) => (
+              <div key={i} className="rounded-lg border border-slate-200 bg-white p-2.5">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                  <div className="flex-1">
+                    <Input
+                      value={l.description}
+                      onChange={(e) => updateLine(i, "description", e.target.value)}
+                      placeholder="Service, e.g. Statutory audit fee – FY 2025-26"
+                    />
+                  </div>
+                  <div className="w-full sm:w-32">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={l.amount}
+                      onChange={(e) => updateLine(i, "amount", e.target.value)}
+                      placeholder="Amount ₹"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeLine(i)}
+                    disabled={lineItems.length === 1}
+                    className="mt-1 shrink-0 rounded p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-500 disabled:opacity-30"
+                    title="Remove service"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-[11px] text-slate-400">Map to task</span>
+                  <select
+                    value={l.taskId}
+                    onChange={(e) => updateLine(i, "taskId", e.target.value)}
+                    disabled={!form.clientId}
+                    className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none disabled:bg-slate-50"
+                  >
+                    <option value="">— Not mapped —</option>
+                    {clientTasks.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.title} · {t.category}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 flex justify-end text-sm text-slate-600">
+            Subtotal <span className="ml-2 font-semibold text-slate-900">{formatCurrency(subtotal)}</span>
+          </div>
+        </div>
+
         <Field label="GST applicability">
           <Select value={gstMode} onChange={(e) => set("gstMode", e.target.value)}>
             {GST_MODES.map((m) => (

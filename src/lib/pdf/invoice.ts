@@ -1,6 +1,6 @@
 import "server-only";
 import { rgb } from "pdf-lib";
-import type { Invoice, Client, Organization, TradeName } from "@prisma/client";
+import type { Invoice, Client, Organization, TradeName, InvoiceLineItem } from "@prisma/client";
 import { getDefaultOrg, toLetterhead, type Letterhead } from "@/lib/org";
 import { rupeesInWords } from "./words";
 import {
@@ -24,6 +24,7 @@ export type InvoiceForPdf = Invoice & {
   client: Client;
   organization?: Organization | null;
   tradeName?: TradeName | null;
+  lineItems?: InvoiceLineItem[];
 };
 
 const fmtDate = (d: Date | null | undefined) =>
@@ -146,16 +147,25 @@ export async function buildInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   hline(page, MARGIN, right, y);
   y -= 16;
 
-  const desc = inv.description?.trim() || "Professional services rendered";
-  const descLines = wrap(desc, reg, 9.5, colSac - MARGIN - 24);
-  const rowTop = y;
-  for (const line of descLines) {
-    text(page, line, { x: MARGIN + 8, y, size: 9.5, font: reg });
-    y -= 12;
+  // One row per service line; fall back to the single description/amount when
+  // an invoice has no line items (older invoices).
+  const items: { description: string; amount: number; sacCode: string | null }[] =
+    inv.lineItems && inv.lineItems.length > 0
+      ? inv.lineItems.map((li) => ({ description: li.description, amount: li.amount, sacCode: li.sacCode }))
+      : [{ description: inv.description?.trim() || "Professional services rendered", amount: tax.taxable, sacCode: null }];
+
+  for (const item of items) {
+    const descLines = wrap(item.description || "Professional services", reg, 9.5, colSac - MARGIN - 24);
+    const rowTop = y;
+    for (const line of descLines) {
+      text(page, line, { x: MARGIN + 8, y, size: 9.5, font: reg });
+      y -= 12;
+    }
+    text(page, item.sacCode || lh.sacCode, { x: colSac, y: rowTop, size: 9.5, font: reg, color: MUTED });
+    text(page, money(item.amount), { x: right - 8, y: rowTop, size: 9.5, font: reg, align: "right" });
+    y -= 5;
   }
-  text(page, lh.sacCode, { x: colSac, y: rowTop, size: 9.5, font: reg, color: MUTED });
-  text(page, money(tax.taxable), { x: right - 8, y: rowTop, size: 9.5, font: reg, align: "right" });
-  y -= rowPadding;
+  y -= rowPadding - 5;
   hline(page, MARGIN, right, y);
 
   // ---- Totals ----

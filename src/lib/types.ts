@@ -111,6 +111,8 @@ export type Task = {
   scheduleId: string | null;
   client?: Client | null;
   assignee?: Staff | null;
+  // Invoice lines that bill this task (present → the task has been billed).
+  invoiceLines?: { invoice?: { id: string; invoiceNumber: string } | null }[];
 };
 
 export type ChecklistItem = { label: string; done: boolean };
@@ -175,6 +177,16 @@ export type Invoice = {
   tradeName?: TradeName | null;
   organizationId: string | null;
   organization?: { id: string; name: string } | null;
+  lineItems?: InvoiceLineItem[];
+};
+
+export type InvoiceLineItem = {
+  id: string;
+  description: string;
+  amount: number;
+  sacCode: string | null;
+  taskId: string | null;
+  task?: { id: string; title: string; category: string } | null;
 };
 
 export type ItrFiling = {
