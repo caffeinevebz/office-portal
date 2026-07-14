@@ -13,9 +13,9 @@ import {
   DSC_STATUSES,
   PACKET_MODES,
   GST_MODES,
-  ITR_FORMS,
   ITR_REGIMES,
   ITR_STATUSES,
+  RETURN_TYPES,
 } from "./constants";
 
 // Accept only one of the allowed domain values.
@@ -118,6 +118,8 @@ export const taskCreateSchema = z.object({
   priority: oneOf(TASK_PRIORITIES, "priority").default("Medium"),
   dueDate: optionalDate,
   clientId: optionalText,
+  // Create the same task for several clients in one go.
+  clientIds: z.array(z.string().trim().min(1)).optional(),
   assigneeId: optionalText,
   isReturnFiling: z.boolean().optional(),
   filingDate: optionalDate,
@@ -266,12 +268,16 @@ export const organizationUpdateSchema = organizationSchema.partial();
 
 export const itrCreateSchema = z.object({
   clientId: z.string().trim().min(1, "Client is required"),
+  returnType: oneOf(RETURN_TYPES, "return type").default("ITR"),
   financialYear: z
     .string()
     .trim()
     .regex(/^\d{4}-\d{2}$/, "Financial year must look like 2025-26"),
-  formType: oneOf(ITR_FORMS, "ITR form").default("ITR-1"),
+  // ITR-1…7, "Form 138 / 24Q", "GSTR-3B", "AOC-4"… — validated by the form UI.
+  formType: z.string().trim().min(1, "Form is required").default("ITR-1"),
   regime: oneOf(ITR_REGIMES, "regime").default("New"),
+  periodQuarter: optionalText,
+  periodMonth: optionalMonth,
   status: oneOf(ITR_STATUSES, "status").default("Documents Awaited"),
   filedOn: optionalDate,
   ackNumber: optionalText,

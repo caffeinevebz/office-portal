@@ -21,7 +21,7 @@ async function applyUpdate(id: string, data: Prisma.ItrFilingUncheckedUpdateInpu
   return prisma.itrFiling.update({
     where: { id },
     data: patch,
-    include: { client: true, assignee: true },
+    include: { client: true, assignee: true, task: { select: { id: true, title: true } } },
   });
 }
 

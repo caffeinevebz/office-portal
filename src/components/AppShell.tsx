@@ -34,7 +34,7 @@ const NAV: { href: string; label: string; icon: typeof Users; perm?: Permission 
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/tasks", label: "Tasks", icon: ClipboardList },
-  { href: "/itr", label: "ITR Filings", icon: Landmark },
+  { href: "/itr", label: "Filing Register", icon: Landmark },
   { href: "/invoices", label: "Invoices", icon: Receipt },
   { href: "/staff", label: "Team", icon: UsersRound },
   { href: "/documents", label: "Documents", icon: FolderClosed },

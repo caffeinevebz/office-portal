@@ -27,24 +27,27 @@ export const GET = route(async (req) => {
   await backfillFinancialYears();
   const { searchParams } = new URL(req.url);
   const fy = searchParams.get("fy")?.trim();
+  const type = searchParams.get("type")?.trim();
   const status = searchParams.get("status")?.trim();
   const q = searchParams.get("q")?.trim();
 
   const where: Prisma.ItrFilingWhereInput = {};
   if (fy && fy !== "All") where.financialYear = fy;
+  if (type && type !== "All") where.returnType = type;
   if (status && status !== "All") where.status = status;
   if (q) {
     where.OR = [
       { client: { name: { contains: q, mode: "insensitive" } } },
       { client: { pan: { contains: q, mode: "insensitive" } } },
       { ackNumber: { contains: q, mode: "insensitive" } },
+      { formType: { contains: q, mode: "insensitive" } },
     ];
   }
 
   const filings = await prisma.itrFiling.findMany({
     where,
     orderBy: [{ financialYear: "desc" }, { createdAt: "asc" }],
-    include: { client: true, assignee: true },
+    include: { client: true, assignee: true, task: { select: { id: true, title: true } } },
   });
   return ok(filings);
 });

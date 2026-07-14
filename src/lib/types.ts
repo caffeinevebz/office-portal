@@ -191,9 +191,12 @@ export type InvoiceLineItem = {
 
 export type ItrFiling = {
   id: string;
+  returnType: string;
   financialYear: string | null;
   formType: string;
   regime: string;
+  periodQuarter: string | null;
+  periodMonth: number | null;
   status: string;
   filedOn: string | null;
   ackNumber: string | null;
@@ -202,8 +205,10 @@ export type ItrFiling = {
   createdAt: string;
   clientId: string;
   assigneeId: string | null;
+  taskId: string | null;
   client?: Client | null;
   assignee?: Staff | null;
+  task?: { id: string; title: string } | null;
 };
 
 export type DocumentRecord = {
