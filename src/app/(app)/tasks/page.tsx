@@ -47,6 +47,7 @@ import {
   incomeTaxYearLabel,
   taxPeriodOption,
   defaultChecklist,
+  checklistStatus,
 } from "@/lib/constants";
 import { dueLabel, daysUntil, toDateInput, formatDate, cn } from "@/lib/format";
 
@@ -113,9 +114,21 @@ export default function TasksPage() {
   const [toDelete, setToDelete] = useState<Task | null>(null);
   const [filingFor, setFilingFor] = useState<Task | null>(null);
   const [addRecurring, setAddRecurring] = useState(0);
+  // Task whose checklist is expanded inline in the table.
+  const [openChecklist, setOpenChecklist] = useState<string | null>(null);
 
   async function quickStatus(t: Task, newStatus: string) {
     await apiMutate(`/api/tasks/${t.id}`, "PATCH", { status: newStatus });
+    refresh();
+  }
+
+  // Tick/untick a step from the table — the task status auto-updates from
+  // the steps checked (none → Pending, some → In Progress, all → Completed).
+  async function toggleStep(t: Task, index: number) {
+    const items = (t.checklist ?? []).map((it, i) =>
+      i === index ? { ...it, done: !it.done } : it,
+    );
+    await apiMutate(`/api/tasks/${t.id}`, "PATCH", { checklist: items });
     refresh();
   }
 
@@ -222,10 +235,22 @@ export default function TasksPage() {
                               <span className="font-medium text-slate-800">{t.title}</span>
                               <Badge tone={CATEGORY_TONE[t.category]}>{t.category}</Badge>
                               {chk && (
-                                <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setOpenChecklist(openChecklist === t.id ? null : t.id)
+                                  }
+                                  className={cn(
+                                    "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs",
+                                    openChecklist === t.id
+                                      ? "bg-brand-50 text-brand-700 ring-1 ring-brand-200"
+                                      : "text-slate-500 hover:bg-slate-100",
+                                  )}
+                                  title="Show checklist"
+                                >
                                   <ListChecks className="h-3.5 w-3.5" />
                                   {chk.done}/{chk.total}
-                                </span>
+                                </button>
                               )}
                               {billedNos.length > 0 && (
                                 <Badge tone="green">
@@ -246,6 +271,27 @@ export default function TasksPage() {
                                 Filed {formatDate(t.filingDate)}
                                 {t.ackNumber && <span className="text-slate-400">· Ack {t.ackNumber}</span>}
                               </p>
+                            )}
+                            {openChecklist === t.id && t.checklist && t.checklist.length > 0 && (
+                              <ul className="mt-2 max-w-md space-y-1 rounded-lg border border-slate-200 bg-slate-50/70 p-2">
+                                {t.checklist.map((step, si) => (
+                                  <li key={si} className="flex items-center gap-2 text-xs text-slate-700">
+                                    <input
+                                      type="checkbox"
+                                      checked={step.done}
+                                      disabled={!canManage}
+                                      onChange={() => toggleStep(t, si)}
+                                      className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                                    />
+                                    <span className={cn(step.done && "text-slate-400 line-through")}>
+                                      {step.label}
+                                    </span>
+                                  </li>
+                                ))}
+                                <li className="pt-0.5 pl-5 text-[10px] text-slate-400">
+                                  Status updates automatically from the steps checked.
+                                </li>
+                              </ul>
                             )}
                           </td>
                           <td className="px-5 py-3 text-slate-600">
@@ -455,6 +501,11 @@ function TaskForm({
   const [form, setForm] = useState<FormState>(
     initial ?? { category: "Income Tax", status: "Pending", priority: "Medium" },
   );
+  // Create the same task for several clients in one go (create mode only).
+  const [multiClient, setMultiClient] = useState(false);
+  const [clientIds, setClientIds] = useState<string[]>([]);
+  const toggleClient = (id: string) =>
+    setClientIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
   // Recurring definition fields (only used when the recurring toggle is on).
   const [recurring, setRecurring] = useState(false);
   const [freq, setFreq] = useState("Monthly");
@@ -544,7 +595,9 @@ function TaskForm({
         status: form.status,
         priority: form.priority,
         dueDate: form.dueDate || null,
-        clientId: form.clientId || null,
+        clientId: multiClient ? null : form.clientId || null,
+        // One identical task per selected client when multi-client is on.
+        clientIds: !isEdit && multiClient && clientIds.length > 0 ? clientIds : undefined,
         assigneeId: form.assigneeId || null,
         taskType: cat === "Income Tax" || cat === "Audit" ? form.taskType || null : null,
         financialYear: form.financialYear || null,
@@ -583,8 +636,16 @@ function TaskForm({
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={busy || !form.title}>
-            {busy ? "Saving…" : isEdit ? "Save changes" : recurring ? "Create recurring task" : "Create task"}
+          <Button onClick={submit} disabled={busy || !form.title || (multiClient && clientIds.length === 0)}>
+            {busy
+              ? "Saving…"
+              : isEdit
+                ? "Save changes"
+                : recurring
+                  ? "Create recurring task"
+                  : multiClient && clientIds.length > 1
+                    ? `Create ${clientIds.length} tasks`
+                    : "Create task"}
           </Button>
         </>
       }
@@ -615,14 +676,50 @@ function TaskForm({
           </Select>
         </Field>
         <Field label="Client">
-          <Select value={form.clientId ?? ""} onChange={(e) => set("clientId", e.target.value)}>
-            <option value="">— Internal / none —</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
+          {multiClient ? (
+            <div className="max-h-44 space-y-1 overflow-y-auto rounded-lg border border-slate-300 bg-white p-2 shadow-sm">
+              {clients.map((c) => (
+                <label
+                  key={c.id}
+                  className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={clientIds.includes(c.id)}
+                    onChange={() => toggleClient(c.id)}
+                    className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                  />
+                  {c.name}
+                </label>
+              ))}
+            </div>
+          ) : (
+            <Select value={form.clientId ?? ""} onChange={(e) => set("clientId", e.target.value)}>
+              <option value="">— Internal / none —</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          )}
+          {!isEdit && !recurring && (
+            <label className="mt-1.5 flex cursor-pointer items-center gap-2 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={multiClient}
+                onChange={(e) => {
+                  setMultiClient(e.target.checked);
+                  if (e.target.checked && form.clientId) setClientIds([form.clientId]);
+                }}
+                className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+              />
+              Create this task for multiple clients
+              {multiClient && clientIds.length > 0 && (
+                <span className="text-slate-400">· {clientIds.length} selected</span>
+              )}
+            </label>
+          )}
         </Field>
         <Field label="Assignee">
           <Select value={form.assigneeId ?? ""} onChange={(e) => set("assigneeId", e.target.value)}>
@@ -636,7 +733,7 @@ function TaskForm({
         </Field>
 
         {/* One-time vs recurring */}
-        {!isEdit && canRecur && (
+        {!isEdit && canRecur && !multiClient && (
           <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:col-span-2">
             <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
               <input
@@ -858,10 +955,14 @@ function TaskForm({
               />
             </Field>
 
-            {/* Checklist */}
+            {/* Checklist — the task status follows the steps checked. */}
             <ChecklistEditor
               items={form.checklist ?? []}
-              onChange={(list) => set("checklist", list)}
+              onChange={(list) => {
+                set("checklist", list);
+                const derived = checklistStatus(list);
+                if (derived) set("status", derived);
+              }}
             />
 
             <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:col-span-2">

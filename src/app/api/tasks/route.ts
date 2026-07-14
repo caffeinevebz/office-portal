@@ -54,18 +54,34 @@ const RETURN_CATEGORIES = ["GST", "Income Tax", "TDS"];
 
 export const POST = route(async (req) => {
   await requirePermission("manageTasks");
-  const data = await parse(req, taskCreateSchema);
+  const { clientIds, ...data } = await parse(req, taskCreateSchema);
   const isReturnFiling = data.isReturnFiling ?? RETURN_CATEGORIES.includes(data.category);
   // A return task with a filing date recorded is complete on creation.
   const filed = isReturnFiling && !!data.filingDate;
   const status = filed ? "Completed" : data.status;
+  const base = {
+    ...data,
+    isReturnFiling,
+    status,
+    completedAt: status === "Completed" ? (data.filingDate ?? new Date()) : null,
+  };
+
+  // Multi-client creation: one identical task per selected client.
+  if (clientIds && clientIds.length > 0) {
+    const tasks = [];
+    for (const clientId of clientIds) {
+      tasks.push(
+        await prisma.task.create({
+          data: { ...base, clientId },
+          include: { client: true, assignee: true },
+        }),
+      );
+    }
+    return ok(tasks, 201);
+  }
+
   const task = await prisma.task.create({
-    data: {
-      ...data,
-      isReturnFiling,
-      status,
-      completedAt: status === "Completed" ? (data.filingDate ?? new Date()) : null,
-    },
+    data: base,
     include: { client: true, assignee: true },
   });
   return ok(task, 201);

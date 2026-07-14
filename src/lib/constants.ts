@@ -222,18 +222,28 @@ export function defaultChecklist(
   const mk = (labels: string[]): ChecklistItem[] => labels.map((label) => ({ label, done: false }));
   if (category === "TDS") {
     return mk([
-      "Challans verified & mapped",
-      "Deductee PAN details validated",
-      "Statement validated (FVU / portal)",
-      "Return filed & token/PRN saved",
-      "TDS certificate for the quarter downloaded",
+      "Data / Documents received from client",
+      "TDS return prepared",
+      "Run e-return (for any error)",
+      "Relevant files saved",
+      "TDS return filed",
+      "Request for TDS Certificate",
+      "TDS Certificate downloaded",
+      "TDS Certificate mailed to client",
     ]);
   }
   if (category === "GST") {
     return mk(["Data reconciled with books", "Return prepared", "Return filed & ARN saved"]);
   }
   if (category === "Income Tax" && opts.taskType === "ITR Filing") {
-    return mk(["Documents collected", "Computation prepared & approved", "Return filed", "Return e-verified"]);
+    return mk([
+      "Data / Documents received from client",
+      "Form 26AS, AIS & TIS downloaded",
+      "Computation prepared",
+      "Computation finalised",
+      "ITR filed",
+      "ITR e-verified",
+    ]);
   }
   if (category === "Audit") {
     const items = AUDIT_CHECKLISTS[opts.taskType ?? ""];
@@ -241,6 +251,59 @@ export function defaultChecklist(
   }
   return [];
 }
+
+/**
+ * Task status derived from its checklist: none done → Pending, some done →
+ * In Progress, all done → Completed. Returns null for an empty checklist
+ * (nothing to derive from).
+ */
+export function checklistStatus(items: ChecklistItem[] | null | undefined): string | null {
+  if (!items || items.length === 0) return null;
+  const done = items.filter((i) => i.done).length;
+  if (done === 0) return "Pending";
+  if (done === items.length) return "Completed";
+  return "In Progress";
+}
+
+// ── Filing register ─────────────────────────────────────────────────────────
+// The register covers every kind of return the firm files, not just ITR.
+export const RETURN_TYPES = ["ITR", "TDS", "GST", "MCA"] as const;
+
+export const MCA_FORMS = [
+  "AOC-4",
+  "MGT-7",
+  "MGT-7A",
+  "ADT-1",
+  "DIR-3 KYC",
+  "LLP Form 11",
+  "LLP Form 8",
+  "CRA-4",
+  "Other",
+] as const;
+
+/** Form-number options for a filing-register entry, by return type. */
+export function filingFormOptions(returnType: string): string[] {
+  switch (returnType) {
+    case "ITR":
+      return [...ITR_FORMS];
+    case "TDS":
+      return TDS_RETURN_FORMS.map((f) => `Form ${f.newNo} / ${f.oldNo}`);
+    case "GST":
+      return [...GST_RETURN_TYPES];
+    case "MCA":
+      return [...MCA_FORMS];
+    default:
+      return [];
+  }
+}
+
+/** The register returnType a task's filing belongs to, by task category. */
+export const CATEGORY_RETURN_TYPE: Record<string, (typeof RETURN_TYPES)[number]> = {
+  "Income Tax": "ITR",
+  TDS: "TDS",
+  GST: "GST",
+  "MCA/ROC": "MCA",
+};
 
 export const TASK_STATUSES = [
   "Pending",

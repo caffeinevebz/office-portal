@@ -178,6 +178,8 @@ model Task {
 
   // Invoice lines that bill this task (to show whether it has been billed).
   invoiceLines InvoiceLineItem[]
+  // Filing-register entry created when this task's filing is recorded.
+  filingRecord ItrFiling?
 
   @@unique([scheduleId, periodKey])
 }
@@ -414,18 +416,22 @@ model InvoiceLineItem {
   @@index([taskId])
 }
 
-/// An Income Tax Return engagement for a client, keyed by financial year.
-/// The income-tax period label (AY 2026-27 vs TY 2026-27) is derived from
-/// the financial year — see incomeTaxYearLabel().
+/// A return-filing register entry — one filed (or in-progress) statutory
+/// return per row, covering ITR, TDS, GST and MCA filings. Entries can be
+/// added manually or created automatically when a return-filing task records
+/// its filing. (Model name kept as ItrFiling for schema continuity.)
 model ItrFiling {
   id             String    @id @default(cuid())
+  returnType     String    @default("ITR") // ITR, TDS, GST, MCA
   financialYear  String? // e.g. "2025-26" (backfilled from legacy assessmentYear)
   assessmentYear String? // legacy; retained for backfill, no longer used in the UI
-  formType       String    @default("ITR-1") // ITR-1 … ITR-7
-  regime         String    @default("New") // New, Old
+  formType       String    @default("ITR-1") // ITR-1…7, Form 138/24Q…, GSTR-3B…, AOC-4…
+  regime         String    @default("New") // New, Old (ITR only)
+  periodQuarter  String? // Q1-Q4 (TDS / quarterly GST)
+  periodMonth    Int? // 1-12 (monthly GST)
   status         String    @default("Documents Awaited") // Documents Awaited, In Preparation, Filed, E-Verified, Processed, Defective
   filedOn        DateTime?
-  ackNumber      String? // e-filing acknowledgement number
+  ackNumber      String? // filing acknowledgement number
   refundAmount   Float? // expected/claimed refund, if any
   notes          String?
   createdAt      DateTime  @default(now())
@@ -435,8 +441,11 @@ model ItrFiling {
   client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
   assigneeId String?
   assignee   Staff?  @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  // The task whose "Record filing" created/updates this entry (if any).
+  taskId String? @unique
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
-  @@unique([clientId, financialYear])
+  @@index([clientId])
 }
 
 /// A document record tracked for a client.
