@@ -91,6 +91,8 @@ export type Task = {
   category: string;
   status: string;
   priority: string;
+  // False → priority is auto-derived from the days left to the due date.
+  priorityManual: boolean;
   dueDate: string | null;
   completedAt: string | null;
   isReturnFiling: boolean;
@@ -334,4 +336,48 @@ export type NotificationLog = {
   body: string;
   status: string;
   taskId: string | null;
+};
+
+/** An in-app notification shown in the header bell. */
+export type AppNotification = {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  href: string | null;
+  readAt: string | null;
+  createdAt: string;
+};
+
+/** One expense line inside a reimbursement claim. */
+export type ExpenseItem = {
+  date?: string | null;
+  category: string;
+  description: string;
+  amount: number;
+};
+
+/** A reimbursement claim raised by a team member. */
+export type ExpenseClaim = {
+  id: string;
+  title: string;
+  periodFrom: string | null;
+  periodTo: string | null;
+  items: ExpenseItem[];
+  totalAmount: number;
+  status: string;
+  notes: string | null;
+  decidedAt: string | null;
+  decidedById: string | null;
+  decidedByName: string | null;
+  decisionNote: string | null;
+  createdAt: string;
+  staffId: string;
+  clientId: string | null;
+  taskId: string | null;
+  invoiceId: string | null;
+  staff?: { id: string; name: string; role: string };
+  client?: { id: string; name: string } | null;
+  task?: { id: string; title: string; category: string } | null;
+  invoice?: { id: string; invoiceNumber: string; status: string } | null;
 };

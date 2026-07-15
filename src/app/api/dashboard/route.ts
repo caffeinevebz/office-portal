@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { ok, route } from "@/lib/api";
 import { requireUser } from "@/lib/auth/session";
+import { roleHasPermission } from "@/lib/auth/effective";
 import { invoiceGross } from "@/lib/format";
-import { TASK_STATUSES, TASK_CATEGORIES } from "@/lib/constants";
+import { TASK_STATUSES, TASK_CATEGORIES, effectivePriority } from "@/lib/constants";
+import type { Prisma } from "@prisma/client";
 
 const gross = (i: { amount: number; taxRate: number; gstMode: string }) =>
   invoiceGross(i.amount, i.taxRate, i.gstMode);
@@ -14,7 +16,7 @@ const startOfDay = () => {
 };
 
 export const GET = route(async () => {
-  await requireUser();
+  const user = await requireUser();
   const now = new Date();
   const today = startOfDay();
   const in7 = new Date(today);
@@ -23,17 +25,30 @@ export const GET = route(async () => {
   const in30 = new Date(today);
   in30.setDate(in30.getDate() + 30);
 
-  const [clients, tasks, invoices, dscs] = await Promise.all([
+  // Staff-level members see their own task numbers (matching the task list);
+  // partners/admins/managers see the whole firm's.
+  const viewAll = await roleHasPermission(user.role, "viewAllTasks");
+  const taskWhere: Prisma.TaskWhereInput = viewAll
+    ? {}
+    : {
+        OR: [
+          { assigneeId: user.id },
+          { assignees: { some: { id: user.id } } },
+          { approverId: user.id },
+        ],
+      };
+
+  const [clients, tasks, invoices, activeDscs] = await Promise.all([
     prisma.client.findMany({ select: { status: true } }),
     prisma.task.findMany({
+      where: taskWhere,
       include: { client: { select: { name: true } }, assignee: { select: { name: true } } },
     }),
     prisma.invoice.findMany(),
-    // DSC alerts: active certificates already expired or expiring within 30 days.
+    // DSC summary: every active certificate, bucketed by how close expiry is.
     prisma.dsc.findMany({
-      where: { status: "Active", expiryDate: { lte: in30 } },
-      orderBy: { expiryDate: "asc" },
-      include: { client: { select: { name: true } } },
+      where: { status: "Active" },
+      select: { expiryDate: true, clientId: true },
     }),
   ]);
 
@@ -91,23 +106,24 @@ export const GET = route(async () => {
       id: t.id,
       title: t.title,
       category: t.category,
-      priority: t.priority,
+      priority: effectivePriority(t),
       status: t.status,
       dueDate: t.dueDate,
       client: t.client?.name ?? null,
       assignee: t.assignee?.name ?? null,
     }));
 
-  const dscAlerts = dscs.map((d) => ({
-    id: d.id,
-    holderName: d.holderName,
-    client: d.client?.name ?? null,
-    expiryDate: d.expiryDate,
-    daysLeft: Math.ceil((d.expiryDate.getTime() - today.getTime()) / 86_400_000),
-    expired: d.expiryDate < now,
-  }));
+  // Three mutually-exclusive buckets over the active DSCs.
+  const dscSummary = {
+    expired: activeDscs.filter((d) => d.expiryDate < now).length,
+    expiringSoon: activeDscs.filter((d) => d.expiryDate >= now && d.expiryDate <= in30).length,
+    valid: activeDscs.filter((d) => d.expiryDate > in30).length,
+    unlinked: activeDscs.filter((d) => !d.clientId).length,
+  };
 
   return ok({
+    // True when task numbers are scoped to the signed-in member.
+    scoped: !viewAll,
     kpis: {
       activeClients: clients.filter((c) => c.status === "Active").length,
       totalClients: clients.length,
@@ -122,6 +138,6 @@ export const GET = route(async () => {
     categoryBreakdown,
     months,
     upcoming,
-    dscAlerts,
+    dscSummary,
   });
 });

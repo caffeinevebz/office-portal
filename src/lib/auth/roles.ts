@@ -8,6 +8,9 @@ export type Permission =
   | "deleteClients"
   | "manageTasks"
   | "deleteTasks"
+  | "viewAllTasks"
+  | "raiseExpenses"
+  | "approveExpenses"
   | "manageInvoices"
   | "manageDocuments"
   | "deleteDocuments"
@@ -40,6 +43,15 @@ export const PERMISSION_META: Record<
   deleteClients: { label: "Delete clients", category: "Clients" },
   manageTasks: { label: "Add & edit tasks, change status", category: "Tasks" },
   deleteTasks: { label: "Delete tasks", category: "Tasks" },
+  viewAllTasks: {
+    label: "See every task (otherwise only tasks assigned to them)",
+    category: "Tasks",
+  },
+  raiseExpenses: { label: "Raise expense reimbursement claims", category: "Billing" },
+  approveExpenses: {
+    label: "Approve expense claims & bill them to clients",
+    category: "Billing",
+  },
   manageSchedules: { label: "Manage recurring obligations & generate", category: "Tasks" },
   manageItr: { label: "Manage ITR filings", category: "Tasks" },
   deleteItr: { label: "Delete ITR filings", category: "Tasks" },
@@ -76,6 +88,10 @@ export const DEFAULT_MATRIX: Record<Permission, string[]> = {
   deleteClients: ["Partner", "Admin", "Manager"],
   manageTasks: ["Partner", "Admin", "Manager", "Accountant", "Article Assistant"],
   deleteTasks: ["Partner", "Admin", "Manager", "Accountant"],
+  // Staff-level roles see only tasks assigned to them (or awaiting their approval).
+  viewAllTasks: ["Partner", "Admin", "Manager"],
+  raiseExpenses: ["Partner", "Admin", "Manager", "Accountant", "Article Assistant"],
+  approveExpenses: ["Partner", "Admin"],
   manageSchedules: ["Partner", "Admin", "Manager"],
   manageItr: ["Partner", "Admin", "Manager", "Accountant", "Article Assistant"],
   deleteItr: ["Partner", "Admin", "Manager", "Accountant"],

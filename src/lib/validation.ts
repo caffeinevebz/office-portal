@@ -5,6 +5,7 @@ import {
   TASK_CATEGORIES,
   TASK_STATUSES,
   TASK_PRIORITIES,
+  EXPENSE_CATEGORIES,
   INVOICE_STATUSES,
   DOC_CATEGORIES,
   SCHEDULE_FREQUENCIES,
@@ -115,7 +116,9 @@ export const taskCreateSchema = z.object({
   description: optionalText,
   category: oneOf(TASK_CATEGORIES, "category").default("Other"),
   status: oneOf(TASK_STATUSES, "status").default("Pending"),
-  priority: oneOf(TASK_PRIORITIES, "priority").default("Medium"),
+  // "Auto" (default) derives the priority from the days left to the due date;
+  // an explicit value pins it (honoured for Partner/Admin only).
+  priority: oneOf([...TASK_PRIORITIES, "Auto"], "priority").default("Auto"),
   dueDate: optionalDate,
   clientId: optionalText,
   // Create the same task for several clients in one go.
@@ -355,6 +358,36 @@ export const packetMovementSchema = z.object({
   person: z.string().trim().min(1, "Person is required"),
   mode: oneOf(PACKET_MODES, "mode").default("Hand Delivery"),
   courierRef: optionalText,
+  note: optionalText,
+});
+
+// An expense reimbursement claim raised by a team member.
+export const expenseClaimSchema = z.object({
+  title: z.string().trim().min(1, "Assignment / purpose is required"),
+  clientId: optionalText,
+  taskId: optionalText,
+  // The audit-assignment period the expenses were incurred over.
+  periodFrom: optionalDate,
+  periodTo: optionalDate,
+  items: z
+    .array(
+      z.object({
+        date: optionalDate,
+        category: oneOf(EXPENSE_CATEGORIES, "category").default("Conveyance"),
+        description: z.string().trim().min(1, "Description is required"),
+        amount: z.coerce.number().min(0.01, "Amount is required"),
+      }),
+    )
+    .min(1, "Add at least one expense item"),
+  notes: optionalText,
+});
+export const expenseClaimUpdateSchema = expenseClaimSchema.partial();
+
+// Approve / reject a claim (Partner/Admin).
+export const expenseDecisionSchema = z.object({
+  action: z.string().refine((v) => v === "Approve" || v === "Reject", {
+    message: 'action must be "Approve" or "Reject"',
+  }),
   note: optionalText,
 });
 

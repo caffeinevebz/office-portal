@@ -1,8 +1,15 @@
 import { prisma } from "@/lib/prisma";
 import { ok, parse, route } from "@/lib/api";
 import { requireUser, requirePermission } from "@/lib/auth/session";
+import { roleHasPermission } from "@/lib/auth/effective";
 import { taskCreateSchema } from "@/lib/validation";
-import { LEGACY_CATEGORY_MAP } from "@/lib/constants";
+import {
+  LEGACY_CATEGORY_MAP,
+  canApproveRole,
+  effectivePriority,
+  priorityFromDueDate,
+} from "@/lib/constants";
+import { notifyTaskAssignment, notifyTaskApprover } from "@/lib/notifications";
 import type { Prisma } from "@prisma/client";
 
 // Migrate legacy category values (ROC/MCA, Accounting) to the current master
@@ -15,7 +22,7 @@ async function backfillCategories() {
 }
 
 export const GET = route(async (req) => {
-  await requireUser();
+  const user = await requireUser();
   await backfillCategories();
   const { searchParams } = new URL(req.url);
   const view = searchParams.get("view")?.trim(); // Active (default) or Completed
@@ -47,6 +54,17 @@ export const GET = route(async (req) => {
       ],
     });
   }
+  // Staff-level members (no viewAllTasks) see only work assigned to them —
+  // as lead, co-assignee, or the approver awaiting their sign-off.
+  if (!(await roleHasPermission(user.role, "viewAllTasks"))) {
+    and.push({
+      OR: [
+        { assigneeId: user.id },
+        { assignees: { some: { id: user.id } } },
+        { approverId: user.id },
+      ],
+    });
+  }
   if (and.length) where.AND = and;
 
   const tasks = await prisma.task.findMany({
@@ -62,7 +80,9 @@ export const GET = route(async (req) => {
       invoiceLines: { include: { invoice: { select: { id: true, invoiceNumber: true } } } },
     },
   });
-  return ok(tasks);
+  // Auto priorities derive fresh from the due date on every read, so they
+  // escalate on their own as a deadline approaches.
+  return ok(tasks.map((t) => ({ ...t, priority: effectivePriority(t) })));
 });
 
 // Return-filing categories default the "is return filing" flag on.
@@ -76,16 +96,24 @@ const TASK_INCLUDE = {
 } as const;
 
 export const POST = route(async (req) => {
-  await requirePermission("manageTasks");
-  const { clientIds, assigneeIds, assigneeId: rawAssigneeId, ...data } = await parse(
-    req,
-    taskCreateSchema,
-  );
+  const user = await requirePermission("manageTasks");
+  const {
+    clientIds,
+    assigneeIds,
+    assigneeId: rawAssigneeId,
+    priority: rawPriority,
+    ...data
+  } = await parse(req, taskCreateSchema);
   // Assignees: the first is the lead (kept on assigneeId for reminders); all
   // are linked via the many-to-many relation.
   const ids = assigneeIds && assigneeIds.length ? assigneeIds : rawAssigneeId ? [rawAssigneeId] : [];
   const leadAssigneeId = ids[0] ?? null;
   const assigneesConnect = ids.length ? { connect: ids.map((id) => ({ id })) } : undefined;
+
+  // Priority defaults to auto (from days left to the due date); an explicit
+  // choice pins it, but only a Partner/Admin may pin.
+  const priorityManual = rawPriority !== "Auto" && canApproveRole(user.role);
+  const priority = priorityManual ? rawPriority : priorityFromDueDate(data.dueDate);
 
   const isReturnFiling = data.isReturnFiling ?? RETURN_CATEGORIES.includes(data.category);
   // A return task with a filing date recorded is complete on creation.
@@ -93,6 +121,8 @@ export const POST = route(async (req) => {
   const status = filed ? "Completed" : data.status;
   const base = {
     ...data,
+    priority,
+    priorityManual,
     assigneeId: leadAssigneeId,
     assignees: assigneesConnect,
     isReturnFiling,
@@ -108,9 +138,38 @@ export const POST = route(async (req) => {
         await prisma.task.create({ data: { ...base, clientId }, include: TASK_INCLUDE }),
       );
     }
+    await notifyCreation(tasks.length, user, data, ids, tasks[0]?.client?.name ?? null);
     return ok(tasks, 201);
   }
 
   const task = await prisma.task.create({ data: base, include: TASK_INCLUDE });
+  await notifyCreation(1, user, data, ids, task.client?.name ?? null);
   return ok(task, 201);
 });
+
+// Ping the assignees (and the approver) about their new task.
+async function notifyCreation(
+  count: number,
+  user: { id: string; name: string },
+  data: { title: string; dueDate?: Date | null; approverId?: string | null },
+  assigneeIds: string[],
+  clientName: string | null,
+) {
+  await notifyTaskAssignment({
+    staffIds: assigneeIds,
+    actorId: user.id,
+    actorName: user.name,
+    taskTitle: data.title,
+    clientName,
+    dueDate: data.dueDate ?? null,
+    count,
+  });
+  if (data.approverId) {
+    await notifyTaskApprover({
+      approverId: data.approverId,
+      actorId: user.id,
+      actorName: user.name,
+      taskTitle: data.title,
+    });
+  }
+}

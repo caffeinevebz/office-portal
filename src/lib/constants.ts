@@ -312,7 +312,37 @@ export const TASK_STATUSES = [
   "Completed",
 ] as const;
 
-export const TASK_PRIORITIES = ["Low", "Medium", "High"] as const;
+export const TASK_PRIORITIES = ["Low", "Medium", "High", "Very High"] as const;
+
+/**
+ * Default task priority from the days left to the due date:
+ *   0–7 days (and overdue) → Very High · 8–30 → High · 31–45 → Medium ·
+ *   beyond 45 days → Low. No due date → Low (nothing is pressing yet).
+ */
+export function priorityFromDueDate(dueDate: Date | string | null | undefined): string {
+  if (!dueDate) return "Low";
+  const due = new Date(dueDate);
+  due.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+  if (days <= 7) return "Very High"; // includes overdue
+  if (days <= 30) return "High";
+  if (days <= 45) return "Medium";
+  return "Low";
+}
+
+/**
+ * The priority a task should display: the stored value when a Partner/Admin
+ * pinned it manually, otherwise derived fresh from the due date.
+ */
+export function effectivePriority(task: {
+  priority: string;
+  priorityManual?: boolean | null;
+  dueDate: Date | string | null;
+}): string {
+  return task.priorityManual ? task.priority : priorityFromDueDate(task.dueDate);
+}
 
 export const STAFF_ROLES = [
   "Partner",
@@ -329,6 +359,18 @@ export function canApproveRole(role?: string | null): boolean {
 }
 
 export const INVOICE_STATUSES = ["Draft", "Sent", "Paid", "Overdue"] as const;
+
+// Expense reimbursement claims (raised by staff, approved by Partner/Admin).
+export const EXPENSE_STATUSES = ["Pending", "Approved", "Rejected"] as const;
+export const EXPENSE_CATEGORIES = [
+  "Conveyance",
+  "Travel",
+  "Lodging",
+  "Meals",
+  "Printing & Stationery",
+  "Courier & Postage",
+  "Other",
+] as const;
 
 // GST applicability on an invoice.
 export const GST_MODES = ["Auto", "Intra", "Inter", "None"] as const;
@@ -521,7 +563,8 @@ export const TASK_STATUS_TONE: Record<string, keyof typeof TONE> = {
 export const PRIORITY_TONE: Record<string, keyof typeof TONE> = {
   Low: "slate",
   Medium: "blue",
-  High: "red",
+  High: "amber",
+  "Very High": "red",
 };
 
 export const INVOICE_STATUS_TONE: Record<string, keyof typeof TONE> = {
@@ -529,6 +572,12 @@ export const INVOICE_STATUS_TONE: Record<string, keyof typeof TONE> = {
   Sent: "blue",
   Paid: "green",
   Overdue: "red",
+};
+
+export const EXPENSE_STATUS_TONE: Record<string, keyof typeof TONE> = {
+  Pending: "amber",
+  Approved: "green",
+  Rejected: "red",
 };
 
 export const CLIENT_STATUS_TONE: Record<string, keyof typeof TONE> = {

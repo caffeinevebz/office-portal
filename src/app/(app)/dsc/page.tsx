@@ -14,6 +14,7 @@ import {
   ArrowLeftRight,
   Eye,
   EyeOff,
+  Link2Off,
 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
@@ -75,6 +76,7 @@ export default function DscPage() {
   const withFirm = all.filter(
     (d) => d.custody === "With Firm" && d.status === "Active",
   );
+  const unlinkedCount = all.filter((d) => !d.clientId).length;
 
   return (
     <div>
@@ -113,6 +115,14 @@ export default function DscPage() {
         />
         <StatCard label="Tokens with the firm" value={withFirm.length} icon={KeyRound} accent="indigo" />
       </div>
+
+      {unlinkedCount > 0 && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+          <Link2Off className="h-4 w-4 shrink-0" />
+          {unlinkedCount} DSC holder{unlinkedCount === 1 ? " is" : "s are"} not linked to a
+          client — highlighted below. Edit the record to map the holder to their client.
+        </div>
+      )}
 
       <Card className="mb-4">
         <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center">
@@ -164,18 +174,36 @@ export default function DscPage() {
               <tbody className="divide-y divide-slate-100">
                 {all.map((d) => {
                   const st = effectiveStatus(d);
+                  const unlinked = !d.clientId;
                   return (
-                    <tr key={d.id} className="hover:bg-slate-50">
+                    <tr
+                      key={d.id}
+                      className={
+                        // Holders not linked to any client stand out for follow-up.
+                        unlinked ? "bg-amber-50/60 hover:bg-amber-50" : "hover:bg-slate-50"
+                      }
+                    >
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
+                          <span
+                            className={cn(
+                              "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+                              unlinked
+                                ? "bg-amber-100 text-amber-700 ring-2 ring-amber-300"
+                                : "bg-brand-100 text-brand-700",
+                            )}
+                          >
                             {initials(d.holderName)}
                           </span>
                           <div>
                             <p className="font-medium text-slate-800">{d.holderName}</p>
-                            <p className="text-xs text-slate-500">
-                              {d.client?.name ?? "No client linked"}
-                            </p>
+                            {unlinked ? (
+                              <p className="flex items-center gap-1 text-xs font-medium text-amber-700">
+                                <Link2Off className="h-3 w-3 shrink-0" /> Not linked to a client
+                              </p>
+                            ) : (
+                              <p className="text-xs text-slate-500">{d.client?.name}</p>
+                            )}
                           </div>
                         </div>
                       </td>
