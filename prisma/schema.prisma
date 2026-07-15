@@ -44,6 +44,7 @@ model Client {
   packets    DocPacket[]
   itrFilings ItrFiling[]
   tradeNames TradeName[]
+  expenseClaims ExpenseClaim[]
 }
 
 /// A physical/logical grouping of clients (e.g. a family or business group).
@@ -137,6 +138,61 @@ model Staff {
   tasksToApprove Task[] @relation("TaskApprover")
   schedules      ComplianceSchedule[]
   itrFilings     ItrFiling[]
+  notifications  AppNotification[]
+  expenseClaims  ExpenseClaim[]
+}
+
+/// An in-app notification for a team member — task assignments, expense-claim
+/// decisions and the like. Surfaced in the header bell and mirrored to the
+/// device via the browser Notification API.
+model AppNotification {
+  id        String    @id @default(cuid())
+  type      String    @default("task-assigned") // task-assigned, task-approver, expense-raised, expense-decided
+  title     String
+  body      String?
+  href      String? // in-app destination, e.g. /tasks
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  staffId String
+  staff   Staff  @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([staffId, readAt])
+  @@index([staffId, createdAt])
+}
+
+/// A reimbursement claim raised by a team member for out-of-pocket expenses
+/// (conveyance etc.) incurred during an audit / engagement. Approved by a
+/// Partner/Admin, after which the expenses can be billed to the client.
+model ExpenseClaim {
+  id          String    @id @default(cuid())
+  title       String // the assignment, e.g. "Bank audit – PNB Fort branch"
+  periodFrom  DateTime? // audit-assignment period
+  periodTo    DateTime?
+  items       Json // [{ date?, category, description, amount }]
+  totalAmount Float     @default(0) // kept in sync as the sum of items
+  status      String    @default("Pending") // Pending, Approved, Rejected
+  notes       String?
+  // Approval / rejection stamp.
+  decidedAt     DateTime?
+  decidedById   String?
+  decidedByName String?
+  decisionNote  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  staffId  String
+  staff    Staff   @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  taskId   String?
+  task     Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  // The invoice raised to the client for these expenses (after approval).
+  invoiceId String?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@index([staffId])
+  @@index([status])
 }
 
 /// A compliance / engagement task for a client.
@@ -146,7 +202,10 @@ model Task {
   description String?
   category    String    @default("Other") // Income Tax, TDS, GST, MCA/ROC, Audit, Registration, Other
   status      String    @default("Pending") // Pending, In Progress, Under Review, Completed
-  priority    String    @default("Medium") // Low, Medium, High
+  priority    String    @default("Medium") // Low, Medium, High, Very High
+  // Priority defaults to auto (derived from days left to the due date);
+  // a Partner/Admin can pin it manually, which sets this flag.
+  priorityManual Boolean @default(false)
   dueDate     DateTime?
   completedAt DateTime?
   // Return-filing tasks (GST/ITR/TDS…) auto-complete once the filing is recorded.
@@ -192,6 +251,8 @@ model Task {
   invoiceLines InvoiceLineItem[]
   // Filing-register entry created when this task's filing is recorded.
   filingRecord ItrFiling?
+  // Reimbursement claims raised against this engagement.
+  expenseClaims ExpenseClaim[]
 
   @@unique([scheduleId, periodKey])
 }
@@ -407,6 +468,8 @@ model Invoice {
   tradeName      TradeName?    @relation(fields: [tradeNameId], references: [id], onDelete: SetNull)
   // Service line items; `amount` above is kept in sync as their sum.
   lineItems      InvoiceLineItem[]
+  // Reimbursement claims billed through this invoice.
+  expenseClaims  ExpenseClaim[]
 }
 
 /// One billed service on an invoice. An invoice can bill several services at

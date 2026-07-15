@@ -51,6 +51,7 @@ import {
   checklistStatus,
   financialYears,
   canApproveRole,
+  priorityFromDueDate,
 } from "@/lib/constants";
 import { dueLabel, daysUntil, toDateInput, formatDate, cn } from "@/lib/format";
 
@@ -105,6 +106,8 @@ export default function TasksPage() {
   const canManage = can("manageTasks");
   const canDelete = can("deleteTasks");
   const canRecur = can("manageSchedules");
+  // Staff-level members see only tasks assigned to them (server-enforced).
+  const seeAll = can("viewAllTasks");
   // A Partner/Admin can approve any task; the named approver can approve theirs.
   const canApproveTask = (t: Task) =>
     canManage && (canApproveRole(user?.role) || t.approverId === user?.id);
@@ -174,7 +177,11 @@ export default function TasksPage() {
     <div>
       <PageHeader
         title="Tasks"
-        subtitle="Income-tax, TDS, GST, MCA/ROC, audit & registration engagements — one-time or recurring"
+        subtitle={
+          seeAll
+            ? "Income-tax, TDS, GST, MCA/ROC, audit & registration engagements — one-time or recurring"
+            : "Your work — tasks where you are an assignee or the approver"
+        }
         actions={headerAction}
       />
 
@@ -227,18 +234,20 @@ export default function TasksPage() {
                   </option>
                 ))}
               </select>
-              <select
-                value={assignee}
-                onChange={(e) => setAssignee(e.target.value)}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
-              >
-                <option value="All">All assignees</option>
-                {staff?.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+              {seeAll && (
+                <select
+                  value={assignee}
+                  onChange={(e) => setAssignee(e.target.value)}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+                >
+                  <option value="All">All assignees</option>
+                  {staff?.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           </Card>
 
@@ -369,7 +378,15 @@ export default function TasksPage() {
                             </span>
                           </td>
                           <td className="px-5 py-3">
-                            <Badge tone={PRIORITY_TONE[t.priority]}>{t.priority}</Badge>
+                            <span
+                              title={
+                                t.priorityManual
+                                  ? "Pinned by a Partner/Admin"
+                                  : "Auto — from the days left to the due date"
+                              }
+                            >
+                              <Badge tone={PRIORITY_TONE[t.priority]}>{t.priority}</Badge>
+                            </span>
                           </td>
                           <td className="px-5 py-3">
                             {canManage ? (
@@ -592,8 +609,14 @@ function TaskForm({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  // Priority defaults to Auto (derived from days left to the due date); only
+  // a Partner/Admin may pin an explicit priority.
+  const { user: me } = useAuth();
+  const canPinPriority = canApproveRole(me?.role);
   const [form, setForm] = useState<FormState>(
-    initial ?? { category: "Income Tax", status: "Pending", priority: "Medium" },
+    initial
+      ? { ...initial, priority: initial.priorityManual ? initial.priority : "Auto" }
+      : { category: "Income Tax", status: "Pending", priority: "Auto" },
   );
   // Create the same task for several clients in one go (create mode only).
   const [multiClient, setMultiClient] = useState(false);
@@ -682,7 +705,8 @@ function TaskForm({
           frequency: freq,
           dueDay: Number(dueDay) || 1,
           anchorMonth: Number(anchorMonth) || 4,
-          priority: form.priority,
+          // Schedules carry a fixed priority; generated tasks derive theirs.
+          priority: form.priority === "Auto" ? "Medium" : form.priority,
           active: true,
           clientId: form.clientId || null,
           assigneeId: assigneeIds[0] || null,
@@ -779,8 +803,22 @@ function TaskForm({
             ))}
           </Select>
         </Field>
-        <Field label="Priority">
-          <Select value={form.priority ?? ""} onChange={(e) => set("priority", e.target.value)}>
+        <Field
+          label="Priority"
+          hint={
+            (form.priority ?? "Auto") === "Auto"
+              ? canPinPriority
+                ? `Auto → ${priorityFromDueDate(form.dueDate ?? null)} (0–7 days: Very High · 8–30: High · 31–45: Medium · 45+: Low)`
+                : `Auto → ${priorityFromDueDate(form.dueDate ?? null)} from the due date — only a Partner/Admin can pin a priority`
+              : "Pinned — it will no longer follow the due date"
+          }
+        >
+          <Select
+            value={form.priority ?? "Auto"}
+            onChange={(e) => set("priority", e.target.value)}
+            disabled={!canPinPriority}
+          >
+            <option value="Auto">Auto — by days left to due date</option>
             {TASK_PRIORITIES.map((p) => (
               <option key={p}>{p}</option>
             ))}

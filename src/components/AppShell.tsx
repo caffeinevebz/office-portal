@@ -15,6 +15,7 @@ import {
   KeyRound,
   ArrowDownUp,
   Landmark,
+  Wallet,
   Settings,
   ShieldCheck,
   Menu,
@@ -29,6 +30,7 @@ import { AuthProvider, useAuth, type AuthUser } from "@/lib/auth/context";
 import { ROLE_ACCESS, type Permission } from "@/lib/auth/roles";
 import { AppMark } from "@/components/LedgifyLogo";
 import { SetPinModal } from "@/components/SetPinModal";
+import { NotificationBell } from "@/components/NotificationBell";
 
 const NAV: { href: string; label: string; icon: typeof Users; perm?: Permission }[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -36,6 +38,7 @@ const NAV: { href: string; label: string; icon: typeof Users; perm?: Permission 
   { href: "/tasks", label: "Tasks", icon: ClipboardList },
   { href: "/itr", label: "Filing Register", icon: Landmark },
   { href: "/invoices", label: "Invoices", icon: Receipt },
+  { href: "/expenses", label: "Reimbursements", icon: Wallet, perm: "raiseExpenses" },
   { href: "/staff", label: "Team", icon: UsersRound },
   { href: "/documents", label: "Documents", icon: FolderClosed },
   { href: "/inward", label: "Inward/Outward", icon: ArrowDownUp },
@@ -312,6 +315,7 @@ export function AppShell({
               </span>
             </div>
             <div className="flex-1" />
+            <NotificationBell />
             <UserMenu user={user} />
           </header>
           <main className="mx-auto max-w-7xl px-4 py-5 pb-16 lg:px-8 lg:py-8">

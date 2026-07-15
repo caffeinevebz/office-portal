@@ -5,10 +5,13 @@ import { taskUpdateSchema, taskFilingSchema } from "@/lib/validation";
 import {
   checklistStatus,
   canApproveRole,
+  effectivePriority,
+  priorityFromDueDate,
   tdsFormLabel,
   CATEGORY_RETURN_TYPE,
   type ChecklistItem,
 } from "@/lib/constants";
+import { notifyTaskAssignment, notifyTaskApprover } from "@/lib/notifications";
 import type { Prisma, Task } from "@prisma/client";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -49,23 +52,73 @@ async function applyUpdate(id: string, data: Prisma.TaskUncheckedUpdateInput) {
 }
 
 export const PUT = route(async (req, ctx: Ctx) => {
-  await requirePermission("manageTasks");
+  const user = await requirePermission("manageTasks");
   const { id } = await ctx.params;
   const {
     clientIds: _ignored,
     assigneeIds,
     assigneeId: rawAssigneeId,
+    priority: rawPriority,
     ...rest
   } = await parse(req, taskUpdateSchema);
   const data = rest as Prisma.TaskUncheckedUpdateInput;
+  // Snapshot the current assignment to notify only newly-added members.
+  const current = await prisma.task.findUnique({
+    where: { id },
+    select: {
+      title: true,
+      dueDate: true,
+      approverId: true,
+      assigneeId: true,
+      assignees: { select: { id: true } },
+      client: { select: { name: true } },
+    },
+  });
+  if (!current) return fail("Task not found", 404);
+
   // Rebuild the assignee set when the form provides it.
+  let newIds: string[] = [];
   if (assigneeIds !== undefined || rawAssigneeId !== undefined) {
     const ids = assigneeIds && assigneeIds.length ? assigneeIds : rawAssigneeId ? [rawAssigneeId] : [];
     data.assigneeId = ids[0] ?? null;
     data.assignees = { set: ids.map((sid) => ({ id: sid })) };
+    const before = new Set([
+      ...current.assignees.map((a) => a.id),
+      ...(current.assigneeId ? [current.assigneeId] : []),
+    ]);
+    newIds = ids.filter((sid) => !before.has(sid));
   }
+
+  // Priority: "Auto" re-derives from the due date; an explicit value pins it
+  // (Partner/Admin only — others stay on auto).
+  if (rawPriority !== undefined) {
+    const manual = rawPriority !== "Auto" && canApproveRole(user.role);
+    data.priorityManual = manual;
+    data.priority = manual
+      ? rawPriority
+      : priorityFromDueDate((rest.dueDate as Date | null | undefined) ?? current.dueDate);
+  }
+
   const task = await applyUpdate(id, data);
-  return ok(task);
+
+  // Ping newly-assigned members (and a newly-set approver).
+  await notifyTaskAssignment({
+    staffIds: newIds,
+    actorId: user.id,
+    actorName: user.name,
+    taskTitle: task.title,
+    clientName: task.client?.name ?? current.client?.name ?? null,
+    dueDate: task.dueDate,
+  });
+  if (task.approverId && task.approverId !== current.approverId) {
+    await notifyTaskApprover({
+      approverId: task.approverId,
+      actorId: user.id,
+      actorName: user.name,
+      taskTitle: task.title,
+    });
+  }
+  return ok({ ...task, priority: effectivePriority(task) });
 });
 
 // Lightweight partial update used by the table: a quick status change, a
@@ -99,7 +152,7 @@ export const PATCH = route(async (req, ctx: Ctx) => {
       },
       include: TASK_INCLUDE,
     });
-    return ok(task);
+    return ok({ ...task, priority: effectivePriority(task) });
   }
 
   const patch: Prisma.TaskUncheckedUpdateInput = {};
@@ -127,7 +180,7 @@ export const PATCH = route(async (req, ctx: Ctx) => {
   if (body.status) patch.status = body.status;
 
   const task = await applyUpdate(id, patch);
-  return ok(task);
+  return ok({ ...task, priority: effectivePriority(task) });
 });
 
 /**
@@ -185,7 +238,7 @@ export const POST = route(async (req, ctx: Ctx) => {
     include: TASK_INCLUDE,
   });
   await upsertFilingRecord(task);
-  return ok(task);
+  return ok({ ...task, priority: effectivePriority(task) });
 });
 
 export const DELETE = route(async (_req, ctx: Ctx) => {
