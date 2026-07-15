@@ -52,6 +52,7 @@ import {
   financialYears,
   canApproveRole,
   priorityFromDueDate,
+  gstRegLabel,
 } from "@/lib/constants";
 import { dueLabel, daysUntil, toDateInput, formatDate, cn } from "@/lib/format";
 
@@ -75,6 +76,7 @@ function taskMeta(t: Task): string[] {
   if (t.tdsForm) bits.push(tdsFormLabel(t.tdsForm));
   if (t.returnNature) bits.push(t.returnNature);
   if (t.gstReturnType) bits.push(t.gstReturnType);
+  if (t.gstin) bits.push(`GSTIN ${t.gstin}`);
   if (t.gstPeriodicity) bits.push(t.gstPeriodicity);
   if (t.periodQuarter) bits.push(t.periodQuarter);
   if (t.periodMonth) bits.push(MONTHS[t.periodMonth - 1]);
@@ -623,6 +625,11 @@ function TaskForm({
   const [clientIds, setClientIds] = useState<string[]>([]);
   const toggleClient = (id: string) =>
     setClientIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  // GST tasks: create a separate task for each of the client's GSTINs at once.
+  const [multiGstin, setMultiGstin] = useState(false);
+  const [gstRegIds, setGstRegIds] = useState<string[]>([]);
+  const toggleGstReg = (id: string) =>
+    setGstRegIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
   // Assign to one or more team members, plus an optional approver.
   const [assigneeIds, setAssigneeIds] = useState<string[]>(
     initial?.assignees?.length
@@ -661,9 +668,20 @@ function TaskForm({
 
   function setCategory(v: string) {
     setForm((f) => {
-      const next = { ...f, category: v, taskType: null, gstReturnType: null };
+      // Leaving GST clears the GSTIN linkage (only meaningful for GST tasks).
+      const next = {
+        ...f,
+        category: v,
+        taskType: null,
+        gstReturnType: null,
+        ...(v !== "GST" ? { gstRegistrationId: null, gstin: null } : {}),
+      };
       return { ...next, checklist: seedChecklist(next) };
     });
+    if (v !== "GST") {
+      setMultiGstin(false);
+      setGstRegIds([]);
+    }
   }
   function setTaskType(v: string) {
     setForm((f) => {
@@ -692,6 +710,11 @@ function TaskForm({
   const isReturnFiling = form.isReturnFiling ?? RETURN_CATEGORIES.includes(form.category ?? "");
   const cat = form.category ?? "";
   const gstPeriodic = form.gstReturnType ? GST_PERIODIC_RETURNS.has(form.gstReturnType) : false;
+  // The selected client's GST registrations (GSTINs) — a GST task is filed
+  // under one of them, and can be created for several at once.
+  const selectedClient = clients.find((c) => c.id === form.clientId);
+  const clientGstRegs = (selectedClient?.gstRegistrations ?? []).filter((g) => g.active);
+  const canMultiGstin = cat === "GST" && !multiClient && clientGstRegs.length > 1;
 
   async function submit() {
     setBusy(true);
@@ -740,6 +763,12 @@ function TaskForm({
         returnNature: cat === "TDS" ? form.returnNature || null : null,
         gstReturnType: cat === "GST" ? form.gstReturnType || null : null,
         gstPeriodicity: cat === "GST" && gstPeriodic ? form.gstPeriodicity || null : null,
+        // GST registration (GSTIN) the task is filed under. When "one per
+        // GSTIN" is on, gstRegistrationIds drives multi-creation instead.
+        gstin: cat === "GST" && !multiGstin ? form.gstin || null : null,
+        gstRegistrationId: cat === "GST" && !multiGstin ? form.gstRegistrationId || null : null,
+        gstRegistrationIds:
+          !isEdit && cat === "GST" && multiGstin && gstRegIds.length > 0 ? gstRegIds : undefined,
         checklist: form.checklist ?? null,
         isReturnFiling,
         filingDate: isReturnFiling ? form.filingDate || null : null,
@@ -766,16 +795,26 @@ function TaskForm({
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={busy || !form.title || (multiClient && clientIds.length === 0)}>
+          <Button
+            onClick={submit}
+            disabled={
+              busy ||
+              !form.title ||
+              (multiClient && clientIds.length === 0) ||
+              (multiGstin && gstRegIds.length === 0)
+            }
+          >
             {busy
               ? "Saving…"
               : isEdit
                 ? "Save changes"
                 : recurring
                   ? "Create recurring task"
-                  : multiClient && clientIds.length > 1
-                    ? `Create ${clientIds.length} tasks`
-                    : "Create task"}
+                  : multiGstin && gstRegIds.length > 1
+                    ? `Create ${gstRegIds.length} tasks (one per GSTIN)`
+                    : multiClient && clientIds.length > 1
+                      ? `Create ${clientIds.length} tasks`
+                      : "Create task"}
           </Button>
         </>
       }
@@ -866,7 +905,16 @@ function TaskForm({
               </div>
             </div>
           ) : (
-            <Select value={form.clientId ?? ""} onChange={(e) => set("clientId", e.target.value)}>
+            <Select
+              value={form.clientId ?? ""}
+              onChange={(e) => {
+                // Switching client clears the GSTIN picks (they belong to the
+                // previous client's registrations).
+                setForm((f) => ({ ...f, clientId: e.target.value, gstRegistrationId: null, gstin: null }));
+                setMultiGstin(false);
+                setGstRegIds([]);
+              }}
+            >
               <option value="">— Internal / none —</option>
               {clients.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -883,6 +931,11 @@ function TaskForm({
                 onChange={(e) => {
                   setMultiClient(e.target.checked);
                   setClientIds(e.target.checked && form.clientId ? [form.clientId] : []);
+                  // Multi-client and multi-GSTIN are mutually exclusive.
+                  if (e.target.checked) {
+                    setMultiGstin(false);
+                    setGstRegIds([]);
+                  }
                 }}
                 className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
               />
@@ -1092,6 +1145,104 @@ function TaskForm({
                     ))}
                   </Select>
                 </Field>
+
+                {/* GSTIN picker — a client with several registrations files
+                    each GSTIN separately, so the task is pinned to one GSTIN
+                    (or created once per GSTIN). */}
+                {form.clientId ? (
+                  clientGstRegs.length === 0 ? (
+                    <Field label="GSTIN" className="sm:col-span-2">
+                      <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 ring-1 ring-amber-200">
+                        This client has no GST registrations yet. Add the GSTIN(s) on the client to
+                        file separate GST tasks per registration.
+                      </p>
+                    </Field>
+                  ) : multiGstin ? (
+                    <Field
+                      label="GSTINs"
+                      className="sm:col-span-2"
+                      hint="One task will be created for each selected GSTIN"
+                    >
+                      <div className="rounded-lg border border-brand-200 bg-brand-50/40 p-2 shadow-sm">
+                        <div className="mb-1.5 flex items-center justify-between px-0.5">
+                          <span className="text-xs font-medium text-brand-700">
+                            {gstRegIds.length > 0 ? `${gstRegIds.length} selected` : "Select GSTINs"}
+                          </span>
+                          <div className="flex gap-2 text-xs">
+                            <button
+                              type="button"
+                              onClick={() => setGstRegIds(clientGstRegs.map((g) => g.id))}
+                              className="text-brand-600 hover:underline"
+                            >
+                              Select all
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setGstRegIds([])}
+                              className="text-slate-500 hover:underline"
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+                        <div className="space-y-1 rounded-md border border-slate-200 bg-white p-2">
+                          {clientGstRegs.map((g) => (
+                            <label
+                              key={g.id}
+                              className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-slate-700 hover:bg-slate-50"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={gstRegIds.includes(g.id)}
+                                onChange={() => toggleGstReg(g.id)}
+                                className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                              />
+                              {gstRegLabel(g)}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </Field>
+                  ) : (
+                    <Field label="GSTIN" hint="Which registration this return is filed under">
+                      <Select
+                        value={form.gstRegistrationId ?? ""}
+                        onChange={(e) => {
+                          const reg = clientGstRegs.find((g) => g.id === e.target.value);
+                          setForm((f) => ({
+                            ...f,
+                            gstRegistrationId: reg?.id ?? null,
+                            gstin: reg?.gstin ?? null,
+                          }));
+                        }}
+                      >
+                        <option value="">— Select GSTIN —</option>
+                        {clientGstRegs.map((g) => (
+                          <option key={g.id} value={g.id}>
+                            {gstRegLabel(g)}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  )
+                ) : null}
+                {canMultiGstin && !isEdit && !recurring && (
+                  <label className="-mt-1 flex cursor-pointer items-center gap-2 text-xs text-slate-600 sm:col-span-2">
+                    <input
+                      type="checkbox"
+                      checked={multiGstin}
+                      onChange={(e) => {
+                        setMultiGstin(e.target.checked);
+                        setGstRegIds(
+                          e.target.checked && form.gstRegistrationId ? [form.gstRegistrationId] : [],
+                        );
+                      }}
+                      className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                    />
+                    Create a separate task for each of this client&apos;s GSTINs
+                  </label>
+                )}
+
                 {gstPeriodic ? (
                   <>
                     <Field label="Periodicity">

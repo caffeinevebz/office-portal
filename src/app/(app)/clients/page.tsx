@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Search, Plus, Pencil, Trash2, Eye, Users, FileUp, Download, FolderTree, Building2, X } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Eye, Users, FileUp, Download, FolderTree, Building2, X, Landmark } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
 import type { Client, ClientGroup } from "@/lib/types";
@@ -14,11 +14,12 @@ import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Loading, EmptyState } from "@/components/ui/EmptyState";
-import { CLIENT_TYPES, CLIENT_STATUSES, CLIENT_STATUS_TONE, entityRegField } from "@/lib/constants";
+import { CLIENT_TYPES, CLIENT_STATUSES, CLIENT_STATUS_TONE, entityRegField, gstinStateName } from "@/lib/constants";
 import { initials } from "@/lib/format";
 
 type FormState = Partial<Client>;
 type TradeNameDraft = { id?: string; name: string; gstin: string; pan: string; address: string };
+type GstRegDraft = { id?: string; gstin: string; label: string; address: string; active: boolean };
 const EMPTY: FormState = { type: "Private Limited", status: "Active" };
 
 export default function ClientsPage() {
@@ -292,6 +293,23 @@ function ClientForm({
     setTradeNames((ts) => ts.map((t, idx) => (idx === i ? { ...t, [key]: v } : t)));
   const removeTradeName = (i: number) => setTradeNames((ts) => ts.filter((_, idx) => idx !== i));
 
+  // GST registrations (GSTINs) the client holds — one per state. Each gets
+  // its own GSTR tasks and filing-register entries.
+  const [gstRegs, setGstRegs] = useState<GstRegDraft[]>(
+    (initial?.gstRegistrations ?? []).map((g) => ({
+      id: g.id,
+      gstin: g.gstin,
+      label: g.label ?? "",
+      address: g.address ?? "",
+      active: g.active,
+    })),
+  );
+  const addGstReg = () =>
+    setGstRegs((gs) => [...gs, { gstin: "", label: "", address: "", active: true }]);
+  const updateGstReg = (i: number, key: keyof GstRegDraft, v: string | boolean) =>
+    setGstRegs((gs) => gs.map((g, idx) => (idx === i ? { ...g, [key]: v } : g)));
+  const removeGstReg = (i: number) => setGstRegs((gs) => gs.filter((_, idx) => idx !== i));
+
   const set = (k: keyof FormState, v: string) =>
     setForm((f) => ({ ...f, [k]: v }));
 
@@ -324,6 +342,15 @@ function ClientForm({
             gstin: t.gstin.trim() || null,
             pan: t.pan.trim() || null,
             address: t.address.trim() || null,
+          })),
+        gstRegistrations: gstRegs
+          .filter((g) => g.gstin.trim())
+          .map((g) => ({
+            id: g.id,
+            gstin: g.gstin.trim(),
+            label: g.label.trim() || null,
+            address: g.address.trim() || null,
+            active: g.active,
           })),
       };
       if (isEdit) await apiMutate(`/api/clients/${initial!.id}`, "PUT", payload);
@@ -512,6 +539,88 @@ function ClientForm({
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* GST registrations — a GSTIN per state, each filing its own returns */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:col-span-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <Landmark className="h-4 w-4 text-brand-600" />
+              GST registrations
+              {gstRegs.length > 0 && (
+                <span className="text-xs font-normal text-slate-400">{gstRegs.length} added</span>
+              )}
+            </div>
+            <Button type="button" variant="secondary" size="sm" onClick={addGstReg}>
+              <Plus className="h-4 w-4" /> Add GSTIN
+            </Button>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            A client registered in more than one state holds a separate GSTIN per state, and files
+            GSTR returns separately for each. Add every GSTIN here so you can create a distinct GST
+            task per registration.
+          </p>
+          {gstRegs.length > 0 && (
+            <div className="mt-3 space-y-3">
+              {gstRegs.map((g, i) => {
+                const state = gstinStateName(g.gstin);
+                return (
+                  <div key={i} className="rounded-lg border border-slate-200 bg-white p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-500">
+                        GSTIN {i + 1}
+                        {state && <span className="ml-1 text-brand-600">· {state}</span>}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeGstReg(i)}
+                        className="rounded p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-500"
+                        title="Remove"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <Field
+                        label="GSTIN"
+                        required
+                        hint={state ? `State: ${state}` : "State is derived from the GSTIN"}
+                      >
+                        <Input
+                          value={g.gstin}
+                          onChange={(e) => updateGstReg(i, "gstin", e.target.value.toUpperCase())}
+                          maxLength={15}
+                          placeholder="27AABCN1234E1Z5"
+                        />
+                      </Field>
+                      <Field label="Label" hint="Optional, e.g. Head office / branch">
+                        <Input
+                          value={g.label}
+                          onChange={(e) => updateGstReg(i, "label", e.target.value)}
+                          placeholder="e.g. Maharashtra HO"
+                        />
+                      </Field>
+                      <Field label="Place of business" className="sm:col-span-2">
+                        <Input
+                          value={g.address}
+                          onChange={(e) => updateGstReg(i, "address", e.target.value)}
+                        />
+                      </Field>
+                      <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={g.active}
+                          onChange={(e) => updateGstReg(i, "active", e.target.checked)}
+                          className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                        />
+                        Active registration
+                      </label>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

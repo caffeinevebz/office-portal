@@ -76,6 +76,7 @@ export const GET = route(async (req) => {
       assignee: true,
       assignees: true,
       approver: true,
+      gstRegistration: true,
       // Whether (and on which invoice) this task has been billed.
       invoiceLines: { include: { invoice: { select: { id: true, invoiceNumber: true } } } },
     },
@@ -93,6 +94,7 @@ const TASK_INCLUDE = {
   assignee: true,
   assignees: true,
   approver: true,
+  gstRegistration: true,
 } as const;
 
 export const POST = route(async (req) => {
@@ -102,6 +104,7 @@ export const POST = route(async (req) => {
     assigneeIds,
     assigneeId: rawAssigneeId,
     priority: rawPriority,
+    gstRegistrationIds,
     ...data
   } = await parse(req, taskCreateSchema);
   // Assignees: the first is the lead (kept on assigneeId for reminders); all
@@ -129,6 +132,25 @@ export const POST = route(async (req) => {
     status,
     completedAt: status === "Completed" ? (data.filingDate ?? new Date()) : null,
   };
+
+  // Multi-GSTIN creation: one identical GST task per selected registration of
+  // the same client — because each GSTIN files its returns separately.
+  if (gstRegistrationIds && gstRegistrationIds.length > 0) {
+    const regs = await prisma.gstRegistration.findMany({
+      where: { id: { in: gstRegistrationIds }, clientId: data.clientId ?? undefined },
+    });
+    const tasks = [];
+    for (const reg of regs) {
+      tasks.push(
+        await prisma.task.create({
+          data: { ...base, gstRegistrationId: reg.id, gstin: reg.gstin },
+          include: TASK_INCLUDE,
+        }),
+      );
+    }
+    await notifyCreation(tasks.length, user, data, ids, tasks[0]?.client?.name ?? null);
+    return ok(tasks, 201);
+  }
 
   // Multi-client creation: one identical task per selected client.
   if (clientIds && clientIds.length > 0) {

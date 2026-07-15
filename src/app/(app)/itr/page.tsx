@@ -35,6 +35,7 @@ import {
   filingFormOptions,
   financialYears,
   incomeTaxYearLabel,
+  gstRegLabel,
 } from "@/lib/constants";
 import { formatCurrency, formatDate, toDateInput, cn } from "@/lib/format";
 
@@ -243,6 +244,12 @@ export default function FilingRegisterPage() {
                           <Badge tone={TYPE_TONE[f.returnType] ?? "slate"}>{f.returnType}</Badge>
                           <Badge tone="slate">{f.formType}</Badge>
                         </div>
+                        {f.gstin && (
+                          <p className="mt-1 font-mono text-[11px] text-slate-500">
+                            GSTIN {f.gstin}
+                            {f.gstRegistration?.state ? ` · ${f.gstRegistration.state}` : ""}
+                          </p>
+                        )}
                         {f.task && (
                           <p className="mt-1 flex items-center gap-1 text-[11px] text-fern-700">
                             <ClipboardList className="h-3 w-3 shrink-0" />
@@ -422,6 +429,8 @@ function FilingForm({
   });
   // Tasks of the selected client that this filing can be mapped to.
   const clientTasks = form.clientId ? tasks.filter((t) => t.clientId === form.clientId) : [];
+  // GST registrations of the selected client — a GST filing is for one GSTIN.
+  const clientGstRegs = (selectedClient?.gstRegistrations ?? []).filter((g) => g.active);
 
   function setReturnType(v: string) {
     setForm((f) => ({
@@ -430,6 +439,8 @@ function FilingForm({
       formType: filingFormOptions(v)[0] ?? "",
       periodQuarter: null,
       periodMonth: null,
+      // GSTIN only applies to GST filings.
+      ...(v !== "GST" ? { gstRegistrationId: null, gstin: null } : {}),
     }));
   }
 
@@ -451,6 +462,8 @@ function FilingForm({
         refundAmount: form.refundAmount ?? null,
         assigneeId: form.assigneeId || null,
         taskId: form.taskId || null,
+        gstRegistrationId: rt === "GST" ? form.gstRegistrationId || null : null,
+        gstin: rt === "GST" ? form.gstin || null : null,
         notes: form.notes,
       };
       if (isEdit) await apiMutate(`/api/itr/${initial!.id}`, "PUT", payload);
@@ -567,6 +580,37 @@ function FilingForm({
               {MONTHS.map((m, i) => (
                 <option key={m} value={i + 1}>
                   {m}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        {rt === "GST" && form.clientId && (
+          <Field
+            label="GSTIN"
+            className="sm:col-span-2"
+            hint={
+              clientGstRegs.length
+                ? "Which of the client's registrations filed this return"
+                : "This client has no GST registrations — add them on the client"
+            }
+          >
+            <Select
+              value={form.gstRegistrationId ?? ""}
+              onChange={(e) => {
+                const reg = clientGstRegs.find((g) => g.id === e.target.value);
+                setForm((f) => ({
+                  ...f,
+                  gstRegistrationId: reg?.id ?? null,
+                  gstin: reg?.gstin ?? null,
+                }));
+              }}
+              disabled={clientGstRegs.length === 0}
+            >
+              <option value="">— Not specified —</option>
+              {clientGstRegs.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {gstRegLabel(g)}
                 </option>
               ))}
             </Select>

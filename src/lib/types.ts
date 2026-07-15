@@ -10,6 +10,19 @@ export type TradeName = {
   createdAt: string;
 };
 
+/** A GST registration (GSTIN) a client holds — one per state of operation. */
+export type GstRegistration = {
+  id: string;
+  gstin: string;
+  label: string | null;
+  stateCode: string | null;
+  state: string | null;
+  address: string | null;
+  active: boolean;
+  clientId: string;
+  createdAt: string;
+};
+
 export type ClientGroup = {
   id: string;
   name: string;
@@ -39,6 +52,7 @@ export type Client = {
   groupId: string | null;
   group?: ClientGroup | null;
   tradeNames?: TradeName[];
+  gstRegistrations?: GstRegistration[];
   createdAt: string;
   updatedAt: string;
   _count?: { tasks: number; invoices: number; documents: number };
@@ -106,6 +120,9 @@ export type Task = {
   returnNature: string | null;
   gstReturnType: string | null;
   gstPeriodicity: string | null;
+  gstin: string | null;
+  gstRegistrationId: string | null;
+  gstRegistration?: GstRegistration | null;
   checklist: ChecklistItem[] | null;
   createdAt: string;
   clientId: string | null;
@@ -209,6 +226,8 @@ export type ItrFiling = {
   filedOn: string | null;
   ackNumber: string | null;
   refundAmount: number | null;
+  gstin: string | null;
+  gstRegistrationId: string | null;
   notes: string | null;
   createdAt: string;
   clientId: string;
@@ -216,6 +235,7 @@ export type ItrFiling = {
   taskId: string | null;
   client?: Client | null;
   assignee?: Staff | null;
+  gstRegistration?: GstRegistration | null;
   task?: { id: string; title: string } | null;
 };
 

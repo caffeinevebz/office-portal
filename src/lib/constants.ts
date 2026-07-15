@@ -103,6 +103,78 @@ export const GST_RETURN_LABELS: Record<string, string> = {
 export const GST_PERIODIC_RETURNS = new Set(["GSTR-1", "GSTR-3B", "GSTR-2B"]);
 export const GST_PERIODICITY = ["Monthly", "Quarterly"] as const;
 
+// GST state codes: the first two digits of a GSTIN identify the state the
+// registration belongs to. A client registered in several states holds one
+// GSTIN (and files GSTR returns) per state.
+export const GST_STATE_CODES: Record<string, string> = {
+  "01": "Jammu & Kashmir",
+  "02": "Himachal Pradesh",
+  "03": "Punjab",
+  "04": "Chandigarh",
+  "05": "Uttarakhand",
+  "06": "Haryana",
+  "07": "Delhi",
+  "08": "Rajasthan",
+  "09": "Uttar Pradesh",
+  "10": "Bihar",
+  "11": "Sikkim",
+  "12": "Arunachal Pradesh",
+  "13": "Nagaland",
+  "14": "Manipur",
+  "15": "Mizoram",
+  "16": "Tripura",
+  "17": "Meghalaya",
+  "18": "Assam",
+  "19": "West Bengal",
+  "20": "Jharkhand",
+  "21": "Odisha",
+  "22": "Chhattisgarh",
+  "23": "Madhya Pradesh",
+  "24": "Gujarat",
+  "25": "Daman & Diu",
+  "26": "Dadra & Nagar Haveli",
+  "27": "Maharashtra",
+  "28": "Andhra Pradesh (old)",
+  "29": "Karnataka",
+  "30": "Goa",
+  "31": "Lakshadweep",
+  "32": "Kerala",
+  "33": "Tamil Nadu",
+  "34": "Puducherry",
+  "35": "Andaman & Nicobar Islands",
+  "36": "Telangana",
+  "37": "Andhra Pradesh",
+  "38": "Ladakh",
+  "97": "Other Territory",
+  "99": "Centre Jurisdiction",
+};
+
+/** The two-digit state code of a GSTIN, or null if it doesn't look like one. */
+export function gstinStateCode(gstin: string | null | undefined): string | null {
+  if (!gstin) return null;
+  const code = gstin.trim().slice(0, 2);
+  return /^\d{2}$/.test(code) ? code : null;
+}
+
+/** The state a GSTIN is registered in, derived from its leading state code. */
+export function gstinStateName(gstin: string | null | undefined): string | null {
+  const code = gstinStateCode(gstin);
+  return code ? (GST_STATE_CODES[code] ?? null) : null;
+}
+
+/**
+ * A short label for a GST registration for pickers and the task list:
+ * the explicit label, else the derived state, else just the GSTIN.
+ */
+export function gstRegLabel(reg: {
+  gstin: string;
+  label?: string | null;
+  state?: string | null;
+}): string {
+  const place = reg.label?.trim() || reg.state?.trim() || gstinStateName(reg.gstin);
+  return place ? `${reg.gstin} · ${place}` : reg.gstin;
+}
+
 // ── Audit ───────────────────────────────────────────────────────────────────
 // The kinds of audit engagement (stored on an Audit task's `taskType`).
 export const AUDIT_SUBCATEGORIES = [
