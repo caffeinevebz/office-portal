@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, fail, parse, route } from "@/lib/api";
 import { requirePermission } from "@/lib/auth/session";
 import { itrUpdateSchema } from "@/lib/validation";
+import { mirrorFilingToTask } from "@/lib/filing";
 import type { Prisma } from "@prisma/client";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -29,7 +30,13 @@ export const PUT = route(async (req, ctx: Ctx) => {
   await requirePermission("manageItr");
   const { id } = await ctx.params;
   const data = await parse(req, itrUpdateSchema);
+  // A task can be linked to at most one filing entry.
+  if (data.taskId) {
+    const dup = await prisma.itrFiling.findUnique({ where: { taskId: data.taskId } });
+    if (dup && dup.id !== id) return fail("That task is already linked to another filing entry.", 409);
+  }
   const filing = await applyUpdate(id, data as Prisma.ItrFilingUncheckedUpdateInput);
+  await mirrorFilingToTask(filing);
   return ok(filing);
 });
 
@@ -40,6 +47,7 @@ export const PATCH = route(async (req, ctx: Ctx) => {
   const body = (await req.json().catch(() => ({}))) as { status?: string };
   if (!body.status) return fail("status is required");
   const filing = await applyUpdate(id, { status: body.status });
+  await mirrorFilingToTask(filing);
   return ok(filing);
 });
 

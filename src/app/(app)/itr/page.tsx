@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
-import type { ItrFiling, Client, Staff } from "@/lib/types";
+import type { ItrFiling, Client, Staff, Task } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -87,6 +87,7 @@ export default function FilingRegisterPage() {
   const { data, loading, error, refresh } = useResource<ItrFiling[]>(url);
   const { data: clients } = useResource<Client[]>("/api/clients");
   const { data: staff } = useResource<Staff[]>("/api/staff");
+  const { data: tasks } = useResource<Task[]>("/api/tasks");
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ItrFiling | null>(null);
@@ -334,6 +335,7 @@ export default function FilingRegisterPage() {
           initial={editing}
           clients={clients ?? []}
           staff={staff ?? []}
+          tasks={tasks ?? []}
           defaultFy={fy === "All" ? (fys[1] ?? fys[0]) : fy}
           onClose={() => setFormOpen(false)}
           onSaved={() => {
@@ -357,10 +359,24 @@ export default function FilingRegisterPage() {
   );
 }
 
+// Statutory identifiers for a client, to help map a filing to the right client.
+function clientIdentifiers(c: Client | undefined): string {
+  if (!c) return "";
+  return [
+    c.pan ? `PAN ${c.pan}` : null,
+    c.tan ? `TAN ${c.tan}` : null,
+    c.gstin ? `GSTIN ${c.gstin}` : null,
+    c.cin ? `CIN ${c.cin}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function FilingForm({
   initial,
   clients,
   staff,
+  tasks,
   defaultFy,
   onClose,
   onSaved,
@@ -368,10 +384,13 @@ function FilingForm({
   initial: ItrFiling | null;
   clients: Client[];
   staff: Staff[];
+  tasks: Task[];
   defaultFy: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
+  // Search the client list by name or any statutory identifier.
+  const [clientSearch, setClientSearch] = useState("");
   const [form, setForm] = useState<FormState>(
     initial ?? {
       returnType: "ITR",
@@ -392,6 +411,17 @@ function FilingForm({
   const taxYear = rt === "ITR" || rt === "TDS";
   const showQuarter = rt === "TDS" || rt === "GST";
   const showMonth = rt === "GST";
+
+  const selectedClient = clients.find((c) => c.id === form.clientId);
+  const filteredClients = clients.filter((c) => {
+    const s = clientSearch.trim().toLowerCase();
+    if (!s) return true;
+    return [c.name, c.pan, c.tan, c.gstin, c.cin, c.llpin, c.firmRegNo].some((v) =>
+      v?.toLowerCase().includes(s),
+    );
+  });
+  // Tasks of the selected client that this filing can be mapped to.
+  const clientTasks = form.clientId ? tasks.filter((t) => t.clientId === form.clientId) : [];
 
   function setReturnType(v: string) {
     setForm((f) => ({
@@ -420,6 +450,7 @@ function FilingForm({
         ackNumber: form.ackNumber,
         refundAmount: form.refundAmount ?? null,
         assigneeId: form.assigneeId || null,
+        taskId: form.taskId || null,
         notes: form.notes,
       };
       if (isEdit) await apiMutate(`/api/itr/${initial!.id}`, "PUT", payload);
@@ -456,15 +487,31 @@ function FilingForm({
         </div>
       )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Client" required>
-          <Select value={form.clientId ?? ""} onChange={(e) => set("clientId", e.target.value)}>
+        <Field label="Client" required hint="Search by name, PAN, TAN, GSTIN or CIN" className="sm:col-span-2">
+          <Input
+            value={clientSearch}
+            onChange={(e) => setClientSearch(e.target.value)}
+            placeholder="Find client by name / PAN / TAN / GSTIN / CIN…"
+            className="mb-2"
+          />
+          <Select
+            value={form.clientId ?? ""}
+            onChange={(e) => {
+              // Changing client clears any task link that no longer applies.
+              setForm((f) => ({ ...f, clientId: e.target.value, taskId: null }));
+            }}
+          >
             <option value="">— Select client —</option>
-            {clients.map((c) => (
+            {filteredClients.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
+                {c.pan ? ` · PAN ${c.pan}` : ""}
               </option>
             ))}
           </Select>
+          {selectedClient && clientIdentifiers(selectedClient) && (
+            <p className="mt-1 text-xs text-slate-500">{clientIdentifiers(selectedClient)}</p>
+          )}
         </Field>
         <Field label="Return type" required>
           <Select value={rt} onChange={(e) => setReturnType(e.target.value)}>
@@ -547,6 +594,28 @@ function FilingForm({
             {staff.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field
+          label="Link to task"
+          hint={
+            form.clientId
+              ? "Map this filing to the client's task; a filed entry marks the task done"
+              : "Select a client first"
+          }
+        >
+          <Select
+            value={form.taskId ?? ""}
+            onChange={(e) => set("taskId", e.target.value || null)}
+            disabled={!form.clientId}
+          >
+            <option value="">— Not linked —</option>
+            {clientTasks.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title} · {t.category}
+                {t.financialYear ? ` · FY ${t.financialYear}` : ""}
               </option>
             ))}
           </Select>

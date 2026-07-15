@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
-import { ok, parse, route } from "@/lib/api";
+import { ok, fail, parse, route } from "@/lib/api";
 import { requireUser, requirePermission } from "@/lib/auth/session";
 import { itrCreateSchema } from "@/lib/validation";
+import { mirrorFilingToTask } from "@/lib/filing";
 import type { Prisma } from "@prisma/client";
 
 // One-time backfill: derive financialYear from the legacy assessmentYear
@@ -55,9 +56,15 @@ export const GET = route(async (req) => {
 export const POST = route(async (req) => {
   await requirePermission("manageItr");
   const data = await parse(req, itrCreateSchema);
+  // A task can be linked to at most one filing entry.
+  if (data.taskId) {
+    const dup = await prisma.itrFiling.findUnique({ where: { taskId: data.taskId } });
+    if (dup) return fail("That task is already linked to another filing entry.", 409);
+  }
   const filing = await prisma.itrFiling.create({
     data,
-    include: { client: true, assignee: true },
+    include: { client: true, assignee: true, task: { select: { id: true, title: true } } },
   });
+  await mirrorFilingToTask(filing);
   return ok(filing, 201);
 });
