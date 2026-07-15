@@ -109,8 +109,14 @@ export type Task = {
   clientId: string | null;
   assigneeId: string | null;
   scheduleId: string | null;
+  approverId: string | null;
+  approvedAt: string | null;
+  approvedById: string | null;
+  approvedByName: string | null;
   client?: Client | null;
   assignee?: Staff | null;
+  assignees?: Staff[];
+  approver?: Staff | null;
   // Invoice lines that bill this task (present → the task has been billed).
   invoiceLines?: { invoice?: { id: string; invoiceNumber: string } | null }[];
 };
@@ -288,6 +294,7 @@ export type Dsc = {
   class: string;
   authority: string;
   serialNumber: string | null;
+  pin: string | null;
   email: string | null;
   phone: string | null;
   issueDate: string | null;

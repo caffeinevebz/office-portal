@@ -222,7 +222,7 @@ export async function seedDemoData(prisma: PrismaClient) {
     { title: "TDS Return – Form 138 / 24Q – Q1 FY26-27", category: "TDS", status: "In Progress", priority: "High", dueDate: daysFromNow(22), clientId: apex.id, assigneeId: accountant.id, description: "Quarterly TDS return on salaries.", tdsForm: "138", periodQuarter: "Q1", returnNature: "Original", financialYear: "2026-27", checklist: [{ label: "Data / Documents received from client", done: true }, { label: "TDS return prepared", done: true }, { label: "Run e-return (for any error)", done: false }, { label: "Relevant files saved", done: false }, { label: "TDS return filed", done: false }, { label: "Request for TDS Certificate", done: false }, { label: "TDS Certificate downloaded", done: false }, { label: "TDS Certificate mailed to client", done: false }] },
     { title: "GSTR-1 – June 2026", category: "GST", status: "Under Review", priority: "Medium", dueDate: daysFromNow(2), clientId: greenleaf.id, assigneeId: senior.id, description: "Outward supplies return." },
     { title: "Tax Audit u/s 44AB – FY 2025-26", category: "Audit", status: "Pending", priority: "High", dueDate: daysFromNow(75), clientId: vasudha.id, assigneeId: manager.id, description: "Turnover exceeds threshold. Form 3CD preparation.", taskType: "Tax Audit", financialYear: "2025-26" },
-    { title: "Statutory Audit – FY 2025-26", category: "Audit", status: "In Progress", priority: "High", dueDate: daysFromNow(60), clientId: apex.id, assigneeId: partner.id, description: "Companies Act statutory audit. Fieldwork ongoing.", taskType: "Statutory Audit", financialYear: "2025-26", checklist: [{ label: "Engagement letter signed", done: true }, { label: "Books, ledgers & schedules obtained", done: true }, { label: "Vouching & verification completed", done: false }, { label: "Financial statements & notes finalized", done: false }, { label: "Audit report & CARO finalized (UDIN generated)", done: false }, { label: "Adopted by Board/AGM & filed with MCA", done: false }] },
+    { title: "Statutory Audit – FY 2025-26", category: "Audit", status: "In Progress", priority: "High", dueDate: daysFromNow(60), clientId: apex.id, assigneeId: senior.id, assigneeIds: [senior.id, article.id], approverId: partner.id, description: "Companies Act statutory audit. Fieldwork ongoing.", taskType: "Statutory Audit", financialYear: "2025-26", checklist: [{ label: "Engagement letter signed", done: true }, { label: "Books, ledgers & schedules obtained", done: true }, { label: "Vouching & verification completed", done: false }, { label: "Financial statements & notes finalized", done: false }, { label: "Audit report & CARO finalized (UDIN generated)", done: false }, { label: "Adopted by Board/AGM & filed with MCA", done: false }] },
     { title: "ITR Filing – AY 2026-27", category: "Income Tax", status: "In Progress", priority: "Medium", dueDate: daysFromNow(21), clientId: meera.id, assigneeId: senior.id, description: "Individual return with capital gains from equity.", taskType: "ITR Filing", financialYear: "2025-26", checklist: [{ label: "Data / Documents received from client", done: true }, { label: "Form 26AS, AIS & TIS downloaded", done: true }, { label: "Computation prepared", done: false }, { label: "Computation finalised", done: false }, { label: "ITR filed", done: false }, { label: "ITR e-verified", done: false }] },
     { title: "ITR & HUF Filing – AY 2026-27", category: "Income Tax", status: "Pending", priority: "Low", dueDate: daysFromNow(21), clientId: huf.id, assigneeId: accountant.id, description: "HUF return, house property income." },
     { title: "GST LUT Renewal – FY 2026-27", category: "GST", status: "Completed", priority: "Medium", dueDate: daysFromNow(-90), completedAt: daysFromNow(-88), clientId: coastal.id, assigneeId: senior.id, description: "Letter of Undertaking for export without payment of tax." },
@@ -240,14 +240,16 @@ export async function seedDemoData(prisma: PrismaClient) {
   const RETURN_CATEGORIES = ["GST", "Income Tax", "TDS"];
   let ackSeq = 100;
   for (const t of taskData) {
-    const isReturnFiling = RETURN_CATEGORIES.includes(t.category);
-    const filed = isReturnFiling && t.status === "Completed";
+    const { assigneeIds, ...rest } = t as typeof t & { assigneeIds?: string[] };
+    const isReturnFiling = RETURN_CATEGORIES.includes(rest.category);
+    const filed = isReturnFiling && rest.status === "Completed";
     await prisma.task.create({
       data: {
-        ...t,
+        ...rest,
         isReturnFiling,
+        ...(assigneeIds?.length ? { assignees: { connect: assigneeIds.map((id) => ({ id })) } } : {}),
         ...(filed
-          ? { filingDate: t.completedAt, ackNumber: `AA${240000000000 + ackSeq++}` }
+          ? { filingDate: rest.completedAt, ackNumber: `AA${240000000000 + ackSeq++}` }
           : {}),
       },
     });
@@ -311,8 +313,8 @@ export async function seedDemoData(prisma: PrismaClient) {
 
   console.log("Seeding DSC register...");
   const dscData = [
-    { holderName: "Rohan Mehta", class: "Class 3", authority: "eMudhra", serialNumber: "EM-4471-8823", email: "rohan.mehta@nimbustech.in", phone: "+91 98200 90011", issueDate: daysFromNow(-700), expiryDate: daysFromNow(30 + 335), custody: "With Firm", location: "Locker A, Tray 2", clientId: nimbus.id },
-    { holderName: "Nikhil Joshi", class: "Class 3", authority: "Sify SafeScrypt", serialNumber: "SF-9032-1156", email: "nikhil.joshi@apexconstructions.in", phone: "+91 98200 33445", issueDate: daysFromNow(-1050), expiryDate: daysFromNow(18), custody: "With Firm", location: "Locker A, Tray 1", clientId: apex.id, notes: "Renewal quote requested from Sify." },
+    { holderName: "Rohan Mehta", class: "Class 3", authority: "eMudhra", serialNumber: "EM-4471-8823", pin: "Nimbus@2026", email: "rohan.mehta@nimbustech.in", phone: "+91 98200 90011", issueDate: daysFromNow(-700), expiryDate: daysFromNow(30 + 335), custody: "With Firm", location: "Locker A, Tray 2", clientId: nimbus.id },
+    { holderName: "Nikhil Joshi", class: "Class 3", authority: "Sify SafeScrypt", serialNumber: "SF-9032-1156", pin: "Apex#5566", email: "nikhil.joshi@apexconstructions.in", phone: "+91 98200 33445", issueDate: daysFromNow(-1050), expiryDate: daysFromNow(18), custody: "With Firm", location: "Locker A, Tray 1", clientId: apex.id, notes: "Renewal quote requested from Sify." },
     { holderName: "Ananya Krishnan", class: "Class 3", authority: "Capricorn", serialNumber: "CP-2288-7741", email: "ananya@greenleaf.co.in", issueDate: daysFromNow(-745), expiryDate: daysFromNow(-12), custody: "With Firm", location: "Locker B", clientId: greenleaf.id, notes: "EXPIRED — renewal documents awaited from client." },
     { holderName: "Suresh Patel", class: "Class 3", authority: "eMudhra", serialNumber: "EM-5521-0098", phone: "+91 98790 11223", issueDate: daysFromNow(-400), expiryDate: daysFromNow(330), custody: "With Client", clientId: sunrise.id },
     { holderName: "Lakshmi Reddy", class: "Class 3", authority: "VSign", serialNumber: "VS-7710-3390", email: "lakshmi@vasudhahandlooms.in", issueDate: daysFromNow(-300), expiryDate: daysFromNow(430), custody: "With Firm", location: "Locker A, Tray 3", clientId: vasudha.id },

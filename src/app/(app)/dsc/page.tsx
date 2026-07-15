@@ -12,6 +12,8 @@ import {
   ShieldAlert,
   ShieldX,
   ArrowLeftRight,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
@@ -181,9 +183,7 @@ export default function DscPage() {
                         <p className="text-slate-700">
                           {d.class} · {d.authority}
                         </p>
-                        <p className="font-mono text-xs text-slate-400">
-                          {d.serialNumber ?? "—"}
-                        </p>
+                        <PinCell pin={d.pin} />
                       </td>
                       <td className="px-5 py-3">
                         <p className="text-slate-700">{formatDate(d.expiryDate)}</p>
@@ -350,7 +350,7 @@ function CustodyModal({
       open
       onClose={onClose}
       title={receiving ? "Receive token from client" : "Hand token to client"}
-      description={`${dsc.holderName} · ${dsc.class} · ${dsc.serialNumber ?? "no serial"}`}
+      description={`${dsc.holderName} · ${dsc.class} · ${dsc.authority}`}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={busy}>
@@ -379,6 +379,23 @@ function CustodyModal({
   );
 }
 
+// Masked DSC PIN/password with a reveal toggle (register table).
+function PinCell({ pin }: { pin: string | null }) {
+  const [show, setShow] = useState(false);
+  if (!pin) return <p className="text-xs text-slate-400">No PIN saved</p>;
+  return (
+    <button
+      type="button"
+      onClick={() => setShow((v) => !v)}
+      className="mt-0.5 inline-flex items-center gap-1 font-mono text-xs text-slate-500 hover:text-slate-700"
+      title={show ? "Hide PIN" : "Show PIN"}
+    >
+      <span>PIN {show ? pin : "••••••"}</span>
+      {show ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+    </button>
+  );
+}
+
 function DscForm({
   initial,
   clients,
@@ -395,6 +412,7 @@ function DscForm({
   );
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [showPin, setShowPin] = useState(false);
   const isEdit = !!initial;
   const set = (k: keyof FormState, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -407,6 +425,7 @@ function DscForm({
         class: form.class,
         authority: form.authority,
         serialNumber: form.serialNumber,
+        pin: form.pin,
         email: form.email,
         phone: form.phone,
         issueDate: form.issueDate || null,
@@ -481,12 +500,25 @@ function DscForm({
             ))}
           </Select>
         </Field>
-        <Field label="Serial / token number">
-          <Input
-            value={form.serialNumber ?? ""}
-            onChange={(e) => set("serialNumber", e.target.value)}
-            placeholder="EM-4471-8823"
-          />
+        <Field label="DSC PIN / password" hint="The PIN/password needed to use the token">
+          <div className="relative">
+            <Input
+              type={showPin ? "text" : "password"}
+              value={form.pin ?? ""}
+              onChange={(e) => set("pin", e.target.value)}
+              placeholder="Token PIN / password"
+              autoComplete="new-password"
+              className="pr-9"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPin((v) => !v)}
+              className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-600"
+              title={showPin ? "Hide" : "Show"}
+            >
+              {showPin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         </Field>
         <Field label="Status">
           <Select value={form.status ?? ""} onChange={(e) => set("status", e.target.value)}>

@@ -132,9 +132,11 @@ model Staff {
   pinFailedCount Int     @default(0)
   createdAt    DateTime @default(now())
 
-  tasks      Task[]
-  schedules  ComplianceSchedule[]
-  itrFilings ItrFiling[]
+  tasks          Task[] @relation("TaskLeadAssignee")
+  assignedTasks  Task[] @relation("TaskAssignees")
+  tasksToApprove Task[] @relation("TaskApprover")
+  schedules      ComplianceSchedule[]
+  itrFilings     ItrFiling[]
 }
 
 /// A compliance / engagement task for a client.
@@ -168,8 +170,18 @@ model Task {
 
   clientId   String?
   client     Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  // Lead assignee (kept for reminders / calendar); also present in `assignees`.
   assigneeId String?
-  assignee   Staff?  @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  assignee   Staff?  @relation("TaskLeadAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  // The full set of team members a task is assigned to.
+  assignees  Staff[] @relation("TaskAssignees")
+
+  // Approval hierarchy: the Partner/Admin who signs off the finished task.
+  approverId    String?
+  approver      Staff?    @relation("TaskApprover", fields: [approverId], references: [id], onDelete: SetNull)
+  approvedAt    DateTime?
+  approvedById  String? // id of the user who approved (denormalized, no relation)
+  approvedByName String? // name of the approver, for display
 
   // Set when a task was generated from a recurring compliance schedule.
   scheduleId String?
@@ -272,6 +284,7 @@ model Dsc {
   class        String   @default("Class 3") // Class 3, Class 2 (legacy), DGFT
   authority    String   @default("eMudhra") // issuing certifying authority
   serialNumber String?
+  pin          String? // DSC password / PIN needed to use the token
   email        String? // holder contact for expiry reminders (falls back to client)
   phone        String?
   issueDate    DateTime?
