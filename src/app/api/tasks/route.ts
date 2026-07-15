@@ -27,21 +27,27 @@ export const GET = route(async (req) => {
   const q = searchParams.get("q")?.trim();
 
   const where: Prisma.TaskWhereInput = {};
+  const and: Prisma.TaskWhereInput[] = [];
   // Completed tasks live in their own list so the working list stays lean.
   if (view === "Completed") where.status = "Completed";
   else if (view === "Active") where.status = { not: "Completed" };
   if (status && status !== "All") where.status = status;
   if (category && category !== "All") where.category = category;
-  if (assigneeId && assigneeId !== "All") where.assigneeId = assigneeId;
+  // Match the assignee filter against the lead assignee or any co-assignee.
+  if (assigneeId && assigneeId !== "All")
+    and.push({ OR: [{ assigneeId }, { assignees: { some: { id: assigneeId } } }] });
   if (clientId) where.clientId = clientId;
   if (fy && fy !== "All") where.financialYear = fy;
   if (q) {
-    where.OR = [
-      { title: { contains: q, mode: "insensitive" } },
-      { description: { contains: q, mode: "insensitive" } },
-      { client: { name: { contains: q, mode: "insensitive" } } },
-    ];
+    and.push({
+      OR: [
+        { title: { contains: q, mode: "insensitive" } },
+        { description: { contains: q, mode: "insensitive" } },
+        { client: { name: { contains: q, mode: "insensitive" } } },
+      ],
+    });
   }
+  if (and.length) where.AND = and;
 
   const tasks = await prisma.task.findMany({
     where,
@@ -50,6 +56,8 @@ export const GET = route(async (req) => {
     include: {
       client: true,
       assignee: true,
+      assignees: true,
+      approver: true,
       // Whether (and on which invoice) this task has been billed.
       invoiceLines: { include: { invoice: { select: { id: true, invoiceNumber: true } } } },
     },
@@ -60,15 +68,33 @@ export const GET = route(async (req) => {
 // Return-filing categories default the "is return filing" flag on.
 const RETURN_CATEGORIES = ["GST", "Income Tax", "TDS"];
 
+const TASK_INCLUDE = {
+  client: true,
+  assignee: true,
+  assignees: true,
+  approver: true,
+} as const;
+
 export const POST = route(async (req) => {
   await requirePermission("manageTasks");
-  const { clientIds, ...data } = await parse(req, taskCreateSchema);
+  const { clientIds, assigneeIds, assigneeId: rawAssigneeId, ...data } = await parse(
+    req,
+    taskCreateSchema,
+  );
+  // Assignees: the first is the lead (kept on assigneeId for reminders); all
+  // are linked via the many-to-many relation.
+  const ids = assigneeIds && assigneeIds.length ? assigneeIds : rawAssigneeId ? [rawAssigneeId] : [];
+  const leadAssigneeId = ids[0] ?? null;
+  const assigneesConnect = ids.length ? { connect: ids.map((id) => ({ id })) } : undefined;
+
   const isReturnFiling = data.isReturnFiling ?? RETURN_CATEGORIES.includes(data.category);
   // A return task with a filing date recorded is complete on creation.
   const filed = isReturnFiling && !!data.filingDate;
   const status = filed ? "Completed" : data.status;
   const base = {
     ...data,
+    assigneeId: leadAssigneeId,
+    assignees: assigneesConnect,
     isReturnFiling,
     status,
     completedAt: status === "Completed" ? (data.filingDate ?? new Date()) : null,
@@ -79,18 +105,12 @@ export const POST = route(async (req) => {
     const tasks = [];
     for (const clientId of clientIds) {
       tasks.push(
-        await prisma.task.create({
-          data: { ...base, clientId },
-          include: { client: true, assignee: true },
-        }),
+        await prisma.task.create({ data: { ...base, clientId }, include: TASK_INCLUDE }),
       );
     }
     return ok(tasks, 201);
   }
 
-  const task = await prisma.task.create({
-    data: base,
-    include: { client: true, assignee: true },
-  });
+  const task = await prisma.task.create({ data: base, include: TASK_INCLUDE });
   return ok(task, 201);
 });

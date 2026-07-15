@@ -120,6 +120,10 @@ export const taskCreateSchema = z.object({
   clientId: optionalText,
   // Create the same task for several clients in one go.
   clientIds: z.array(z.string().trim().min(1)).optional(),
+  // Assign to one or more team members; the first is the lead assignee.
+  assigneeIds: z.array(z.string().trim().min(1)).optional(),
+  // Partner/Admin who gives final approval (the task hierarchy).
+  approverId: optionalText,
   assigneeId: optionalText,
   isReturnFiling: z.boolean().optional(),
   filingDate: optionalDate,
@@ -217,6 +221,7 @@ export const dscCreateSchema = z.object({
   class: oneOf(DSC_CLASSES, "class").default("Class 3"),
   authority: oneOf(DSC_AUTHORITIES, "authority").default("eMudhra"),
   serialNumber: optionalText,
+  pin: optionalText,
   email: optionalText,
   phone: optionalText,
   issueDate: optionalDate,

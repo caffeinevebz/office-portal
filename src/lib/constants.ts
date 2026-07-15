@@ -322,6 +322,12 @@ export const STAFF_ROLES = [
   "Admin",
 ] as const;
 
+// Roles that can give final sign-off on a task (the approval hierarchy).
+export const APPROVER_ROLES = ["Partner", "Admin"] as const;
+export function canApproveRole(role?: string | null): boolean {
+  return !!role && (APPROVER_ROLES as readonly string[]).includes(role);
+}
+
 export const INVOICE_STATUSES = ["Draft", "Sent", "Paid", "Overdue"] as const;
 
 // GST applicability on an invoice.

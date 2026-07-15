@@ -4,6 +4,7 @@ import { requirePermission } from "@/lib/auth/session";
 import { taskUpdateSchema, taskFilingSchema } from "@/lib/validation";
 import {
   checklistStatus,
+  canApproveRole,
   tdsFormLabel,
   CATEGORY_RETURN_TYPE,
   type ChecklistItem,
@@ -15,6 +16,8 @@ type Ctx = { params: Promise<{ id: string }> };
 const TASK_INCLUDE = {
   client: true,
   assignee: true,
+  assignees: true,
+  approver: true,
   invoiceLines: { include: { invoice: { select: { id: true, invoiceNumber: true } } } },
 } as const;
 
@@ -31,7 +34,11 @@ async function applyUpdate(id: string, data: Prisma.TaskUncheckedUpdateInput) {
       const current = await prisma.task.findUnique({ where: { id } });
       if (current && !current.completedAt) patch.completedAt = new Date();
     } else {
+      // Moving off Completed clears the completion & approval stamps.
       patch.completedAt = null;
+      patch.approvedAt = null;
+      patch.approvedById = null;
+      patch.approvedByName = null;
     }
   }
   return prisma.task.update({
@@ -44,22 +51,56 @@ async function applyUpdate(id: string, data: Prisma.TaskUncheckedUpdateInput) {
 export const PUT = route(async (req, ctx: Ctx) => {
   await requirePermission("manageTasks");
   const { id } = await ctx.params;
-  const { clientIds: _ignored, ...data } = await parse(req, taskUpdateSchema);
-  const task = await applyUpdate(id, data as Prisma.TaskUncheckedUpdateInput);
+  const {
+    clientIds: _ignored,
+    assigneeIds,
+    assigneeId: rawAssigneeId,
+    ...rest
+  } = await parse(req, taskUpdateSchema);
+  const data = rest as Prisma.TaskUncheckedUpdateInput;
+  // Rebuild the assignee set when the form provides it.
+  if (assigneeIds !== undefined || rawAssigneeId !== undefined) {
+    const ids = assigneeIds && assigneeIds.length ? assigneeIds : rawAssigneeId ? [rawAssigneeId] : [];
+    data.assigneeId = ids[0] ?? null;
+    data.assignees = { set: ids.map((sid) => ({ id: sid })) };
+  }
+  const task = await applyUpdate(id, data);
   return ok(task);
 });
 
-// Lightweight partial update used by the table: a quick status change, or a
-// checklist tick — the status is then derived from the steps checked
-// (none → Pending, some → In Progress, all → Completed).
+// Lightweight partial update used by the table: a quick status change, a
+// checklist tick (status derived from the steps checked), or final approval.
 export const PATCH = route(async (req, ctx: Ctx) => {
-  await requirePermission("manageTasks");
+  const user = await requirePermission("manageTasks");
   const { id } = await ctx.params;
   const body = (await req.json().catch(() => ({}))) as {
     status?: string;
     checklist?: ChecklistItem[];
+    approve?: boolean;
   };
-  if (!body.status && !body.checklist) return fail("status or checklist is required");
+  if (!body.status && !body.checklist && !body.approve)
+    return fail("status, checklist or approve is required");
+
+  // Final approval: only the assigned approver or a Partner/Admin may sign off.
+  if (body.approve) {
+    const current = await prisma.task.findUnique({ where: { id } });
+    if (!current) return fail("Task not found", 404);
+    if (!canApproveRole(user.role) && current.approverId !== user.id) {
+      return fail("Only the assigned approver or a Partner/Admin can approve this task", 403);
+    }
+    const task = await prisma.task.update({
+      where: { id },
+      data: {
+        status: "Completed",
+        completedAt: new Date(),
+        approvedAt: new Date(),
+        approvedById: user.id,
+        approvedByName: user.name,
+      },
+      include: TASK_INCLUDE,
+    });
+    return ok(task);
+  }
 
   const patch: Prisma.TaskUncheckedUpdateInput = {};
   if (body.checklist) {
@@ -70,7 +111,18 @@ export const PATCH = route(async (req, ctx: Ctx) => {
     // Auto-update the status from the steps checked (unless an explicit
     // status accompanies the request).
     const derived = checklistStatus(items);
-    if (!body.status && derived) patch.status = derived;
+    if (!body.status && derived) {
+      if (derived === "Completed") {
+        // A task with an approver awaits sign-off rather than auto-completing.
+        const current = await prisma.task.findUnique({
+          where: { id },
+          select: { approverId: true, approvedAt: true },
+        });
+        patch.status = current?.approverId && !current.approvedAt ? "Under Review" : "Completed";
+      } else {
+        patch.status = derived;
+      }
+    }
   }
   if (body.status) patch.status = body.status;
 

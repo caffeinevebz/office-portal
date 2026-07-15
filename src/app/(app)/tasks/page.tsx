@@ -11,6 +11,7 @@ import {
   FileCheck2,
   ListChecks,
   Receipt,
+  ShieldCheck,
   X,
 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
@@ -49,6 +50,7 @@ import {
   defaultChecklist,
   checklistStatus,
   financialYears,
+  canApproveRole,
 } from "@/lib/constants";
 import { dueLabel, daysUntil, toDateInput, formatDate, cn } from "@/lib/format";
 
@@ -83,6 +85,13 @@ function taskMeta(t: Task): string[] {
   return bits;
 }
 
+// The team members a task is assigned to (multi), else the single assignee.
+function assigneeNames(t: Task): string {
+  const names =
+    t.assignees && t.assignees.length ? t.assignees.map((a) => a.name) : t.assignee ? [t.assignee.name] : [];
+  return names.join(", ");
+}
+
 function checklistDone(list: ChecklistItem[] | null | undefined) {
   if (!list || list.length === 0) return null;
   return { done: list.filter((i) => i.done).length, total: list.length };
@@ -92,10 +101,13 @@ type FormState = Partial<Task>;
 type Tab = "tasks" | "recurring";
 
 export default function TasksPage() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const canManage = can("manageTasks");
   const canDelete = can("deleteTasks");
   const canRecur = can("manageSchedules");
+  // A Partner/Admin can approve any task; the named approver can approve theirs.
+  const canApproveTask = (t: Task) =>
+    canManage && (canApproveRole(user?.role) || t.approverId === user?.id);
 
   const [tab, setTab] = useState<Tab>("tasks");
   // Active (in-progress) vs Completed list — completed tasks move out of the
@@ -125,6 +137,11 @@ export default function TasksPage() {
 
   async function quickStatus(t: Task, newStatus: string) {
     await apiMutate(`/api/tasks/${t.id}`, "PATCH", { status: newStatus });
+    refresh();
+  }
+
+  async function approveTask(t: Task) {
+    await apiMutate(`/api/tasks/${t.id}`, "PATCH", { approve: true });
     refresh();
   }
 
@@ -335,7 +352,16 @@ export default function TasksPage() {
                             {t.client?.name ?? <span className="text-slate-400">—</span>}
                           </td>
                           <td className="px-5 py-3 text-slate-600">
-                            {t.assignee?.name ?? <span className="text-slate-400">Unassigned</span>}
+                            {assigneeNames(t) || <span className="text-slate-400">Unassigned</span>}
+                            {t.approvedByName ? (
+                              <p className="mt-0.5 flex items-center gap-1 text-[11px] text-fern-700">
+                                <ShieldCheck className="h-3 w-3 shrink-0" /> Approved by {t.approvedByName}
+                              </p>
+                            ) : t.approver ? (
+                              <p className="mt-0.5 flex items-center gap-1 text-[11px] text-amber-600">
+                                <ShieldCheck className="h-3 w-3 shrink-0" /> Approver: {t.approver.name}
+                              </p>
+                            ) : null}
                           </td>
                           <td className="px-5 py-3">
                             <span className={cn("text-xs", overdue ? "font-medium text-rose-600" : "text-slate-600")}>
@@ -372,6 +398,15 @@ export default function TasksPage() {
                           </td>
                           <td className="px-5 py-3">
                             <div className="flex items-center justify-end gap-1">
+                              {t.approverId && t.status !== "Completed" && canApproveTask(t) && (
+                                <button
+                                  onClick={() => approveTask(t)}
+                                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-brand-700 hover:bg-brand-50"
+                                  title="Give final approval"
+                                >
+                                  <ShieldCheck className="h-4 w-4" /> Approve
+                                </button>
+                              )}
                               {canManage && t.isReturnFiling && t.status !== "Completed" && (
                                 <button
                                   onClick={() => setFilingFor(t)}
@@ -565,6 +600,17 @@ function TaskForm({
   const [clientIds, setClientIds] = useState<string[]>([]);
   const toggleClient = (id: string) =>
     setClientIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  // Assign to one or more team members, plus an optional approver.
+  const [assigneeIds, setAssigneeIds] = useState<string[]>(
+    initial?.assignees?.length
+      ? initial.assignees.map((a) => a.id)
+      : initial?.assigneeId
+        ? [initial.assigneeId]
+        : [],
+  );
+  const toggleAssignee = (id: string) =>
+    setAssigneeIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  const [approverId, setApproverId] = useState<string>(initial?.approverId ?? "");
   // Recurring definition fields (only used when the recurring toggle is on).
   const [recurring, setRecurring] = useState(false);
   const [freq, setFreq] = useState("Monthly");
@@ -639,7 +685,7 @@ function TaskForm({
           priority: form.priority,
           active: true,
           clientId: form.clientId || null,
-          assigneeId: form.assigneeId || null,
+          assigneeId: assigneeIds[0] || null,
           notes: form.description || null,
         });
         await apiMutate("/api/schedules/generate", "POST", { months: 3 });
@@ -657,7 +703,8 @@ function TaskForm({
         clientId: multiClient ? null : form.clientId || null,
         // One identical task per selected client when multi-client is on.
         clientIds: !isEdit && multiClient && clientIds.length > 0 ? clientIds : undefined,
-        assigneeId: form.assigneeId || null,
+        assigneeIds,
+        approverId: approverId || null,
         taskType: cat === "Income Tax" || cat === "Audit" ? form.taskType || null : null,
         financialYear: form.financialYear || null,
         periodMonth: cat === "GST" && gstPeriodic && form.gstPeriodicity === "Monthly" ? form.periodMonth ?? null : null,
@@ -805,14 +852,45 @@ function TaskForm({
             </label>
           )}
         </Field>
-        <Field label="Assignee">
-          <Select value={form.assigneeId ?? ""} onChange={(e) => set("assigneeId", e.target.value)}>
-            <option value="">— Unassigned —</option>
+        <Field
+          label="Assigned to"
+          hint={assigneeIds.length > 1 ? `${assigneeIds.length} members · the first is the lead` : "One or more team members"}
+        >
+          <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border border-slate-300 bg-white p-2 shadow-sm">
             {staff.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
+              <label
+                key={s.id}
+                className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                <input
+                  type="checkbox"
+                  checked={assigneeIds.includes(s.id)}
+                  onChange={() => toggleAssignee(s.id)}
+                  className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                />
+                <span className="flex-1">
+                  {s.name} <span className="text-xs text-slate-400">· {s.role}</span>
+                </span>
+                {assigneeIds[0] === s.id && assigneeIds.length > 1 && (
+                  <Badge tone="indigo">Lead</Badge>
+                )}
+              </label>
             ))}
+          </div>
+        </Field>
+        <Field
+          label="Approver"
+          hint="Final sign-off by a Partner/Admin. Work goes 'Under Review' until approved."
+        >
+          <Select value={approverId} onChange={(e) => setApproverId(e.target.value)}>
+            <option value="">— No approval needed —</option>
+            {staff
+              .filter((s) => canApproveRole(s.role))
+              .map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} · {s.role}
+                </option>
+              ))}
           </Select>
         </Field>
 
