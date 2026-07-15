@@ -48,6 +48,7 @@ import {
   taxPeriodOption,
   defaultChecklist,
   checklistStatus,
+  financialYears,
 } from "@/lib/constants";
 import { dueLabel, daysUntil, toDateInput, formatDate, cn } from "@/lib/format";
 
@@ -97,14 +98,19 @@ export default function TasksPage() {
   const canRecur = can("manageSchedules");
 
   const [tab, setTab] = useState<Tab>("tasks");
+  // Active (in-progress) vs Completed list — completed tasks move out of the
+  // working list to keep it uncluttered.
+  const [view, setView] = useState<"Active" | "Completed">("Active");
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("All");
   const [category, setCategory] = useState("All");
   const [assignee, setAssignee] = useState("All");
+  const [fy, setFy] = useState("All");
+  const fys = financialYears(new Date(), 6);
 
   const url =
-    `/api/tasks?q=${encodeURIComponent(q)}&status=${status}` +
-    `&category=${encodeURIComponent(category)}&assigneeId=${assignee}`;
+    `/api/tasks?view=${view}&q=${encodeURIComponent(q)}&status=${status}` +
+    `&category=${encodeURIComponent(category)}&assigneeId=${assignee}&fy=${encodeURIComponent(fy)}`;
   const { data, loading, error, refresh } = useResource<Task[]>(url);
   const { data: clients } = useResource<Client[]>("/api/clients");
   const { data: staff } = useResource<Staff[]>("/api/staff");
@@ -168,19 +174,42 @@ export default function TasksPage() {
         <RecurringPanel addSignal={addRecurring} />
       ) : (
         <>
+          <div className="mb-4 inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
+            <ViewButton active={view === "Active"} onClick={() => setView("Active")}>
+              In Progress
+            </ViewButton>
+            <ViewButton active={view === "Completed"} onClick={() => setView("Completed")}>
+              <FileCheck2 className="h-3.5 w-3.5" /> Completed
+            </ViewButton>
+          </div>
+
           <Card className="mb-4">
-            <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 lg:grid-cols-5">
               <div className="relative sm:col-span-2 lg:col-span-1">
                 <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search tasks…"
+                  placeholder="Search task or client…"
                   className="w-full rounded-lg border border-slate-300 bg-white py-2 pr-3 pl-9 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
                 />
               </div>
-              <FilterSelect value={status} onChange={setStatus} label="status" options={TASK_STATUSES} />
+              {view === "Active" && (
+                <FilterSelect value={status} onChange={setStatus} label="status" options={TASK_STATUSES} />
+              )}
               <FilterSelect value={category} onChange={setCategory} label="category" options={TASK_CATEGORIES} />
+              <select
+                value={fy}
+                onChange={(e) => setFy(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+              >
+                <option value="All">All financial years</option>
+                {fys.map((y) => (
+                  <option key={y} value={y}>
+                    FY {y}
+                  </option>
+                ))}
+              </select>
               <select
                 value={assignee}
                 onChange={(e) => setAssignee(e.target.value)}
@@ -202,7 +231,15 @@ export default function TasksPage() {
             ) : error ? (
               <p className="p-6 text-sm text-rose-600">Failed to load: {error}</p>
             ) : !data || data.length === 0 ? (
-              <EmptyState icon={ClipboardList} title="No tasks match" message="Adjust the filters or create a new task." />
+              <EmptyState
+                icon={view === "Completed" ? FileCheck2 : ClipboardList}
+                title={view === "Completed" ? "No completed tasks yet" : "No tasks match"}
+                message={
+                  view === "Completed"
+                    ? "Tasks you complete will be listed here, keeping the in-progress list clear."
+                    : "Adjust the filters or create a new task."
+                }
+              />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -415,6 +452,28 @@ export default function TasksPage() {
         }}
       />
     </div>
+  );
+}
+
+function ViewButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+        active ? "bg-brand-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100",
+      )}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -653,6 +712,11 @@ function TaskForm({
       {err && (
         <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-200">{err}</div>
       )}
+      {!isEdit && !form.title && (multiClient ? clientIds.length > 0 : true) && (
+        <div className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 ring-1 ring-amber-200">
+          Enter a title to {multiClient ? `create this task for ${clientIds.length} client${clientIds.length === 1 ? "" : "s"}` : "create the task"}.
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Title" required className="sm:col-span-2">
           <Input
@@ -675,23 +739,46 @@ function TaskForm({
             ))}
           </Select>
         </Field>
-        <Field label="Client">
+        <Field label={multiClient ? "Clients" : "Client"}>
           {multiClient ? (
-            <div className="max-h-44 space-y-1 overflow-y-auto rounded-lg border border-slate-300 bg-white p-2 shadow-sm">
-              {clients.map((c) => (
-                <label
-                  key={c.id}
-                  className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  <input
-                    type="checkbox"
-                    checked={clientIds.includes(c.id)}
-                    onChange={() => toggleClient(c.id)}
-                    className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                  />
-                  {c.name}
-                </label>
-              ))}
+            <div className="rounded-lg border border-brand-200 bg-brand-50/40 p-2 shadow-sm">
+              <div className="mb-1.5 flex items-center justify-between px-0.5">
+                <span className="text-xs font-medium text-brand-700">
+                  {clientIds.length > 0 ? `${clientIds.length} selected` : "Select clients"}
+                </span>
+                <div className="flex gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setClientIds(clients.map((c) => c.id))}
+                    className="text-brand-600 hover:underline"
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setClientIds([])}
+                    className="text-slate-500 hover:underline"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+              <div className="max-h-44 space-y-1 overflow-y-auto rounded-md border border-slate-200 bg-white p-2">
+                {clients.map((c) => (
+                  <label
+                    key={c.id}
+                    className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={clientIds.includes(c.id)}
+                      onChange={() => toggleClient(c.id)}
+                      className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                    />
+                    {c.name}
+                  </label>
+                ))}
+              </div>
             </div>
           ) : (
             <Select value={form.clientId ?? ""} onChange={(e) => set("clientId", e.target.value)}>
@@ -710,14 +797,11 @@ function TaskForm({
                 checked={multiClient}
                 onChange={(e) => {
                   setMultiClient(e.target.checked);
-                  if (e.target.checked && form.clientId) setClientIds([form.clientId]);
+                  setClientIds(e.target.checked && form.clientId ? [form.clientId] : []);
                 }}
                 className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
               />
-              Create this task for multiple clients
-              {multiClient && clientIds.length > 0 && (
-                <span className="text-slate-400">· {clientIds.length} selected</span>
-              )}
+              Create this task for multiple clients at once
             </label>
           )}
         </Field>

@@ -18,27 +18,35 @@ export const GET = route(async (req) => {
   await requireUser();
   await backfillCategories();
   const { searchParams } = new URL(req.url);
+  const view = searchParams.get("view")?.trim(); // Active (default) or Completed
   const status = searchParams.get("status")?.trim();
   const category = searchParams.get("category")?.trim();
   const assigneeId = searchParams.get("assigneeId")?.trim();
   const clientId = searchParams.get("clientId")?.trim();
+  const fy = searchParams.get("fy")?.trim();
   const q = searchParams.get("q")?.trim();
 
   const where: Prisma.TaskWhereInput = {};
+  // Completed tasks live in their own list so the working list stays lean.
+  if (view === "Completed") where.status = "Completed";
+  else if (view === "Active") where.status = { not: "Completed" };
   if (status && status !== "All") where.status = status;
   if (category && category !== "All") where.category = category;
   if (assigneeId && assigneeId !== "All") where.assigneeId = assigneeId;
   if (clientId) where.clientId = clientId;
+  if (fy && fy !== "All") where.financialYear = fy;
   if (q) {
     where.OR = [
       { title: { contains: q, mode: "insensitive" } },
       { description: { contains: q, mode: "insensitive" } },
+      { client: { name: { contains: q, mode: "insensitive" } } },
     ];
   }
 
   const tasks = await prisma.task.findMany({
     where,
-    orderBy: [{ dueDate: "asc" }],
+    // The completed list reads newest-first; the working list by due date.
+    orderBy: view === "Completed" ? [{ completedAt: "desc" }] : [{ dueDate: "asc" }],
     include: {
       client: true,
       assignee: true,
