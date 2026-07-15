@@ -293,6 +293,8 @@ export const itrCreateSchema = z.object({
     )
     .optional(),
   assigneeId: optionalText,
+  // Link this register entry to the task it settles (mapped by client).
+  taskId: optionalText,
   notes: optionalText,
 });
 export const itrUpdateSchema = itrCreateSchema.partial();
