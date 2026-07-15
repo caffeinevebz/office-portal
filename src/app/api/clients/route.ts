@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, parse, route } from "@/lib/api";
 import { requireUser, requirePermission } from "@/lib/auth/session";
 import { clientCreateSchema } from "@/lib/validation";
+import { gstRegistrationData } from "@/lib/gst";
 import type { Prisma } from "@prisma/client";
 
 export const GET = route(async (req) => {
@@ -23,6 +24,7 @@ export const GET = route(async (req) => {
       { tan: { contains: q, mode: "insensitive" } },
       { contactPerson: { contains: q, mode: "insensitive" } },
       { tradeNames: { some: { name: { contains: q, mode: "insensitive" } } } },
+      { gstRegistrations: { some: { gstin: { contains: q, mode: "insensitive" } } } },
     ];
   }
 
@@ -32,6 +34,7 @@ export const GET = route(async (req) => {
     include: {
       group: true,
       tradeNames: { orderBy: { name: "asc" } },
+      gstRegistrations: { orderBy: { createdAt: "asc" } },
       _count: {
         select: {
           tasks: { where: { status: { not: "Completed" } } },
@@ -46,7 +49,7 @@ export const GET = route(async (req) => {
 
 export const POST = route(async (req) => {
   await requirePermission("manageClients");
-  const { tradeNames, ...data } = await parse(req, clientCreateSchema);
+  const { tradeNames, gstRegistrations, ...data } = await parse(req, clientCreateSchema);
   const client = await prisma.client.create({
     data: {
       ...data,
@@ -54,8 +57,16 @@ export const POST = route(async (req) => {
         tradeNames && tradeNames.length
           ? { create: tradeNames.map(({ id: _id, ...t }) => t) }
           : undefined,
+      gstRegistrations:
+        gstRegistrations && gstRegistrations.length
+          ? { create: gstRegistrations.map(({ id: _id, ...g }) => gstRegistrationData(g)) }
+          : undefined,
     },
-    include: { group: true, tradeNames: { orderBy: { name: "asc" } } },
+    include: {
+      group: true,
+      tradeNames: { orderBy: { name: "asc" } },
+      gstRegistrations: { orderBy: { createdAt: "asc" } },
+    },
   });
   return ok(client, 201);
 });

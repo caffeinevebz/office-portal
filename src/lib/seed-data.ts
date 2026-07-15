@@ -29,6 +29,7 @@ export async function seedDemoData(prisma: PrismaClient) {
   await prisma.rolePermission.deleteMany();
   await prisma.role.deleteMany();
   await prisma.tradeName.deleteMany();
+  await prisma.gstRegistration.deleteMany();
   await prisma.client.deleteMany();
   await prisma.clientGroup.deleteMany();
   await prisma.staff.deleteMany();
@@ -213,6 +214,24 @@ export async function seedDemoData(prisma: PrismaClient) {
   // A company that trades under a brand different from its legal name.
   await prisma.tradeName.create({
     data: { clientId: coastal.id, name: "Kurian Marine Exports", gstin: "32CQWPS4455R1Z8", pan: "CQWPS4455R", address: "Harbour Road, Kochi 682003" },
+  });
+
+  console.log("Seeding GST registrations...");
+  // Nimbus is registered in three states — each GSTIN files its GSTR returns
+  // separately, so each needs its own GST task.
+  await prisma.gstRegistration.createMany({
+    data: [
+      { clientId: nimbus.id, gstin: "27AABCN1234E1Z5", label: "Maharashtra HO", stateCode: "27", state: "Maharashtra", address: "Nimbus House, BKC, Mumbai 400051" },
+      { clientId: nimbus.id, gstin: "29AABCN1234E1Z4", label: "Karnataka branch", stateCode: "29", state: "Karnataka", address: "4th Floor, MG Road, Bengaluru 560001" },
+      { clientId: nimbus.id, gstin: "07AABCN1234E1Z2", label: "Delhi branch", stateCode: "07", state: "Delhi", address: "Nehru Place, New Delhi 110019" },
+    ],
+  });
+  // Apex is registered in two states.
+  await prisma.gstRegistration.createMany({
+    data: [
+      { clientId: apex.id, gstin: "27AADCA7788P1Z1", label: "Maharashtra", stateCode: "27", state: "Maharashtra", address: "Hiranandani, Powai, Mumbai 400076" },
+      { clientId: apex.id, gstin: "24AADCA7788P1Z8", label: "Gujarat site office", stateCode: "24", state: "Gujarat", address: "Sarkhej, Ahmedabad 382210" },
+    ],
   });
 
   console.log("Seeding tasks...");

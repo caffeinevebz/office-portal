@@ -44,6 +44,7 @@ model Client {
   packets    DocPacket[]
   itrFilings ItrFiling[]
   tradeNames TradeName[]
+  gstRegistrations GstRegistration[]
   expenseClaims ExpenseClaim[]
 }
 
@@ -76,6 +77,30 @@ model TradeName {
   clientId String
   client   Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
   invoices Invoice[]
+
+  @@index([clientId])
+}
+
+/// A GST registration (GSTIN) held by a client. A single PAN-level entity may
+/// be registered in several states — one GSTIN per state — and GSTR returns
+/// are filed separately for each. This lets GST tasks and filing-register
+/// entries be pinned to a specific GSTIN. (Distinct from TradeName, which is
+/// about invoice billing identity.)
+model GstRegistration {
+  id        String   @id @default(cuid())
+  gstin     String
+  label     String? // friendly name, e.g. "Maharashtra HO", "Karnataka branch"
+  stateCode String? // first two digits of the GSTIN, e.g. "27"
+  state     String? // state name derived from the GSTIN state code
+  address   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clientId   String
+  client     Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tasks      Task[]
+  itrFilings ItrFiling[]
 
   @@index([clientId])
 }
@@ -222,6 +247,9 @@ model Task {
   returnNature  String? // TDS return: Original / Revised
   gstReturnType String? // GSTR-1, GSTR-3B, GSTR-2B, GSTR-9, GSTR-9C
   gstPeriodicity String? // Monthly / Quarterly (for periodic GST returns)
+  // The GSTIN this GST task is for — a client with several registrations
+  // files each return separately, so each GSTIN gets its own task.
+  gstin         String? // denormalised GSTIN string (shown on the task)
   checklist     Json? // [{ label, done }] — e.g. TDS certificate downloaded
 
   createdAt   DateTime  @default(now())
@@ -229,6 +257,9 @@ model Task {
 
   clientId   String?
   client     Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  // The client GST registration this task is filed under (GST tasks only).
+  gstRegistrationId String?
+  gstRegistration   GstRegistration? @relation(fields: [gstRegistrationId], references: [id], onDelete: SetNull)
   // Lead assignee (kept for reminders / calendar); also present in `assignees`.
   assigneeId String?
   assignee   Staff?  @relation("TaskLeadAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
@@ -509,6 +540,9 @@ model ItrFiling {
   filedOn        DateTime?
   ackNumber      String? // filing acknowledgement number
   refundAmount   Float? // expected/claimed refund, if any
+  // The GSTIN a GST return was filed under (distinguishes a client's several
+  // registrations in the register).
+  gstin          String?
   notes          String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -517,6 +551,8 @@ model ItrFiling {
   client     Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
   assigneeId String?
   assignee   Staff?  @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  gstRegistrationId String?
+  gstRegistration   GstRegistration? @relation(fields: [gstRegistrationId], references: [id], onDelete: SetNull)
   // The task whose "Record filing" created/updates this entry (if any).
   taskId String? @unique
   task   Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)

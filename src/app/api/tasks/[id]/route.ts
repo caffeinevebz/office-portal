@@ -21,6 +21,7 @@ const TASK_INCLUDE = {
   assignee: true,
   assignees: true,
   approver: true,
+  gstRegistration: true,
   invoiceLines: { include: { invoice: { select: { id: true, invoiceNumber: true } } } },
 } as const;
 
@@ -56,6 +57,7 @@ export const PUT = route(async (req, ctx: Ctx) => {
   const { id } = await ctx.params;
   const {
     clientIds: _ignored,
+    gstRegistrationIds: _ignoredGst,
     assigneeIds,
     assigneeId: rawAssigneeId,
     priority: rawPriority,
@@ -211,6 +213,10 @@ async function upsertFilingRecord(task: Task) {
     ackNumber: task.ackNumber,
     clientId: task.clientId,
     assigneeId: task.assigneeId,
+    // Carry the GSTIN through so the register distinguishes a client's
+    // several GST registrations.
+    gstin: task.gstin,
+    gstRegistrationId: task.gstRegistrationId,
     notes: task.title,
   };
   await prisma.itrFiling.upsert({

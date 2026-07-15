@@ -67,6 +67,20 @@ export const clientCreateSchema = z.object({
       }),
     )
     .optional(),
+  // GST registrations (GSTINs) the client holds — one per state. Same
+  // add/update/remove semantics as tradeNames. `state`/`stateCode` are
+  // derived from the GSTIN server-side.
+  gstRegistrations: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        gstin: z.string().trim().min(1, "GSTIN is required"),
+        label: optionalText,
+        address: optionalText,
+        active: z.boolean().default(true),
+      }),
+    )
+    .optional(),
 });
 export const clientUpdateSchema = clientCreateSchema.partial();
 
@@ -123,6 +137,12 @@ export const taskCreateSchema = z.object({
   clientId: optionalText,
   // Create the same task for several clients in one go.
   clientIds: z.array(z.string().trim().min(1)).optional(),
+  // GST tasks: the registration (GSTIN) this task is filed under, and the
+  // denormalised GSTIN string. `gstRegistrationIds` creates one task per
+  // GSTIN for the same client in one go.
+  gstRegistrationId: optionalText,
+  gstin: optionalText,
+  gstRegistrationIds: z.array(z.string().trim().min(1)).optional(),
   // Assign to one or more team members; the first is the lead assignee.
   assigneeIds: z.array(z.string().trim().min(1)).optional(),
   // Partner/Admin who gives final approval (the task hierarchy).
@@ -298,6 +318,9 @@ export const itrCreateSchema = z.object({
   assigneeId: optionalText,
   // Link this register entry to the task it settles (mapped by client).
   taskId: optionalText,
+  // For GST returns: which of the client's GST registrations (GSTIN) filed.
+  gstRegistrationId: optionalText,
+  gstin: optionalText,
   notes: optionalText,
 });
 export const itrUpdateSchema = itrCreateSchema.partial();

@@ -42,13 +42,14 @@ export const GET = route(async (req) => {
       { client: { pan: { contains: q, mode: "insensitive" } } },
       { ackNumber: { contains: q, mode: "insensitive" } },
       { formType: { contains: q, mode: "insensitive" } },
+      { gstin: { contains: q, mode: "insensitive" } },
     ];
   }
 
   const filings = await prisma.itrFiling.findMany({
     where,
     orderBy: [{ financialYear: "desc" }, { createdAt: "asc" }],
-    include: { client: true, assignee: true, task: { select: { id: true, title: true } } },
+    include: { client: true, assignee: true, gstRegistration: true, task: { select: { id: true, title: true } } },
   });
   return ok(filings);
 });
@@ -63,7 +64,7 @@ export const POST = route(async (req) => {
   }
   const filing = await prisma.itrFiling.create({
     data,
-    include: { client: true, assignee: true, task: { select: { id: true, title: true } } },
+    include: { client: true, assignee: true, gstRegistration: true, task: { select: { id: true, title: true } } },
   });
   await mirrorFilingToTask(filing);
   return ok(filing, 201);
