@@ -623,8 +623,17 @@ function TaskForm({
   // Create the same task for several clients in one go (create mode only).
   const [multiClient, setMultiClient] = useState(false);
   const [clientIds, setClientIds] = useState<string[]>([]);
+  // Find a client in the multi-select by name / PAN / GSTIN / group code.
+  const [clientSearch, setClientSearch] = useState("");
   const toggleClient = (id: string) =>
     setClientIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  const searchedClients = clients.filter((c) => {
+    const s = clientSearch.trim().toLowerCase();
+    if (!s) return true;
+    return [c.name, c.pan, c.gstin, c.tan, c.group?.code].some((v) =>
+      v?.toLowerCase().includes(s),
+    );
+  });
   // GST tasks: create a separate task for each of the client's GSTINs at once.
   const [multiGstin, setMultiGstin] = useState(false);
   const [gstRegIds, setGstRegIds] = useState<string[]>([]);
@@ -873,10 +882,13 @@ function TaskForm({
                 <div className="flex gap-2 text-xs">
                   <button
                     type="button"
-                    onClick={() => setClientIds(clients.map((c) => c.id))}
+                    onClick={() =>
+                      // Select all *matching* clients (adds to the selection).
+                      setClientIds((ids) => [...new Set([...ids, ...searchedClients.map((c) => c.id)])])
+                    }
                     className="text-brand-600 hover:underline"
                   >
-                    Select all
+                    {clientSearch.trim() ? "Select matching" : "Select all"}
                   </button>
                   <button
                     type="button"
@@ -887,8 +899,19 @@ function TaskForm({
                   </button>
                 </div>
               </div>
+              <input
+                value={clientSearch}
+                onChange={(e) => setClientSearch(e.target.value)}
+                placeholder="Search client by name / PAN / GSTIN…"
+                className="mb-1.5 w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+              />
               <div className="max-h-44 space-y-1 overflow-y-auto rounded-md border border-slate-200 bg-white p-2">
-                {clients.map((c) => (
+                {searchedClients.length === 0 && (
+                  <p className="px-1.5 py-1 text-xs text-slate-400">
+                    No clients match “{clientSearch}”.
+                  </p>
+                )}
+                {searchedClients.map((c) => (
                   <label
                     key={c.id}
                     className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-slate-700 hover:bg-slate-50"
@@ -903,6 +926,11 @@ function TaskForm({
                   </label>
                 ))}
               </div>
+              {clientSearch.trim() && clientIds.length > 0 && (
+                <p className="mt-1 px-0.5 text-[11px] text-slate-500">
+                  {clientIds.length} selected in total (selections outside the search are kept).
+                </p>
+              )}
             </div>
           ) : (
             <Select

@@ -7,6 +7,7 @@ import {
   MUTED,
   FAINT,
   FILL,
+  INK,
   createA4,
   text,
   wrap,
@@ -32,6 +33,26 @@ export function receiptNumber(inv: InvoiceForPdf): string {
   return n.startsWith("INV-") ? n.replace(/^INV-/, "RCT-") : `RCT-${n}`;
 }
 
+/** Human description of how the payment came in, from the recorded mode. */
+export function paymentNarration(inv: InvoiceForPdf, paidOn: Date): string[] {
+  const mode = inv.paymentMode;
+  if (!mode) return [];
+  if (mode === "Cheque") {
+    const bits = [
+      inv.chequeNumber ? `Cheque No. ${inv.chequeNumber}` : null,
+      inv.chequeDate ? `dated ${fmtDate(inv.chequeDate)}` : null,
+      inv.chequeBank ? `drawn on ${inv.chequeBank}` : null,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    return bits ? [`Cheque Details`, bits] : [];
+  }
+  if (mode !== "Cash" && inv.transactionRef) {
+    return ["Transaction", `${inv.transactionRef} dated ${fmtDate(paidOn)}`];
+  }
+  return [];
+}
+
 export async function buildReceiptPdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   const pdf = await createA4();
   const { page, reg, bold } = pdf;
@@ -42,13 +63,22 @@ export async function buildReceiptPdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   const tax = taxBreakdown(inv, lh.stateCode);
   const paidOn = inv.paidDate ?? new Date();
 
+  // TDS the client withheld: the receipt acknowledges the net amount received
+  // and discloses the deduction against the gross invoice value.
+  const tds = inv.tdsDeducted ?? 0;
+  const net = Math.max(0, tax.grand - tds);
+
   const party = billedParty(inv);
-  // Facts row
+  // Facts rows: receipt basics + how the payment came in.
   const facts: [string, string][] = [
     ["Receipt No.", receiptNumber(inv)],
     ["Receipt Date", fmtDate(paidOn)],
     ["Against Invoice", `${inv.invoiceNumber} dated ${fmtDate(inv.issueDate)}`],
   ];
+  if (inv.paymentMode) facts.push(["Mode of Payment", inv.paymentMode]);
+  const narration = paymentNarration(inv, paidOn);
+  if (narration.length === 2) facts.push([narration[0], narration[1]]);
+
   for (const [k, v] of facts) {
     text(page, k, { x: MARGIN, y, size: 9, font: reg, color: MUTED });
     text(page, v, { x: MARGIN + 110, y, size: 9, font: bold });
@@ -60,17 +90,42 @@ export async function buildReceiptPdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   y -= 28;
 
   // Narrative body
+  const via = inv.paymentMode
+    ? inv.paymentMode === "Cash"
+      ? " in cash"
+      : ` by ${inv.paymentMode}`
+    : "";
+  const tdsNote =
+    tds > 0
+      ? ` after TDS of ${money(tds)} deducted at source (invoice amount ${money(tax.grand)})`
+      : "";
   const paragraphs = [
     `Received with thanks from ${party.name}${
       party.address ? `, ${party.address}` : ""
-    }, the sum of ${money(tax.grand)} (${rupeesInWords(tax.grand)}) against invoice ${
+    }, the sum of ${money(net)} (${rupeesInWords(net)})${via} against invoice ${
       inv.invoiceNumber
-    } towards ${inv.description?.trim() || "professional services rendered"}.`,
+    } towards ${inv.description?.trim() || "professional services rendered"}${tdsNote}.`,
   ];
   for (const p of paragraphs) {
     for (const line of wrap(p, reg, 10.5, right - MARGIN)) {
       text(page, line, { x: MARGIN, y, size: 10.5, font: reg });
       y -= 16;
+    }
+  }
+
+  // Settlement summary when TDS was withheld.
+  if (tds > 0) {
+    y -= 10;
+    const rows: [string, string, boolean][] = [
+      ["Invoice amount", money(tax.grand), false],
+      ["Less: TDS deducted at source", money(tds), false],
+      ["Amount received", money(net), true],
+    ];
+    for (const [label, value, strong] of rows) {
+      text(page, label, { x: MARGIN, y, size: 9.5, font: strong ? bold : reg, color: strong ? INK : MUTED });
+      text(page, value, { x: MARGIN + 260, y, size: 9.5, font: strong ? bold : reg, align: "right" });
+      if (strong) hline(page, MARGIN, MARGIN + 264, y + 12);
+      y -= 15;
     }
   }
 
@@ -86,7 +141,16 @@ export async function buildReceiptPdf(inv: InvoiceForPdf): Promise<Uint8Array> {
     borderWidth: 0.8,
   });
   text(page, "AMOUNT RECEIVED", { x: MARGIN + 10, y: y + 4, size: 7, font: bold, color: FAINT });
-  text(page, money(tax.grand), { x: MARGIN + 10, y: y - 13, size: 14, font: bold });
+  text(page, money(net), { x: MARGIN + 10, y: y - 13, size: 14, font: bold });
+  if (tds > 0) {
+    text(page, `TDS ${money(tds)} deducted at source by the client.`, {
+      x: MARGIN + 212,
+      y: y - 13,
+      size: 8,
+      font: reg,
+      color: MUTED,
+    });
+  }
 
   y -= 60;
   text(page, "Payment received against professional fees. Receipt is subject to realisation of funds.", {

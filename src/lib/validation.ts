@@ -188,6 +188,19 @@ export const invoiceCreateSchema = z.object({
   status: oneOf(INVOICE_STATUSES, "status").default("Draft"),
   issueDate: optionalDate,
   dueDate: optionalDate,
+  // Payment-receipt details (mode + instrument specifics + TDS withheld).
+  paymentMode: optionalText,
+  chequeNumber: optionalText,
+  chequeDate: optionalDate,
+  chequeBank: optionalText,
+  transactionRef: optionalText,
+  paidDate: optionalDate,
+  tdsDeducted: z
+    .preprocess(
+      (v) => (v === "" || v == null ? null : v),
+      z.coerce.number().min(0).nullable(),
+    )
+    .optional(),
   // Service line items; each can optionally map to the Task it bills.
   lineItems: z
     .array(
@@ -202,6 +215,23 @@ export const invoiceCreateSchema = z.object({
     .optional(),
 });
 export const invoiceUpdateSchema = invoiceCreateSchema.partial();
+
+// Quick status change / payment recording from the invoices table.
+export const invoicePaymentSchema = z.object({
+  status: oneOf(INVOICE_STATUSES, "status"),
+  paymentMode: optionalText,
+  chequeNumber: optionalText,
+  chequeDate: optionalDate,
+  chequeBank: optionalText,
+  transactionRef: optionalText,
+  paidDate: optionalDate,
+  tdsDeducted: z
+    .preprocess(
+      (v) => (v === "" || v == null ? null : v),
+      z.coerce.number().min(0).nullable(),
+    )
+    .optional(),
+});
 
 export const documentCreateSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),

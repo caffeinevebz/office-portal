@@ -488,6 +488,15 @@ model Invoice {
   dueDate       DateTime?
   paidDate      DateTime?
   receiptNumber String?   @unique // assigned when marked Paid, e.g. APSB/26-27/R001
+  // Payment-receipt details (recorded when the invoice is marked Paid):
+  paymentMode    String? // Cash, Cheque, NEFT/IMPS/Transfer, UPI
+  chequeNumber   String? // Cheque: number
+  chequeDate     DateTime? // Cheque: date
+  chequeBank     String? // Cheque: drawee bank name
+  transactionRef String? // NEFT/IMPS/UPI: transaction number (paidDate is its date)
+  // TDS the client deducted at source from the fee; the receipt shows the
+  // gross fee, the TDS, and the net amount actually received.
+  tdsDeducted    Float?
   createdAt     DateTime  @default(now())
 
   clientId       String
