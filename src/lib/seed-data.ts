@@ -276,14 +276,14 @@ export async function seedDemoData(prisma: PrismaClient) {
 
   console.log("Seeding invoices...");
   const invoiceData = [
-    { invoiceNumber: "SA/26-27/001", clientId: nimbus.id, description: "Retainership fee – Apr to Jun 2026", amount: 45000, taxRate: 18, status: "Paid", issueDate: daysFromNow(-40), dueDate: daysFromNow(-25), paidDate: daysFromNow(-20), receiptNumber: "SA/26-27/R001" },
+    { invoiceNumber: "SA/26-27/001", clientId: nimbus.id, description: "Retainership fee – Apr to Jun 2026", amount: 45000, taxRate: 18, status: "Paid", issueDate: daysFromNow(-40), dueDate: daysFromNow(-25), paidDate: daysFromNow(-20), receiptNumber: "SA/26-27/R001", paymentMode: "NEFT/IMPS/Transfer", transactionRef: "UTR N202607154412876", tdsDeducted: 4500 },
     { invoiceNumber: "SA/26-27/002", clientId: apex.id, amount: 125000, taxRate: 18, status: "Sent", issueDate: daysFromNow(-15), dueDate: daysFromNow(15), lines: [{ description: "Statutory audit fee – FY 2025-26", amount: 90000 }, { description: "Tax audit fee u/s 44AB – FY 2025-26", amount: 35000 }] },
     { invoiceNumber: "SA/26-27/003", clientId: greenleaf.id, description: "GST compliance – Q1 FY26-27", amount: 22000, taxRate: 18, status: "Overdue", issueDate: daysFromNow(-35), dueDate: daysFromNow(-5) },
-    { invoiceNumber: "SA/26-27/004", clientId: meera.id, description: "ITR filing & advisory – AY 2026-27", amount: 8000, taxRate: 18, status: "Paid", issueDate: daysFromNow(-12), dueDate: daysFromNow(3), paidDate: daysFromNow(-8), receiptNumber: "SA/26-27/R002" },
+    { invoiceNumber: "SA/26-27/004", clientId: meera.id, description: "ITR filing & advisory – AY 2026-27", amount: 8000, taxRate: 18, status: "Paid", issueDate: daysFromNow(-12), dueDate: daysFromNow(3), paidDate: daysFromNow(-8), receiptNumber: "SA/26-27/R002", paymentMode: "UPI", transactionRef: "UPI 618834412907" },
     { invoiceNumber: "SA/26-27/005", clientId: coastal.id, organizationId: advisoryOrg.id, description: "Advisory: GST export refund filing", amount: 18000, taxRate: 18, status: "Sent", issueDate: daysFromNow(-8), dueDate: daysFromNow(22) },
     { invoiceNumber: "SA/26-27/006", clientId: vasudha.id, description: "Tax audit fee – FY 2025-26 (advance)", amount: 60000, taxRate: 18, gstMode: "None", status: "Draft", issueDate: daysFromNow(-2) },
     // Billed under the proprietor's trade name "Sunrise Traders".
-    { invoiceNumber: "SA/26-27/007", clientId: sunrise.id, tradeNameId: sunriseTrade.id, description: "Quarterly GST + accounting", amount: 12000, taxRate: 18, status: "Paid", issueDate: daysFromNow(-30), dueDate: daysFromNow(-15), paidDate: daysFromNow(-14), receiptNumber: "SA/26-27/R003" },
+    { invoiceNumber: "SA/26-27/007", clientId: sunrise.id, tradeNameId: sunriseTrade.id, description: "Quarterly GST + accounting", amount: 12000, taxRate: 18, status: "Paid", issueDate: daysFromNow(-30), dueDate: daysFromNow(-15), paidDate: daysFromNow(-14), receiptNumber: "SA/26-27/R003", paymentMode: "Cheque", chequeNumber: "004512", chequeDate: daysFromNow(-15), chequeBank: "HDFC Bank, Ashram Road" },
     { invoiceNumber: "SA/26-27/008", clientId: trust.id, description: "12A/80G renewal & Form 10B", amount: 35000, taxRate: 18, status: "Overdue", issueDate: daysFromNow(-50), dueDate: daysFromNow(-20) },
   ];
   for (const inv of invoiceData) {

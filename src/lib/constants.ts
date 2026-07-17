@@ -432,6 +432,11 @@ export function canApproveRole(role?: string | null): boolean {
 
 export const INVOICE_STATUSES = ["Draft", "Sent", "Paid", "Overdue"] as const;
 
+// Standard modes through which a client's payment is received.
+export const PAYMENT_MODES = ["Cash", "Cheque", "NEFT/IMPS/Transfer", "UPI"] as const;
+/** Modes that carry a transaction number + date (electronic transfers). */
+export const ELECTRONIC_MODES = new Set(["NEFT/IMPS/Transfer", "UPI"]);
+
 // Expense reimbursement claims (raised by staff, approved by Partner/Admin).
 export const EXPENSE_STATUSES = ["Pending", "Approved", "Rejected"] as const;
 export const EXPENSE_CATEGORIES = [

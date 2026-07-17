@@ -196,6 +196,13 @@ export type Invoice = {
   dueDate: string | null;
   paidDate: string | null;
   receiptNumber: string | null;
+  // Payment record (captured when marked Paid):
+  paymentMode: string | null;
+  chequeNumber: string | null;
+  chequeDate: string | null;
+  chequeBank: string | null;
+  transactionRef: string | null;
+  tdsDeducted: number | null;
   clientId: string;
   client?: Client | null;
   tradeNameId: string | null;

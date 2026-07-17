@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import { ok, fail, parse, route } from "@/lib/api";
+import { ok, parse, route } from "@/lib/api";
 import { requirePermission } from "@/lib/auth/session";
-import { invoiceUpdateSchema } from "@/lib/validation";
+import { invoiceUpdateSchema, invoicePaymentSchema } from "@/lib/validation";
 import { nextReceiptNumber, orgForInvoice } from "@/lib/numbering";
 import type { Prisma } from "@prisma/client";
 
@@ -12,15 +12,26 @@ async function applyUpdate(id: string, data: Prisma.InvoiceUncheckedUpdateInput)
   if (typeof data.status === "string") {
     if (data.status === "Paid") {
       const current = await prisma.invoice.findUnique({ where: { id } });
-      const paidDate = current?.paidDate ?? new Date();
-      if (current && !current.paidDate) patch.paidDate = paidDate;
+      // Honour an explicit payment date from the record-payment form.
+      const paidDate =
+        (patch.paidDate instanceof Date ? patch.paidDate : null) ??
+        current?.paidDate ??
+        new Date();
+      if (current && (!current.paidDate || patch.paidDate)) patch.paidDate = paidDate;
       // Assign a receipt number the first time it is marked Paid.
       if (current && !current.receiptNumber) {
         const org = await orgForInvoice(current.organizationId);
         patch.receiptNumber = await nextReceiptNumber(org, paidDate);
       }
     } else {
+      // Moving off Paid clears the payment record.
       patch.paidDate = null;
+      patch.paymentMode = null;
+      patch.chequeNumber = null;
+      patch.chequeDate = null;
+      patch.chequeBank = null;
+      patch.transactionRef = null;
+      patch.tdsDeducted = null;
     }
   }
   return prisma.invoice.update({
@@ -56,12 +67,14 @@ export const PUT = route(async (req, ctx: Ctx) => {
   return ok(invoice);
 });
 
+// Quick status change; marking Paid can carry the payment record — mode of
+// payment, instrument details (cheque no./date/bank or transaction ref) and
+// any TDS the client deducted at source.
 export const PATCH = route(async (req, ctx: Ctx) => {
   await requirePermission("manageInvoices");
   const { id } = await ctx.params;
-  const body = (await req.json().catch(() => ({}))) as { status?: string };
-  if (!body.status) return fail("status is required");
-  const invoice = await applyUpdate(id, { status: body.status });
+  const data = await parse(req, invoicePaymentSchema);
+  const invoice = await applyUpdate(id, data as Prisma.InvoiceUncheckedUpdateInput);
   return ok(invoice);
 });
 

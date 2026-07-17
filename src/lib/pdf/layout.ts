@@ -114,7 +114,8 @@ export async function firmHeader(pdf: Pdf, title: string, lh: Letterhead): Promi
   page.drawRectangle({ x: third, y: A4.height - 6, width: third, height: 6, color: ACCENT });
   page.drawRectangle({ x: third * 2, y: A4.height - 6, width: third, height: 6, color: FERN });
 
-  // Optional logo, boxed to 40x40 left of the name.
+  // Optional logo, boxed to 56x56 left of the name and vertically centred
+  // against the firm name + tagline block.
   let textX = MARGIN;
   if (lh.logo && lh.logoMime) {
     try {
@@ -122,17 +123,20 @@ export async function firmHeader(pdf: Pdf, title: string, lh: Letterhead): Promi
         lh.logoMime === "image/png"
           ? await doc.embedPng(lh.logo)
           : await doc.embedJpg(lh.logo);
-      const box = 40;
+      const box = 56;
       const scale = Math.min(box / img.width, box / img.height);
       const w = img.width * scale;
       const h = img.height * scale;
+      // The identity block: name baseline at H-44 (cap ~13pt) and tagline
+      // baseline at H-58 — its visual centre sits around H-47.
+      const blockCenter = A4.height - 47;
       page.drawImage(img, {
-        x: MARGIN,
-        y: A4.height - 30 - h + (box - h) / 2 - 22,
+        x: MARGIN + (box - w) / 2,
+        y: blockCenter - h / 2,
         width: w,
         height: h,
       });
-      textX = MARGIN + box + 12;
+      textX = MARGIN + box + 14;
     } catch {
       // Unreadable image — fall back to text-only letterhead.
     }

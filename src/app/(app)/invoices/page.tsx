@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Plus, Pencil, Trash2, Receipt, FileDown, FileCheck2, Mail } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Receipt, FileDown, FileCheck2, Mail, IndianRupee } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
 import type { Invoice, Client, Organization, Task } from "@/lib/types";
@@ -12,7 +12,13 @@ import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Loading, EmptyState } from "@/components/ui/EmptyState";
-import { INVOICE_STATUSES, GST_MODES, GST_MODE_LABELS } from "@/lib/constants";
+import {
+  INVOICE_STATUSES,
+  GST_MODES,
+  GST_MODE_LABELS,
+  PAYMENT_MODES,
+  ELECTRONIC_MODES,
+} from "@/lib/constants";
 import {
   formatCurrency,
   formatDate,
@@ -51,6 +57,8 @@ export default function InvoicesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Invoice | null>(null);
   const [toDelete, setToDelete] = useState<Invoice | null>(null);
+  // Invoice being marked Paid (or whose payment record is being edited).
+  const [payFor, setPayFor] = useState<Invoice | null>(null);
 
   const all = data ?? [];
   const billed = all.reduce((s, i) => s + withTax(i), 0);
@@ -62,6 +70,11 @@ export default function InvoicesPage() {
     .reduce((s, i) => s + withTax(i), 0);
 
   async function quickStatus(inv: Invoice, s: string) {
+    // Marking Paid captures the payment record first (mode, details, TDS).
+    if (s === "Paid" && inv.status !== "Paid") {
+      setPayFor(inv);
+      return;
+    }
     await apiMutate(`/api/invoices/${inv.id}`, "PATCH", { status: s });
     refresh();
   }
@@ -266,6 +279,19 @@ export default function InvoicesPage() {
                             <FileCheck2 className="h-4 w-4" />
                           </a>
                         )}
+                        {i.status === "Paid" && canManage && (
+                          <button
+                            onClick={() => setPayFor(i)}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                            title={
+                              i.paymentMode
+                                ? `Payment: ${i.paymentMode}${i.tdsDeducted ? ` · TDS ${formatCurrency(i.tdsDeducted)}` : ""}`
+                                : "Record payment details"
+                            }
+                          >
+                            <IndianRupee className="h-4 w-4" />
+                          </button>
+                        )}
                         {canManage && (
                           <>
                             <button
@@ -318,6 +344,17 @@ export default function InvoicesPage() {
           onClose={() => setFormOpen(false)}
           onSaved={() => {
             setFormOpen(false);
+            refresh();
+          }}
+        />
+      )}
+
+      {payFor && (
+        <PaymentModal
+          invoice={payFor}
+          onClose={() => setPayFor(null)}
+          onSaved={() => {
+            setPayFor(null);
             refresh();
           }}
         />
@@ -663,6 +700,171 @@ function InvoiceForm({
             </p>
             <p className="text-lg font-semibold text-slate-900">{formatCurrency(total)}</p>
           </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// Record how an invoice was paid: mode + instrument details + any TDS the
+// client deducted at source. Saving marks the invoice Paid.
+function PaymentModal({
+  invoice,
+  onClose,
+  onSaved,
+}: {
+  invoice: Invoice;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const gross = Math.round(withTax(invoice));
+  const [mode, setMode] = useState(invoice.paymentMode ?? "NEFT/IMPS/Transfer");
+  const [paidDate, setPaidDate] = useState(
+    toDateInput(invoice.paidDate) || toDateInput(new Date().toISOString()),
+  );
+  const [chequeNumber, setChequeNumber] = useState(invoice.chequeNumber ?? "");
+  const [chequeDate, setChequeDate] = useState(toDateInput(invoice.chequeDate));
+  const [chequeBank, setChequeBank] = useState(invoice.chequeBank ?? "");
+  const [transactionRef, setTransactionRef] = useState(invoice.transactionRef ?? "");
+  const [tdsOn, setTdsOn] = useState((invoice.tdsDeducted ?? 0) > 0);
+  const [tds, setTds] = useState(invoice.tdsDeducted ? String(invoice.tdsDeducted) : "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const isCheque = mode === "Cheque";
+  const isElectronic = ELECTRONIC_MODES.has(mode);
+  const tdsAmount = tdsOn ? parseFloat(tds) || 0 : 0;
+  const net = Math.max(0, gross - tdsAmount);
+
+  async function submit() {
+    setBusy(true);
+    setErr(null);
+    try {
+      await apiMutate(`/api/invoices/${invoice.id}`, "PATCH", {
+        status: "Paid",
+        paymentMode: mode,
+        paidDate: paidDate || null,
+        chequeNumber: isCheque ? chequeNumber || null : null,
+        chequeDate: isCheque ? chequeDate || null : null,
+        chequeBank: isCheque ? chequeBank || null : null,
+        transactionRef: isElectronic ? transactionRef || null : null,
+        tdsDeducted: tdsAmount > 0 ? tdsAmount : null,
+      });
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to record the payment");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Record payment — ${invoice.invoiceNumber}`}
+      description={`${invoice.client?.name ?? ""} · ${formatCurrency(gross)} receivable. The details print on the receipt.`}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            onClick={submit}
+            disabled={
+              busy ||
+              (isCheque && !(chequeNumber && chequeDate && chequeBank)) ||
+              (isElectronic && !transactionRef) ||
+              (tdsOn && !(tdsAmount > 0))
+            }
+          >
+            {busy ? "Saving…" : `Mark paid · ${formatCurrency(net)} received`}
+          </Button>
+        </>
+      }
+    >
+      {err && (
+        <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-200">
+          {err}
+        </div>
+      )}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Mode of payment" required>
+          <Select value={mode} onChange={(e) => setMode(e.target.value)}>
+            {PAYMENT_MODES.map((m) => (
+              <option key={m}>{m}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Payment date" required hint="The receipt date">
+          <Input type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} />
+        </Field>
+
+        {isCheque && (
+          <>
+            <Field label="Cheque no." required>
+              <Input
+                value={chequeNumber}
+                onChange={(e) => setChequeNumber(e.target.value)}
+                placeholder="e.g. 004512"
+              />
+            </Field>
+            <Field label="Cheque date" required>
+              <Input type="date" value={chequeDate} onChange={(e) => setChequeDate(e.target.value)} />
+            </Field>
+            <Field label="Bank name" required className="sm:col-span-2">
+              <Input
+                value={chequeBank}
+                onChange={(e) => setChequeBank(e.target.value)}
+                placeholder="e.g. HDFC Bank, Fort branch"
+              />
+            </Field>
+          </>
+        )}
+        {isElectronic && (
+          <Field
+            label="Transaction no."
+            required
+            className="sm:col-span-2"
+            hint="UTR / UPI reference — printed on the receipt with the payment date"
+          >
+            <Input
+              value={transactionRef}
+              onChange={(e) => setTransactionRef(e.target.value)}
+              placeholder="e.g. UTR N123456789012345"
+            />
+          </Field>
+        )}
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:col-span-2">
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={tdsOn}
+              onChange={(e) => setTdsOn(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+            />
+            Client deducted TDS on the fee
+          </label>
+          {tdsOn && (
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="TDS amount (₹)" required hint="Deducted at source by the client">
+                <Input
+                  type="number"
+                  min={0}
+                  value={tds}
+                  onChange={(e) => setTds(e.target.value)}
+                  placeholder="e.g. 4500"
+                />
+              </Field>
+              <div className="flex items-end">
+                <div className="w-full rounded-lg bg-white px-4 py-2.5 text-right ring-1 ring-slate-200">
+                  <p className="text-[11px] text-slate-500">Net received (gross − TDS)</p>
+                  <p className="text-lg font-semibold text-slate-900">{formatCurrency(net)}</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Modal>
