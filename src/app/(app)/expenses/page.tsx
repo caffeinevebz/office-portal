@@ -47,7 +47,7 @@ export default function ExpensesPage() {
   const [status, setStatus] = useState("All");
   const url = `/api/expenses?status=${encodeURIComponent(status)}`;
   const { data, loading, error, refresh } = useResource<ExpenseClaim[]>(url);
-  const { data: clients } = useResource<Client[]>("/api/clients");
+  const { data: clients } = useResource<Client[]>("/api/clients?slim=1");
   const { data: tasks } = useResource<Task[]>("/api/tasks");
 
   const [formOpen, setFormOpen] = useState(false);

@@ -26,7 +26,7 @@ export default function DocumentsPage() {
   const [category, setCategory] = useState("All");
   const url = `/api/documents?q=${encodeURIComponent(q)}&category=${encodeURIComponent(category)}`;
   const { data, loading, error, refresh } = useResource<DocumentRecord[]>(url);
-  const { data: clients } = useResource<Client[]>("/api/clients");
+  const { data: clients } = useResource<Client[]>("/api/clients?slim=1");
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<DocumentRecord | null>(null);

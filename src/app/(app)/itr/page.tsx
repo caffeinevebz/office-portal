@@ -87,7 +87,7 @@ export default function FilingRegisterPage() {
     `/api/itr?fy=${encodeURIComponent(fy)}&type=${encodeURIComponent(type)}` +
     `&status=${encodeURIComponent(status)}&q=${encodeURIComponent(qd)}`;
   const { data, loading, error, refresh, setData } = useResource<ItrFiling[]>(url);
-  const { data: clients } = useResource<Client[]>("/api/clients");
+  const { data: clients } = useResource<Client[]>("/api/clients?slim=1");
   const { data: staff } = useResource<Staff[]>("/api/staff");
   const { data: tasks } = useResource<Task[]>("/api/tasks");
 

@@ -71,6 +71,32 @@ The whole setup happens in the browser:
    the demo logins) or **create your own Partner account** and start clean.
    Setup locks itself the moment the first account exists.
 
+### Performance on Vercel + Neon
+
+The app caches sessions/permissions in-process and reuses fetched data across
+page navigations, but on a serverless deploy the biggest delays come from the
+hosting setup itself. Three settings make the deployed app feel dramatically
+faster:
+
+1. **Use Neon's pooled connection string.** In the Neon dashboard, copy the
+   connection string labelled **Pooled** (its host contains `-pooler`) and set
+   it as `DATABASE_URL` in Vercel (*Settings → Environment Variables*), then
+   redeploy. Serverless functions open a fresh database connection per
+   instance; the pooler makes that near-instant instead of a full Postgres
+   handshake each time.
+2. **Keep the database awake.** Neon's free tier suspends the database after
+   ~5 minutes of inactivity, so the first request after a quiet spell waits
+   for a cold start (often 1–3 s, sometimes more). The app exposes a public
+   `/api/health` endpoint that touches the database — point any free uptime
+   monitor (UptimeRobot, Better Stack, cron-job.org) at
+   `https://<your-app>.vercel.app/api/health` every 5 minutes to keep it warm
+   during working hours. (Paid Neon plans can disable autosuspend entirely.)
+3. **Put the app and the database in the same region.** Every API call makes
+   several database round-trips, so 200 ms of app↔database distance multiplies
+   quickly. Check the Neon project's region and set the Vercel project's
+   function region (*Settings → Functions*) to the closest match — e.g. Neon
+   `ap-southeast-1` (Singapore) with Vercel `sin1` for users in India.
+
 ## Run locally (for development)
 
 Requires Node.js 20+ and a PostgreSQL server (any 14+). Put its connection

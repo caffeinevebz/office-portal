@@ -62,7 +62,7 @@ export default function DscPage() {
   const [custody, setCustody] = useState("All");
   const url = `/api/dsc?q=${encodeURIComponent(qd)}&custody=${encodeURIComponent(custody)}`;
   const { data, loading, error, refresh } = useResource<Dsc[]>(url);
-  const { data: clients } = useResource<Client[]>("/api/clients");
+  const { data: clients } = useResource<Client[]>("/api/clients?slim=1");
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Dsc | null>(null);

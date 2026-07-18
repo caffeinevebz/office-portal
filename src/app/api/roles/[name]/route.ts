@@ -3,6 +3,7 @@ import { ok, fail, parse, route } from "@/lib/api";
 import { requirePermission } from "@/lib/auth/session";
 import { roleUpdateSchema, rolePermissionSchema } from "@/lib/validation";
 import { ALL_PERMISSIONS, SUPERADMIN_ROLE, type Permission } from "@/lib/auth/roles";
+import { invalidateCache } from "@/lib/cache";
 
 type Ctx = { params: Promise<{ name: string }> };
 
@@ -33,6 +34,8 @@ export const PATCH = route(async (req, ctx: Ctx) => {
     update: { allowed },
     create: { role: roleName, permission, allowed },
   });
+  // Access-level edits apply immediately, not after the cache TTL.
+  invalidateCache(`perms:${roleName}`);
   return ok({ ok: true });
 });
 
@@ -49,6 +52,7 @@ export const DELETE = route(async (_req, ctx: Ctx) => {
   }
   await prisma.rolePermission.deleteMany({ where: { role: roleName } });
   await prisma.role.delete({ where: { name: roleName } });
+  invalidateCache(`perms:${roleName}`);
   return ok({ ok: true });
 });
 

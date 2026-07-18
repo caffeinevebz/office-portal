@@ -51,7 +51,7 @@ export function RecurringPanel({ addSignal }: { addSignal?: number }) {
   const { can } = useAuth();
   const canManage = can("manageSchedules");
   const { data, loading, error, refresh } = useResource<ComplianceSchedule[]>("/api/schedules");
-  const { data: clients } = useResource<Client[]>("/api/clients");
+  const { data: clients } = useResource<Client[]>("/api/clients?slim=1");
   const { data: staff } = useResource<Staff[]>("/api/staff");
 
   const [formOpen, setFormOpen] = useState(false);

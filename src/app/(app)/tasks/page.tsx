@@ -144,7 +144,7 @@ export default function TasksPage() {
         : list.filter((t) => t.id !== updated.id);
     });
   }
-  const { data: clients } = useResource<Client[]>("/api/clients");
+  const { data: clients } = useResource<Client[]>("/api/clients?slim=1");
   const { data: staff } = useResource<Staff[]>("/api/staff");
 
   const [formOpen, setFormOpen] = useState(false);
