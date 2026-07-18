@@ -16,7 +16,6 @@ import {
   ArrowDownUp,
   Landmark,
   Wallet,
-  BookOpenCheck,
   Settings,
   ShieldCheck,
   Menu,
@@ -38,8 +37,8 @@ const NAV: { href: string; label: string; icon: typeof Users; perm?: Permission 
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/tasks", label: "Tasks", icon: ClipboardList },
   { href: "/itr", label: "Filing Register", icon: Landmark },
+  // The receipt register lives inside Invoices (one billing module).
   { href: "/invoices", label: "Invoices", icon: Receipt },
-  { href: "/receipts", label: "Receipt Register", icon: BookOpenCheck },
   { href: "/expenses", label: "Reimbursements", icon: Wallet, perm: "raiseExpenses" },
   { href: "/staff", label: "Team", icon: UsersRound },
   { href: "/documents", label: "Documents", icon: FolderClosed },

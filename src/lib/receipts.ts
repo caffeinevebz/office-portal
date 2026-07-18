@@ -64,6 +64,10 @@ export type ReceiptRow = {
   gross: number; // invoice value (incl. GST)
   tds: number; // TDS the client deducted at source
   net: number; // actually received
+  // The billing organization (firm) the money was received under — receipt
+  // numbering runs per firm, so the register is kept firm-wise.
+  orgId: string | null;
+  orgName: string;
 };
 
 const fmtDate = (d: Date | null | undefined) =>
@@ -71,13 +75,28 @@ const fmtDate = (d: Date | null | undefined) =>
     ? d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
     : "";
 
-/** Paid invoices in the period (by payment date), oldest first, with totals. */
+/**
+ * Paid invoices in the period (by payment date), oldest first, with totals.
+ * The register is firm-wise: an `org` param scopes it to one billing
+ * organization ("All" spans every firm). Invoices with no organization are
+ * billed under the default firm, so they count against it.
+ */
 export async function fetchReceipts(searchParams: URLSearchParams): Promise<{
   label: string;
+  orgId: string | null; // null = all firms
+  orgName: string | null;
   receipts: ReceiptRow[];
   totals: { count: number; gross: number; tds: number; net: number };
 }> {
   const { gte, lt, label } = parseReceiptPeriod(searchParams);
+  const orgParam = searchParams.get("org")?.trim();
+
+  const orgs = await prisma.organization.findMany({
+    select: { id: true, name: true, isDefault: true },
+  });
+  const defaultOrg = orgs.find((o) => o.isDefault) ?? orgs[0] ?? null;
+  const selectedOrg = orgParam && orgParam !== "All" ? (orgs.find((o) => o.id === orgParam) ?? null) : null;
+
   const invoices = await prisma.invoice.findMany({
     where: {
       status: "Paid",
@@ -86,9 +105,21 @@ export async function fetchReceipts(searchParams: URLSearchParams): Promise<{
         ...(gte ? { gte } : {}),
         ...(lt ? { lt } : {}),
       },
+      ...(selectedOrg
+        ? {
+            OR: [
+              { organizationId: selectedOrg.id },
+              // Null-org invoices belong to the default firm.
+              ...(selectedOrg.id === defaultOrg?.id ? [{ organizationId: null }] : []),
+            ],
+          }
+        : {}),
     },
     orderBy: { paidDate: "asc" },
-    include: { client: { select: { name: true } } },
+    include: {
+      client: { select: { name: true } },
+      organization: { select: { id: true, name: true } },
+    },
   });
 
   const receipts: ReceiptRow[] = invoices.map((inv) => {
@@ -115,6 +146,8 @@ export async function fetchReceipts(searchParams: URLSearchParams): Promise<{
       gross,
       tds,
       net: Math.max(0, gross - tds),
+      orgId: inv.organization?.id ?? defaultOrg?.id ?? null,
+      orgName: inv.organization?.name ?? defaultOrg?.name ?? "—",
     };
   });
 
@@ -127,5 +160,11 @@ export async function fetchReceipts(searchParams: URLSearchParams): Promise<{
     }),
     { count: 0, gross: 0, tds: 0, net: 0 },
   );
-  return { label, receipts, totals };
+  return {
+    label,
+    orgId: selectedOrg?.id ?? null,
+    orgName: selectedOrg?.name ?? null,
+    receipts,
+    totals,
+  };
 }
