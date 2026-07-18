@@ -2,6 +2,19 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+/**
+ * Debounce a fast-changing value (search input) so list URLs — and therefore
+ * refetches — only change once typing pauses, not on every keystroke.
+ */
+export function useDebounced<T>(value: T, ms = 300): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return debounced;
+}
+
 /** Fetch JSON from an API route with loading/error state and a refresh(). */
 export function useResource<T>(url: string) {
   const [data, setData] = useState<T | null>(null);

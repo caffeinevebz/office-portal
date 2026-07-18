@@ -6,8 +6,11 @@ import { mirrorFilingToTask } from "@/lib/filing";
 import type { Prisma } from "@prisma/client";
 
 // One-time backfill: derive financialYear from the legacy assessmentYear
-// (AY start − 1). Cheap no-op once every row has a financialYear.
+// (AY start − 1). Runs once per server process — not on every register fetch.
+let yearsBackfilled = false;
 async function backfillFinancialYears() {
+  if (yearsBackfilled) return;
+  yearsBackfilled = true;
   const legacy = await prisma.itrFiling.findMany({
     where: { financialYear: null, assessmentYear: { not: null } },
     select: { id: true, assessmentYear: true },

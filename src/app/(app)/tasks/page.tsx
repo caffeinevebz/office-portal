@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import { useResource, apiMutate } from "@/lib/useApi";
+import { useResource, useDebounced, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
 import type { Task, Client, Staff, ChecklistItem } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -125,10 +125,25 @@ export default function TasksPage() {
   const [fy, setFy] = useState("All");
   const fys = financialYears(new Date(), 6);
 
+  const qd = useDebounced(q);
   const url =
-    `/api/tasks?view=${view}&q=${encodeURIComponent(q)}&status=${status}` +
+    `/api/tasks?view=${view}&q=${encodeURIComponent(qd)}&status=${status}` +
     `&category=${encodeURIComponent(category)}&assigneeId=${assignee}&fy=${encodeURIComponent(fy)}`;
-  const { data, loading, error, refresh } = useResource<Task[]>(url);
+  const { data, loading, error, refresh, setData } = useResource<Task[]>(url);
+
+  // Apply a PATCH result to the list in place — no full refetch per click.
+  // A task whose status leaves the current view (e.g. completed while looking
+  // at In Progress) drops out of the list immediately.
+  function applyTaskUpdate(updated: Task) {
+    setData((list) => {
+      if (!list) return list;
+      const stays =
+        view === "Completed" ? updated.status === "Completed" : updated.status !== "Completed";
+      return stays
+        ? list.map((t) => (t.id === updated.id ? { ...t, ...updated } : t))
+        : list.filter((t) => t.id !== updated.id);
+    });
+  }
   const { data: clients } = useResource<Client[]>("/api/clients");
   const { data: staff } = useResource<Staff[]>("/api/staff");
 
@@ -141,23 +156,27 @@ export default function TasksPage() {
   const [openChecklist, setOpenChecklist] = useState<string | null>(null);
 
   async function quickStatus(t: Task, newStatus: string) {
-    await apiMutate(`/api/tasks/${t.id}`, "PATCH", { status: newStatus });
-    refresh();
+    const updated = (await apiMutate(`/api/tasks/${t.id}`, "PATCH", { status: newStatus })) as Task;
+    applyTaskUpdate(updated);
   }
 
   async function approveTask(t: Task) {
-    await apiMutate(`/api/tasks/${t.id}`, "PATCH", { approve: true });
-    refresh();
+    const updated = (await apiMutate(`/api/tasks/${t.id}`, "PATCH", { approve: true })) as Task;
+    applyTaskUpdate(updated);
   }
 
   // Tick/untick a step from the table — the task status auto-updates from
   // the steps checked (none → Pending, some → In Progress, all → Completed).
+  // The step flips locally at once; the server response then settles the row.
   async function toggleStep(t: Task, index: number) {
     const items = (t.checklist ?? []).map((it, i) =>
       i === index ? { ...it, done: !it.done } : it,
     );
-    await apiMutate(`/api/tasks/${t.id}`, "PATCH", { checklist: items });
-    refresh();
+    setData((list) =>
+      list ? list.map((x) => (x.id === t.id ? { ...x, checklist: items } : x)) : list,
+    );
+    const updated = (await apiMutate(`/api/tasks/${t.id}`, "PATCH", { checklist: items })) as Task;
+    applyTaskUpdate(updated);
   }
 
   const headerAction = !canManage

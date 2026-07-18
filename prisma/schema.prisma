@@ -286,6 +286,10 @@ model Task {
   expenseClaims ExpenseClaim[]
 
   @@unique([scheduleId, periodKey])
+  // The task list is always filtered/sorted along these paths.
+  @@index([status, dueDate])
+  @@index([clientId])
+  @@index([assigneeId])
 }
 
 /// Firm-wide outbound-email configuration (single row, id = "default").
@@ -510,6 +514,10 @@ model Invoice {
   lineItems      InvoiceLineItem[]
   // Reimbursement claims billed through this invoice.
   expenseClaims  ExpenseClaim[]
+
+  // Invoice list filters + the receipt register (paid rows by payment date).
+  @@index([status, paidDate])
+  @@index([clientId])
 }
 
 /// One billed service on an invoice. An invoice can bill several services at
@@ -567,6 +575,8 @@ model ItrFiling {
   task   Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
   @@index([clientId])
+  // The register always slices by financial year first.
+  @@index([financialYear])
 }
 
 /// A document record tracked for a client.

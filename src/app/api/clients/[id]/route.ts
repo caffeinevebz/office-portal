@@ -3,6 +3,7 @@ import { ok, fail, parse, route } from "@/lib/api";
 import { requireUser, requirePermission } from "@/lib/auth/session";
 import { clientUpdateSchema } from "@/lib/validation";
 import { gstRegistrationData } from "@/lib/gst";
+import { findClientDuplicate, duplicateMessage } from "@/lib/clients";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -31,6 +32,19 @@ export const PUT = route(async (req, ctx: Ctx) => {
   await requirePermission("manageClients");
   const { id } = await ctx.params;
   const { tradeNames, gstRegistrations, ...data } = await parse(req, clientUpdateSchema);
+  // Duplicate guard on the values the record will end up with (the payload
+  // may be partial), never matching against the record itself.
+  const current = await prisma.client.findUnique({
+    where: { id },
+    select: { pan: true, name: true },
+  });
+  if (!current) return fail("Client not found", 404);
+  const dup = await findClientDuplicate({
+    pan: data.pan !== undefined ? data.pan : current.pan,
+    name: data.name !== undefined ? data.name : current.name,
+    excludeId: id,
+  });
+  if (dup) return fail(duplicateMessage(dup), 409);
   await prisma.$transaction(async (tx) => {
     await tx.client.update({ where: { id }, data });
     // When the form sends a trade-name list, sync to it: update by id, create
