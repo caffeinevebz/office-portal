@@ -11,6 +11,9 @@ export const GET = route(async (req) => {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q")?.trim();
   const status = searchParams.get("status")?.trim();
+  // Picker pages ask for the slim shape: scalars + GST registrations, no
+  // per-row counts or trade-name joins — a much cheaper query and payload.
+  const slim = searchParams.get("slim") === "1";
 
   const groupId = searchParams.get("groupId")?.trim();
 
@@ -27,6 +30,18 @@ export const GET = route(async (req) => {
       { tradeNames: { some: { name: { contains: q, mode: "insensitive" } } } },
       { gstRegistrations: { some: { gstin: { contains: q, mode: "insensitive" } } } },
     ];
+  }
+
+  if (slim) {
+    const clients = await prisma.client.findMany({
+      where,
+      orderBy: { name: "asc" },
+      include: {
+        group: { select: { id: true, code: true, name: true } },
+        gstRegistrations: { orderBy: { createdAt: "asc" } },
+      },
+    });
+    return ok(clients);
   }
 
   const clients = await prisma.client.findMany({

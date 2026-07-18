@@ -15,10 +15,16 @@ export function useDebounced<T>(value: T, ms = 300): T {
   return debounced;
 }
 
+// Stale-while-revalidate cache: navigating back to a page (or re-applying a
+// filter) renders the last-known data instantly while a background refetch
+// brings it up to date. Any mutation clears the cache so nothing stale
+// survives a write.
+const swrCache = new Map<string, unknown>();
+
 /** Fetch JSON from an API route with loading/error state and a refresh(). */
 export function useResource<T>(url: string) {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setDataState] = useState<T | null>(() => (swrCache.get(url) as T) ?? null);
+  const [loading, setLoading] = useState(!swrCache.has(url));
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -27,7 +33,8 @@ export function useResource<T>(url: string) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) throw new Error(`Request failed (${res.status})`);
       const json = (await res.json()) as T;
-      setData(json);
+      swrCache.set(url, json);
+      setDataState(json);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
@@ -36,9 +43,31 @@ export function useResource<T>(url: string) {
   }, [url]);
 
   useEffect(() => {
-    setLoading(true);
+    const hit = swrCache.get(url) as T | undefined;
+    if (hit !== undefined) {
+      // Serve the cached copy instantly; revalidate quietly behind it.
+      setDataState(hit);
+      setLoading(false);
+    } else {
+      setDataState(null);
+      setLoading(true);
+    }
     refresh();
-  }, [refresh]);
+  }, [url, refresh]);
+
+  // Local row updates (in-place PATCH results) also keep the cache current.
+  const setData = useCallback(
+    (updater: T | null | ((prev: T | null) => T | null)) => {
+      setDataState((prev) => {
+        const next =
+          typeof updater === "function" ? (updater as (p: T | null) => T | null)(prev) : updater;
+        if (next === null) swrCache.delete(url);
+        else swrCache.set(url, next);
+        return next;
+      });
+    },
+    [url],
+  );
 
   return { data, loading, error, refresh, setData };
 }
@@ -59,5 +88,7 @@ export async function apiMutate(
   if (!res.ok) {
     throw new Error(json?.error || `Request failed (${res.status})`);
   }
+  // A write anywhere may change any list — drop the read cache wholesale.
+  swrCache.clear();
   return json;
 }

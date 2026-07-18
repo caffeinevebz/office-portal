@@ -2,6 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { cached } from "@/lib/cache";
 import { fail } from "@/lib/api";
 import { type Permission } from "./roles";
 import { roleHasPermission } from "./effective";
@@ -72,7 +73,12 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   if (!token) return null;
   const data = verifyToken(token);
   if (!data) return null;
-  const user = await prisma.staff.findUnique({ where: { id: data.uid } });
+  // Short-lived cache: this lookup runs on every API request and page load,
+  // so trimming it is a round-trip saved per call. Team-route mutations
+  // invalidate; deactivation/role edits otherwise apply within the TTL.
+  const user = await cached(`staff:${data.uid}`, 30_000, () =>
+    prisma.staff.findUnique({ where: { id: data.uid } }),
+  );
   if (!user || !user.active) return null;
   return { id: user.id, name: user.name, email: user.email, role: user.role };
 }

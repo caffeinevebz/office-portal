@@ -3,6 +3,7 @@ import { ok, parse, route } from "@/lib/api";
 import { requirePermission } from "@/lib/auth/session";
 import { hashPassword } from "@/lib/auth/password";
 import { staffUpdateSchema } from "@/lib/validation";
+import { invalidateCache } from "@/lib/cache";
 import type { Prisma } from "@prisma/client";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -17,6 +18,8 @@ export const PUT = route(async (req, ctx: Ctx) => {
   if (password) data.passwordHash = hashPassword(password);
 
   const member = await prisma.staff.update({ where: { id }, data });
+  // Role / deactivation changes take effect immediately, not after the TTL.
+  invalidateCache(`staff:${id}`);
   return ok(member);
 });
 
@@ -29,5 +32,6 @@ export const DELETE = route(async (_req, ctx: Ctx) => {
     data: { assigneeId: null },
   });
   await prisma.staff.delete({ where: { id } });
+  invalidateCache(`staff:${id}`);
   return ok({ ok: true });
 });

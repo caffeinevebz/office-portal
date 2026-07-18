@@ -52,7 +52,7 @@ export default function InwardPage() {
   const [status, setStatus] = useState("All");
   const url = `/api/inward?q=${encodeURIComponent(qd)}&status=${encodeURIComponent(status)}`;
   const { data, loading, error, refresh } = useResource<DocPacket[]>(url);
-  const { data: clients } = useResource<Client[]>("/api/clients");
+  const { data: clients } = useResource<Client[]>("/api/clients?slim=1");
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<DocPacket | null>(null);

@@ -40,11 +40,25 @@ export const GET = route(async () => {
 
   const [clients, tasks, invoices, activeDscs] = await Promise.all([
     prisma.client.findMany({ select: { status: true } }),
+    // Only the fields the summaries below read — full rows drag heavy Json
+    // columns (checklists) across the wire for nothing.
     prisma.task.findMany({
       where: taskWhere,
-      include: { client: { select: { name: true } }, assignee: { select: { name: true } } },
+      select: {
+        id: true,
+        title: true,
+        category: true,
+        status: true,
+        priority: true,
+        priorityManual: true,
+        dueDate: true,
+        client: { select: { name: true } },
+        assignee: { select: { name: true } },
+      },
     }),
-    prisma.invoice.findMany(),
+    prisma.invoice.findMany({
+      select: { amount: true, taxRate: true, gstMode: true, status: true, issueDate: true },
+    }),
     // DSC summary: every active certificate, bucketed by how close expiry is.
     prisma.dsc.findMany({
       where: { status: "Active" },
