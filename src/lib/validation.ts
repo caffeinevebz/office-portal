@@ -288,7 +288,21 @@ export const dscUpdateSchema = dscCreateSchema.partial();
 
 export const packetCreateSchema = z.object({
   receivedFrom: z.string().trim().min(1, "Delivered-by person is required"),
-  contents: z.string().trim().min(1, "Contents description is required"),
+  // Summary line; derived from `items` server-side when the list is used.
+  contents: optionalText,
+  // The documents received, as a list — one row per document/file, so
+  // returns can simply tick items off instead of retyping them. The
+  // returned metadata is passed through on edits to keep history intact.
+  items: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1, "Document name is required"),
+        returned: z.boolean().default(false),
+        returnedOn: z.string().nullish(),
+        outwardNumber: z.string().nullish(),
+      }),
+    )
+    .optional(),
   purpose: optionalText,
   mode: oneOf(PACKET_MODES, "mode").default("Hand Delivery"),
   courierRef: optionalText,
@@ -412,6 +426,9 @@ export const packetMovementSchema = z.object({
   mode: oneOf(PACKET_MODES, "mode").default("Hand Delivery"),
   courierRef: optionalText,
   note: optionalText,
+  // Which documents from the packet's item list this movement covers
+  // (indexes into DocPacket.items). Omitted = every eligible item.
+  itemIndexes: z.array(z.number().int().min(0)).optional(),
 });
 
 // An expense reimbursement claim raised by a team member.

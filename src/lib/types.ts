@@ -284,9 +284,19 @@ export type PacketMovement = {
   mode: string;
   courierRef: string | null;
   note: string | null;
+  // Names of the documents this movement covered.
+  items?: string[] | null;
   byName: string;
   createdAt: string;
   packetId: string;
+};
+
+/** One document/file in an inward packet's entered list. */
+export type PacketItem = {
+  name: string;
+  returned: boolean;
+  returnedOn?: string | null;
+  outwardNumber?: string | null;
 };
 
 export type DocPacket = {
@@ -294,6 +304,7 @@ export type DocPacket = {
   inwardNumber: string;
   receivedFrom: string;
   contents: string;
+  items?: PacketItem[] | null;
   purpose: string | null;
   mode: string;
   courierRef: string | null;
