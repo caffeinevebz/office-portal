@@ -494,6 +494,11 @@ model Invoice {
   taxRate       Float     @default(18) // GST %
   gstMode       String    @default("Auto") // Auto (by client state), Intra, Inter, None
   status        String    @default("Draft") // Draft, Sent, Paid, Overdue
+  // Fee = professional fees (the default); Reimbursement = out-of-pocket
+  // expenses billed to the client. Reimbursement bills run on their own
+  // number series (PREFIX/EXP/FY/NNN) and stay OUT of the fee receipt
+  // register — they are not professional income.
+  kind          String    @default("Fee")
   issueDate     DateTime  @default(now())
   dueDate       DateTime?
   paidDate      DateTime?

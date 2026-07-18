@@ -432,6 +432,10 @@ export function canApproveRole(role?: string | null): boolean {
 
 export const INVOICE_STATUSES = ["Draft", "Sent", "Paid", "Overdue"] as const;
 
+// Fee = professional fees; Reimbursement = out-of-pocket expenses billed to
+// the client (own EXP number series, excluded from the fee receipt register).
+export const INVOICE_KINDS = ["Fee", "Reimbursement"] as const;
+
 // Standard modes through which a client's payment is received.
 export const PAYMENT_MODES = ["Cash", "Cheque", "NEFT/IMPS/Transfer", "UPI"] as const;
 /** Modes that carry a transaction number + date (electronic transfers). */

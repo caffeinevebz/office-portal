@@ -18,10 +18,12 @@ async function applyUpdate(id: string, data: Prisma.InvoiceUncheckedUpdateInput)
         current?.paidDate ??
         new Date();
       if (current && (!current.paidDate || patch.paidDate)) patch.paidDate = paidDate;
-      // Assign a receipt number the first time it is marked Paid.
+      // Assign a receipt number the first time it is marked Paid —
+      // reimbursement bills draw from their own EXP receipt series.
       if (current && !current.receiptNumber) {
         const org = await orgForInvoice(current.organizationId);
-        patch.receiptNumber = await nextReceiptNumber(org, paidDate);
+        const kind = current.kind === "Reimbursement" ? "Reimbursement" : "Fee";
+        patch.receiptNumber = await nextReceiptNumber(org, paidDate, kind);
       }
     } else {
       // Moving off Paid clears the payment record.

@@ -100,6 +100,9 @@ export async function fetchReceipts(searchParams: URLSearchParams): Promise<{
   const invoices = await prisma.invoice.findMany({
     where: {
       status: "Paid",
+      // Expense reimbursement bills are recoveries, not professional
+      // receipts/income — they never appear in the fee receipt register.
+      kind: { not: "Reimbursement" },
       paidDate: {
         not: null,
         ...(gte ? { gte } : {}),

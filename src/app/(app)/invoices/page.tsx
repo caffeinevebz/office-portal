@@ -61,6 +61,8 @@ export default function InvoicesPage() {
   const [q, setQ] = useState("");
   const qd = useDebounced(q);
   const [status, setStatus] = useState("All");
+  // Fee bills vs expense reimbursement bills (separate number series).
+  const [kindFilter, setKindFilter] = useState("All");
   const url = `/api/invoices?q=${encodeURIComponent(qd)}&status=${status}`;
   const { data, loading, error, refresh, setData } = useResource<Invoice[]>(url);
   const { data: clients } = useResource<Client[]>("/api/clients");
@@ -73,7 +75,9 @@ export default function InvoicesPage() {
   // Invoice being marked Paid (or whose payment record is being edited).
   const [payFor, setPayFor] = useState<Invoice | null>(null);
 
-  const all = data ?? [];
+  const all = (data ?? []).filter(
+    (i) => kindFilter === "All" || (i.kind ?? "Fee") === kindFilter,
+  );
   const billed = all.reduce((s, i) => s + withTax(i), 0);
   const collected = all
     .filter((i) => i.status === "Paid")
@@ -215,6 +219,15 @@ export default function InvoicesPage() {
               <option key={s}>{s}</option>
             ))}
           </select>
+          <select
+            value={kindFilter}
+            onChange={(e) => setKindFilter(e.target.value)}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+          >
+            <option value="All">All types</option>
+            <option value="Fee">Professional fees</option>
+            <option value="Reimbursement">Reimbursements</option>
+          </select>
         </div>
       </Card>
 
@@ -244,6 +257,11 @@ export default function InvoicesPage() {
                   <tr key={i.id} className="hover:bg-slate-50">
                     <td className="px-5 py-3">
                       <p className="font-medium text-slate-800">{i.invoiceNumber}</p>
+                      {i.kind === "Reimbursement" && (
+                        <span className="mt-0.5 inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-amber-200 ring-inset">
+                          Expense reimbursement
+                        </span>
+                      )}
                       {servicesSummary(i) && (
                         <p className="mt-0.5 max-w-xs truncate text-xs text-slate-500">
                           {servicesSummary(i)}
@@ -536,6 +554,7 @@ function InvoiceForm({
         taxRate: rate,
         gstMode,
         status: form.status,
+        kind: form.kind || "Fee",
         issueDate: form.issueDate || null,
         dueDate: form.dueDate || null,
         lineItems: validLines.map((l) => ({
@@ -587,6 +606,23 @@ function InvoiceForm({
             onChange={(e) => set("invoiceNumber", e.target.value)}
             placeholder={isEdit ? "" : "Auto"}
           />
+        </Field>
+        <Field
+          label="Invoice type"
+          hint={
+            isEdit
+              ? "Fixed once created — the number series differs per type"
+              : "Reimbursements use their own EXP series and stay out of the fee receipt register"
+          }
+        >
+          <Select
+            value={form.kind ?? "Fee"}
+            onChange={(e) => set("kind", e.target.value)}
+            disabled={isEdit}
+          >
+            <option value="Fee">Professional fees</option>
+            <option value="Reimbursement">Expense reimbursement</option>
+          </Select>
         </Field>
         <Field label="Client" required>
           <Select

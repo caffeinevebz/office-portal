@@ -192,6 +192,9 @@ export type Invoice = {
   taxRate: number;
   gstMode: string;
   status: string;
+  // "Fee" (professional fees) or "Reimbursement" (expense recovery — own
+  // EXP number series, excluded from the fee receipt register).
+  kind: string;
   issueDate: string;
   dueDate: string | null;
   paidDate: string | null;

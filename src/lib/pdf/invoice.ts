@@ -85,7 +85,10 @@ export async function buildInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   else if (inv.status === "Draft") watermark(page, "DRAFT", rgb(0.42, 0.45, 0.5));
   else if (inv.status === "Overdue") watermark(page, "OVERDUE", rgb(0.88, 0.11, 0.28));
 
-  let y = await firmHeader(pdf, "TAX INVOICE", lh);
+  // A reimbursement bill recovers out-of-pocket expenses — it is not a fee
+  // invoice, and its title says so.
+  const title = inv.kind === "Reimbursement" ? "REIMBURSEMENT BILL" : "TAX INVOICE";
+  let y = await firmHeader(pdf, title, lh);
 
   // ---- Meta: Bill To (left) & invoice facts (right) ----
   const c = billedParty(inv);
