@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Search, Plus, Pencil, Trash2, Receipt, FileDown, FileCheck2, Mail, IndianRupee } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Search, Plus, Pencil, Trash2, Receipt, FileDown, FileCheck2, Mail, IndianRupee, BookOpenCheck } from "lucide-react";
+import { ReceiptRegisterPanel } from "@/components/ReceiptRegister";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
 import type { Invoice, Client, Organization, Task } from "@/lib/types";
@@ -43,9 +44,20 @@ function billedTaskCount(i: Invoice): number {
 type FormState = Partial<Invoice>;
 type LineDraft = { id?: string; description: string; amount: number; taskId: string };
 
+type Tab = "invoices" | "receipts";
+
 export default function InvoicesPage() {
   const { can } = useAuth();
   const canManage = can("manageInvoices");
+  // Billing lives in one module: raising invoices, and the firm-wise receipt
+  // register of what was actually collected.
+  const [tab, setTab] = useState<Tab>("invoices");
+  useEffect(() => {
+    // Deep link (/invoices?tab=receipts) — also used by the old /receipts URL.
+    if (new URLSearchParams(window.location.search).get("tab") === "receipts") {
+      setTab("receipts");
+    }
+  }, []);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("All");
   const url = `/api/invoices?q=${encodeURIComponent(q)}&status=${status}`;
@@ -111,9 +123,13 @@ export default function InvoicesPage() {
     <div>
       <PageHeader
         title="Invoices"
-        subtitle="Professional fee billing and collections"
+        subtitle={
+          tab === "receipts"
+            ? "Firm-wise receipt register — professional income on receipt basis"
+            : "Professional fee billing and collections"
+        }
         actions={
-          canManage ? (
+          tab === "invoices" && canManage ? (
             <Button
               onClick={() => {
                 setEditing(null);
@@ -126,6 +142,36 @@ export default function InvoicesPage() {
         }
       />
 
+      {/* One billing module: raising invoices + the register of receipts */}
+      <div className="mb-4 flex gap-1 border-b border-slate-200">
+        <button
+          onClick={() => setTab("invoices")}
+          className={cn(
+            "inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium",
+            tab === "invoices"
+              ? "border-brand-600 text-brand-700"
+              : "border-transparent text-slate-500 hover:text-slate-700",
+          )}
+        >
+          <Receipt className="h-4 w-4" /> Invoices
+        </button>
+        <button
+          onClick={() => setTab("receipts")}
+          className={cn(
+            "inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium",
+            tab === "receipts"
+              ? "border-brand-600 text-brand-700"
+              : "border-transparent text-slate-500 hover:text-slate-700",
+          )}
+        >
+          <BookOpenCheck className="h-4 w-4" /> Receipt Register
+        </button>
+      </div>
+
+      {tab === "receipts" ? (
+        <ReceiptRegisterPanel />
+      ) : (
+        <>
       <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <SummaryTile label="Total Billed" value={formatCurrency(billed)} tone="indigo" />
         <SummaryTile label="Collected" value={formatCurrency(collected)} tone="emerald" />
@@ -370,6 +416,8 @@ export default function InvoicesPage() {
           refresh();
         }}
       />
+        </>
+      )}
     </div>
   );
 }
