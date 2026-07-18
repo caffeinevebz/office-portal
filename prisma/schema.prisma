@@ -340,7 +340,11 @@ model DocPacket {
   id             String   @id @default(cuid())
   inwardNumber   String   @unique // e.g. IN-2627-004 (FY-based sequence)
   receivedFrom   String // person who delivered the documents
-  contents       String // what is inside (e.g. "Original sale deed, 3 bank statements")
+  contents       String // summary line (derived from `items` when itemised)
+  // The documents received, as a list — returning documents to the client
+  // ticks items off this list instead of retyping them:
+  // [{ name, returned, returnedOn?, outwardNumber? }]
+  items          Json?
   purpose        String? // engagement it relates to
   mode           String   @default("Hand Delivery") // Hand Delivery, Courier, Post, Other
   courierRef     String? // docket/tracking no. for couriered packets
@@ -366,6 +370,8 @@ model PacketMovement {
   mode          String   @default("Hand Delivery")
   courierRef    String?
   note          String?
+  // Names of the documents this movement covered (snapshot for the trail).
+  items         Json?
   byName        String // portal user who recorded the movement
   createdAt     DateTime @default(now())
 

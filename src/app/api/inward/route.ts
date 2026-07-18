@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { ok, parse, route } from "@/lib/api";
+import { ok, fail, parse, route } from "@/lib/api";
 import { requireUser, requirePermission } from "@/lib/auth/session";
 import { packetCreateSchema } from "@/lib/validation";
 import { nextInwardNumber } from "@/lib/regnumber";
@@ -36,9 +36,17 @@ export const GET = route(async (req) => {
 export const POST = route(async (req) => {
   const user = await requirePermission("manageInward");
   const data = await parse(req, packetCreateSchema);
+  // Documents come in as a list; the contents summary derives from it.
+  if (!data.contents && !(data.items && data.items.length)) {
+    return fail("List the documents received (or describe the contents)");
+  }
+  const contents = data.contents ?? data.items!.map((i) => i.name).join(", ");
   const packet = await prisma.docPacket.create({
     data: {
       ...data,
+      contents,
+      // Fresh entries start with nothing returned.
+      items: data.items?.map((i) => ({ name: i.name, returned: false })),
       receivedAt: data.receivedAt ?? new Date(),
       inwardNumber: await nextInwardNumber(),
       receivedByName: user.name,
