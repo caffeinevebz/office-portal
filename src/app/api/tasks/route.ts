@@ -13,8 +13,12 @@ import { notifyTaskAssignment, notifyTaskApprover } from "@/lib/notifications";
 import type { Prisma } from "@prisma/client";
 
 // Migrate legacy category values (ROC/MCA, Accounting) to the current master
-// groups in place. Idempotent and cheap — a no-op once everything is migrated.
+// groups in place. Runs once per server process, not on every list fetch —
+// these updateMany calls were pure latency on each request after the first.
+let categoriesBackfilled = false;
 async function backfillCategories() {
+  if (categoriesBackfilled) return;
+  categoriesBackfilled = true;
   for (const [oldVal, newVal] of Object.entries(LEGACY_CATEGORY_MAP)) {
     await prisma.task.updateMany({ where: { category: oldVal }, data: { category: newVal } });
     await prisma.complianceSchedule.updateMany({ where: { category: oldVal }, data: { category: newVal } });
@@ -67,18 +71,21 @@ export const GET = route(async (req) => {
   }
   if (and.length) where.AND = and;
 
+  // Lean payload: the list renders names and ids, not whole client/staff
+  // rows — trimming the includes cuts the response size and query cost.
+  const person = { select: { id: true, name: true, role: true } } as const;
   const tasks = await prisma.task.findMany({
     where,
     // The completed list reads newest-first; the working list by due date.
     orderBy: view === "Completed" ? [{ completedAt: "desc" }] : [{ dueDate: "asc" }],
     include: {
-      client: true,
-      assignee: true,
-      assignees: true,
-      approver: true,
-      gstRegistration: true,
+      client: { select: { id: true, name: true } },
+      assignee: person,
+      assignees: person,
+      approver: person,
+      gstRegistration: { select: { id: true, gstin: true, label: true, state: true } },
       // Whether (and on which invoice) this task has been billed.
-      invoiceLines: { include: { invoice: { select: { id: true, invoiceNumber: true } } } },
+      invoiceLines: { select: { invoice: { select: { id: true, invoiceNumber: true } } } },
     },
   });
   // Auto priorities derive fresh from the due date on every read, so they

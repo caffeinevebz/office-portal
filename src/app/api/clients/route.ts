@@ -1,8 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { ok, parse, route } from "@/lib/api";
+import { ok, fail, parse, route } from "@/lib/api";
 import { requireUser, requirePermission } from "@/lib/auth/session";
 import { clientCreateSchema } from "@/lib/validation";
 import { gstRegistrationData } from "@/lib/gst";
+import { findClientDuplicate, duplicateMessage } from "@/lib/clients";
 import type { Prisma } from "@prisma/client";
 
 export const GET = route(async (req) => {
@@ -50,6 +51,10 @@ export const GET = route(async (req) => {
 export const POST = route(async (req) => {
   await requirePermission("manageClients");
   const { tradeNames, gstRegistrations, ...data } = await parse(req, clientCreateSchema);
+  // No duplicate client records: PAN identifies a client; without one, an
+  // exact name match is treated as the same client.
+  const dup = await findClientDuplicate({ pan: data.pan, name: data.name });
+  if (dup) return fail(duplicateMessage(dup), 409);
   const client = await prisma.client.create({
     data: {
       ...data,

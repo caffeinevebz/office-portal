@@ -16,7 +16,7 @@ import {
   EyeOff,
   Link2Off,
 } from "lucide-react";
-import { useResource, apiMutate } from "@/lib/useApi";
+import { useResource, useDebounced, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
 import type { Dsc, Client } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -58,8 +58,9 @@ export default function DscPage() {
   const canDelete = can("deleteDsc");
 
   const [q, setQ] = useState("");
+  const qd = useDebounced(q);
   const [custody, setCustody] = useState("All");
-  const url = `/api/dsc?q=${encodeURIComponent(q)}&custody=${encodeURIComponent(custody)}`;
+  const url = `/api/dsc?q=${encodeURIComponent(qd)}&custody=${encodeURIComponent(custody)}`;
   const { data, loading, error, refresh } = useResource<Dsc[]>(url);
   const { data: clients } = useResource<Client[]>("/api/clients");
 

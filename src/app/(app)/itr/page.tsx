@@ -12,7 +12,7 @@ import {
   IndianRupee,
   ClipboardList,
 } from "lucide-react";
-import { useResource, apiMutate } from "@/lib/useApi";
+import { useResource, useDebounced, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
 import type { ItrFiling, Client, Staff, Task } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -82,10 +82,11 @@ export default function FilingRegisterPage() {
   const [type, setType] = useState("All");
   const [status, setStatus] = useState("All");
   const [q, setQ] = useState("");
+  const qd = useDebounced(q);
   const url =
     `/api/itr?fy=${encodeURIComponent(fy)}&type=${encodeURIComponent(type)}` +
-    `&status=${encodeURIComponent(status)}&q=${encodeURIComponent(q)}`;
-  const { data, loading, error, refresh } = useResource<ItrFiling[]>(url);
+    `&status=${encodeURIComponent(status)}&q=${encodeURIComponent(qd)}`;
+  const { data, loading, error, refresh, setData } = useResource<ItrFiling[]>(url);
   const { data: clients } = useResource<Client[]>("/api/clients");
   const { data: staff } = useResource<Staff[]>("/api/staff");
   const { data: tasks } = useResource<Task[]>("/api/tasks");
@@ -104,8 +105,11 @@ export default function FilingRegisterPage() {
   const refunds = all.reduce((s, f) => s + (f.refundAmount ?? 0), 0);
 
   async function quickStatus(f: ItrFiling, s: string) {
-    await apiMutate(`/api/itr/${f.id}`, "PATCH", { status: s });
-    refresh();
+    // Update the row in place — no full register refetch per status change.
+    const updated = (await apiMutate(`/api/itr/${f.id}`, "PATCH", { status: s })) as ItrFiling;
+    setData((list) =>
+      list ? list.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)) : list,
+    );
   }
 
   return (

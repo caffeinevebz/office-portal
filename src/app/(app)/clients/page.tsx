@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Search, Plus, Pencil, Trash2, Eye, Users, FileUp, Download, FolderTree, Building2, X, Landmark } from "lucide-react";
-import { useResource, apiMutate } from "@/lib/useApi";
+import { Search, Plus, Pencil, Trash2, Eye, Users, FileUp, Download, FolderTree, Building2, X, Landmark, AlertTriangle } from "lucide-react";
+import { useResource, useDebounced, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
 import type { Client, ClientGroup } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -20,6 +20,11 @@ import { initials } from "@/lib/format";
 type FormState = Partial<Client>;
 type TradeNameDraft = { id?: string; name: string; gstin: string; pan: string; address: string };
 type GstRegDraft = { id?: string; gstin: string; label: string; address: string; active: boolean };
+type DupGroup = {
+  kind: "pan" | "name";
+  key: string;
+  clients: { id: string; name: string; pan: string | null; type: string; status: string }[];
+};
 const EMPTY: FormState = { type: "Private Limited", status: "Active" };
 
 export default function ClientsPage() {
@@ -27,11 +32,14 @@ export default function ClientsPage() {
   const canManage = can("manageClients");
   const canDelete = can("deleteClients");
   const [q, setQ] = useState("");
+  const qd = useDebounced(q);
   const [status, setStatus] = useState("All");
   const [group, setGroup] = useState("All");
-  const url = `/api/clients?q=${encodeURIComponent(q)}&status=${status}&groupId=${group}`;
+  const url = `/api/clients?q=${encodeURIComponent(qd)}&status=${status}&groupId=${group}`;
   const { data, loading, error, refresh } = useResource<Client[]>(url);
   const groups = useResource<ClientGroup[]>("/api/client-groups");
+  // Duplicity check over the existing register (same PAN / same no-PAN name).
+  const dups = useResource<DupGroup[]>("/api/clients/duplicates");
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
@@ -69,6 +77,26 @@ export default function ClientsPage() {
           ) : undefined
         }
       />
+
+      {/* Duplicity check: records that already duplicate each other */}
+      {dups.data && dups.data.length > 0 && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p className="flex items-center gap-2 font-medium">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            {dups.data.length} duplicate client group{dups.data.length === 1 ? "" : "s"} found —
+            merge or remove the extras.
+          </p>
+          <ul className="mt-1.5 space-y-0.5 pl-6 text-xs">
+            {dups.data.slice(0, 4).map((g) => (
+              <li key={`${g.kind}-${g.key}`}>
+                {g.kind === "pan" ? `PAN ${g.key}` : `Name “${g.key}” (no PAN)`}:{" "}
+                {g.clients.map((c) => c.name).join(" · ")}
+              </li>
+            ))}
+            {dups.data.length > 4 && <li>…and {dups.data.length - 4} more.</li>}
+          </ul>
+        </div>
+      )}
 
       <Card className="mb-4">
         <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center">
@@ -222,6 +250,7 @@ export default function ClientsPage() {
           onSaved={() => {
             setFormOpen(false);
             refresh();
+            dups.refresh();
           }}
         />
       )}
@@ -252,6 +281,7 @@ export default function ClientsPage() {
         onConfirm={async () => {
           if (toDelete) await apiMutate(`/api/clients/${toDelete.id}`, "DELETE");
           refresh();
+          dups.refresh();
         }}
       />
     </div>
@@ -273,6 +303,31 @@ function ClientForm({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const isEdit = !!initial;
+
+  // Live duplicate check: a PAN identifies a client, so a PAN that already
+  // belongs to another record blocks saving before the server even rejects.
+  const [panDup, setPanDup] = useState<{ id: string; name: string } | null>(null);
+  useEffect(() => {
+    const pan = (form.pan ?? "").trim();
+    if (pan.length < 10) {
+      setPanDup(null);
+      return;
+    }
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/clients?q=${encodeURIComponent(pan)}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const list = (await res.json()) as Client[];
+        const hit = list.find(
+          (c) => c.pan?.toUpperCase() === pan.toUpperCase() && c.id !== initial?.id,
+        );
+        setPanDup(hit ? { id: hit.id, name: hit.name } : null);
+      } catch {
+        // Offline / transient — the server-side guard still applies on save.
+      }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [form.pan, initial?.id]);
   // The entity-specific registration field (Aadhaar / CIN / LLPIN / Firm Reg.)
   // shown for the currently selected entity type.
   const reg = entityRegField(form.type);
@@ -375,8 +430,8 @@ function ClientForm({
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={busy || !form.name}>
-            {busy ? "Saving…" : isEdit ? "Save changes" : "Create client"}
+          <Button onClick={submit} disabled={busy || !form.name || !!panDup}>
+            {busy ? "Saving…" : panDup ? "Duplicate PAN" : isEdit ? "Save changes" : "Create client"}
           </Button>
         </>
       }
@@ -428,6 +483,12 @@ function ClientForm({
             placeholder="AABCN1234E"
             maxLength={10}
           />
+          {panDup && (
+            <p className="mt-1 flex items-center gap-1 text-xs font-medium text-rose-600">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              This PAN already belongs to “{panDup.name}” — duplicate client records are blocked.
+            </p>
+          )}
         </Field>
         <Field label="GSTIN">
           <Input

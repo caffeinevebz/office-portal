@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Search, Plus, Pencil, Trash2, Receipt, FileDown, FileCheck2, Mail, IndianRupee, BookOpenCheck } from "lucide-react";
 import { ReceiptRegisterPanel } from "@/components/ReceiptRegister";
-import { useResource, apiMutate } from "@/lib/useApi";
+import { useResource, useDebounced, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
 import type { Invoice, Client, Organization, Task } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -59,9 +59,10 @@ export default function InvoicesPage() {
     }
   }, []);
   const [q, setQ] = useState("");
+  const qd = useDebounced(q);
   const [status, setStatus] = useState("All");
-  const url = `/api/invoices?q=${encodeURIComponent(q)}&status=${status}`;
-  const { data, loading, error, refresh } = useResource<Invoice[]>(url);
+  const url = `/api/invoices?q=${encodeURIComponent(qd)}&status=${status}`;
+  const { data, loading, error, refresh, setData } = useResource<Invoice[]>(url);
   const { data: clients } = useResource<Client[]>("/api/clients");
   const { data: orgs } = useResource<Organization[]>("/api/orgs");
   const { data: tasks } = useResource<Task[]>("/api/tasks");
@@ -87,8 +88,11 @@ export default function InvoicesPage() {
       setPayFor(inv);
       return;
     }
-    await apiMutate(`/api/invoices/${inv.id}`, "PATCH", { status: s });
-    refresh();
+    // Update the row in place — no full list refetch per status change.
+    const updated = (await apiMutate(`/api/invoices/${inv.id}`, "PATCH", { status: s })) as Invoice;
+    setData((list) =>
+      list ? list.map((i) => (i.id === updated.id ? { ...i, ...updated } : i)) : list,
+    );
   }
 
   const [emailBusy, setEmailBusy] = useState<string | null>(null);
