@@ -54,9 +54,12 @@ export const POST = route(async (req) => {
 
   // Auto-generate the invoice number (and receipt number if already paid),
   // retrying on the rare unique-collision from concurrent creates.
+  // Reimbursement bills number on their own EXP series.
+  const kind = data.kind === "Reimbursement" ? "Reimbursement" : "Fee";
   for (let attempt = 0; attempt < 5; attempt++) {
-    const invoiceNumber = data.invoiceNumber?.trim() || (await nextInvoiceNumber(org, issueDate));
-    const receiptNumber = paid ? await nextReceiptNumber(org, paidDate!) : null;
+    const invoiceNumber =
+      data.invoiceNumber?.trim() || (await nextInvoiceNumber(org, issueDate, kind));
+    const receiptNumber = paid ? await nextReceiptNumber(org, paidDate!, kind) : null;
     try {
       const invoice = await prisma.invoice.create({
         data: {

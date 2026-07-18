@@ -59,7 +59,9 @@ export async function buildReceiptPdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   const right = A4.width - MARGIN;
   const lh = await letterheadFor(inv);
 
-  let y = await firmHeader(pdf, "PAYMENT RECEIPT", lh);
+  const title =
+    inv.kind === "Reimbursement" ? "REIMBURSEMENT RECEIPT" : "PAYMENT RECEIPT";
+  let y = await firmHeader(pdf, title, lh);
   const tax = taxBreakdown(inv, lh.stateCode);
   const paidOn = inv.paidDate ?? new Date();
 

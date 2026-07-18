@@ -19,9 +19,26 @@ function maxSeq(numbers: (string | null)[], base: string): number {
   return max;
 }
 
+/**
+ * Reimbursement bills run on their own series, marked by an EXP segment
+ * (e.g. APSB/EXP/26-27/001) so they never consume — or get mixed into —
+ * the professional-fee sequence.
+ */
+export type InvoiceKind = "Fee" | "Reimbursement";
+
+function seriesPrefix(org: OrgLike, kind: InvoiceKind): string {
+  return kind === "Reimbursement"
+    ? `${invoicePrefix(org)}/EXP`
+    : invoicePrefix(org);
+}
+
 /** Next invoice number: PREFIX/FY/NNN, e.g. APSB/26-27/001 (reset each FY). */
-export async function nextInvoiceNumber(org: OrgLike, issueDate = new Date()): Promise<string> {
-  const base = `${invoicePrefix(org)}/${fyShort(issueDate)}/`;
+export async function nextInvoiceNumber(
+  org: OrgLike,
+  issueDate = new Date(),
+  kind: InvoiceKind = "Fee",
+): Promise<string> {
+  const base = `${seriesPrefix(org, kind)}/${fyShort(issueDate)}/`;
   const rows = await prisma.invoice.findMany({
     where: { invoiceNumber: { startsWith: base } },
     select: { invoiceNumber: true },
@@ -31,8 +48,12 @@ export async function nextInvoiceNumber(org: OrgLike, issueDate = new Date()): P
 }
 
 /** Next receipt number: PREFIX/FY/RNNN, e.g. APSB/26-27/R001 (reset each FY). */
-export async function nextReceiptNumber(org: OrgLike, paidDate = new Date()): Promise<string> {
-  const base = `${invoicePrefix(org)}/${fyShort(paidDate)}/R`;
+export async function nextReceiptNumber(
+  org: OrgLike,
+  paidDate = new Date(),
+  kind: InvoiceKind = "Fee",
+): Promise<string> {
+  const base = `${seriesPrefix(org, kind)}/${fyShort(paidDate)}/R`;
   const rows = await prisma.invoice.findMany({
     where: { receiptNumber: { startsWith: base } },
     select: { receiptNumber: true },

@@ -7,6 +7,7 @@ import {
   TASK_PRIORITIES,
   EXPENSE_CATEGORIES,
   INVOICE_STATUSES,
+  INVOICE_KINDS,
   DOC_CATEGORIES,
   SCHEDULE_FREQUENCIES,
   DSC_CLASSES,
@@ -186,6 +187,9 @@ export const invoiceCreateSchema = z.object({
   taxRate: z.coerce.number().min(0).max(100).default(18),
   gstMode: oneOf(GST_MODES, "GST mode").default("Auto"),
   status: oneOf(INVOICE_STATUSES, "status").default("Draft"),
+  // Reimbursement bills number on their own EXP series and are excluded
+  // from the fee receipt register.
+  kind: oneOf(INVOICE_KINDS, "invoice type").default("Fee"),
   issueDate: optionalDate,
   dueDate: optionalDate,
   // Payment-receipt details (mode + instrument specifics + TDS withheld).

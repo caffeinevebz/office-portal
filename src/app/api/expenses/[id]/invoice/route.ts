@@ -29,11 +29,14 @@ export const POST = route(async (_req, ctx: Ctx) => {
   const issueDate = new Date();
 
   for (let attempt = 0; attempt < 5; attempt++) {
-    const invoiceNumber = await nextInvoiceNumber(org, issueDate);
+    // Reimbursement bills get their own EXP number series and are kept out
+    // of the fee receipt register — they are not professional income.
+    const invoiceNumber = await nextInvoiceNumber(org, issueDate, "Reimbursement");
     try {
       const invoice = await prisma.invoice.create({
         data: {
           invoiceNumber,
+          kind: "Reimbursement",
           clientId: claim.clientId,
           organizationId: org?.id ?? null,
           description: `Reimbursement of expenses — ${claim.title}`,

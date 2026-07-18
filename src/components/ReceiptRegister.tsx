@@ -288,6 +288,10 @@ export function ReceiptRegisterPanel() {
           </div>
         )}
       </Card>
+      <p className="mt-2 text-xs text-slate-400">
+        Expense reimbursement bills (EXP series) are not part of professional
+        receipts and are excluded from this register.
+      </p>
     </div>
   );
 }

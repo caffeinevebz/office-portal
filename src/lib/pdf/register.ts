@@ -191,6 +191,12 @@ export async function buildReceiptRegisterPdf(
     "All amounts in Rs. Professional income is accounted on receipt basis; this register lists payments by the date received.",
     { x: MARGIN, y, size: 7.5, font: reg, color: FAINT },
   );
+  y -= 10;
+  text(
+    page,
+    "Expense reimbursement bills (EXP series) are recoveries, not professional receipts, and are excluded.",
+    { x: MARGIN, y, size: 7.5, font: reg, color: FAINT },
+  );
 
   return pdf.doc.save();
 }
