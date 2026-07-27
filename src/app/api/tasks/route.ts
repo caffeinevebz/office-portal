@@ -34,6 +34,7 @@ export const GET = route(async (req) => {
   const category = searchParams.get("category")?.trim();
   const assigneeId = searchParams.get("assigneeId")?.trim();
   const clientId = searchParams.get("clientId")?.trim();
+  const groupId = searchParams.get("groupId")?.trim();
   const fy = searchParams.get("fy")?.trim();
   const q = searchParams.get("q")?.trim();
 
@@ -48,6 +49,9 @@ export const GET = route(async (req) => {
   if (assigneeId && assigneeId !== "All")
     and.push({ OR: [{ assigneeId }, { assignees: { some: { id: assigneeId } } }] });
   if (clientId) where.clientId = clientId;
+  // Filter by the client's group ("None" = clients outside any group).
+  if (groupId && groupId !== "All")
+    and.push({ client: { groupId: groupId === "None" ? null : groupId } });
   if (fy && fy !== "All") where.financialYear = fy;
   if (q) {
     and.push({
