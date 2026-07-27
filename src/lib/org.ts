@@ -18,6 +18,12 @@ export type Letterhead = {
   invoiceNote: string | null;
   logo: Uint8Array | null;
   logoMime: string | null;
+  // UPI payment QR printed on invoices; scan-to-pay for clients.
+  upiQr: Uint8Array | null;
+  upiQrMime: string | null;
+  // Authorised signatory's signature for invoices & receipts.
+  signature: Uint8Array | null;
+  signatureMime: string | null;
 };
 
 /** Map an Organization row (or null) to letterhead data, falling back to the
@@ -43,6 +49,10 @@ export function toLetterhead(org: Organization | null): Letterhead {
       invoiceNote: FIRM.invoiceNote,
       logo: null,
       logoMime: null,
+      upiQr: null,
+      upiQrMime: null,
+      signature: null,
+      signatureMime: null,
     };
   }
   return {
@@ -64,6 +74,10 @@ export function toLetterhead(org: Organization | null): Letterhead {
     invoiceNote: org.invoiceNote,
     logo: org.logo ?? null,
     logoMime: org.logoMime,
+    upiQr: org.upiQr ?? null,
+    upiQrMime: org.upiQrMime,
+    signature: org.signature ?? null,
+    signatureMime: org.signatureMime,
   };
 }
 

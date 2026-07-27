@@ -2,6 +2,8 @@ import "server-only";
 import { rgb } from "pdf-lib";
 import type { Invoice, Client, Organization, TradeName, InvoiceLineItem } from "@prisma/client";
 import { getDefaultOrg, toLetterhead, type Letterhead } from "@/lib/org";
+import { prisma } from "@/lib/prisma";
+import { ensureFirmAssets } from "@/lib/firm-assets-install";
 import { rupeesInWords } from "./words";
 import {
   A4,
@@ -72,7 +74,13 @@ export function taxBreakdown(inv: InvoiceForPdf, orgStateCode: string | null) {
 
 /** Letterhead for an invoice: its own organization, else the firm default. */
 export async function letterheadFor(inv: InvoiceForPdf): Promise<Letterhead> {
-  return toLetterhead(inv.organization ?? (await getDefaultOrg()));
+  // Bundled UPI QR / signature assets install on first use, so re-read the
+  // organization rather than trusting the row the caller loaded earlier.
+  await ensureFirmAssets();
+  const org = inv.organizationId
+    ? await prisma.organization.findUnique({ where: { id: inv.organizationId } })
+    : null;
+  return toLetterhead(org ?? (await getDefaultOrg()));
 }
 
 export async function buildInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> {
@@ -232,6 +240,25 @@ export async function buildInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> {
     }
   }
 
-  signatureAndFooter(pdf, bankTop, lh.name);
+  // Scan-to-pay UPI QR, centred between the bank details and the signature.
+  if (lh.upiQr && lh.upiQrMime) {
+    try {
+      const qr =
+        lh.upiQrMime === "image/png"
+          ? await pdf.doc.embedPng(lh.upiQr)
+          : await pdf.doc.embedJpg(lh.upiQr);
+      const size = 78;
+      const qx = 318;
+      text(page, "SCAN TO PAY (UPI)", { x: qx + size / 2, y: bankTop, size: 7.5, font: bold, color: FAINT, align: "center" });
+      page.drawImage(qr, { x: qx, y: bankTop - 14 - size, width: size, height: size });
+      if (lh.bank.upi) {
+        text(page, lh.bank.upi, { x: qx + size / 2, y: bankTop - 14 - size - 10, size: 7.5, font: reg, color: MUTED, align: "center" });
+      }
+    } catch {
+      // Unreadable QR image — the printed bank/UPI details still stand.
+    }
+  }
+
+  await signatureAndFooter(pdf, bankTop, lh.name, lh);
   return pdf.doc.save();
 }

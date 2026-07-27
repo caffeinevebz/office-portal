@@ -38,11 +38,17 @@ function servicesSummary(i: Invoice): string {
 }
 // How many line items are mapped to a task.
 function billedTaskCount(i: Invoice): number {
-  return (i.lineItems ?? []).filter((l) => l.taskId).length;
+  const ids = new Set<string>();
+  for (const l of i.lineItems ?? []) {
+    for (const t of l.tasks ?? []) ids.add(t.id);
+    if (l.taskId) ids.add(l.taskId);
+  }
+  return ids.size;
 }
 
 type FormState = Partial<Invoice>;
-type LineDraft = { id?: string; description: string; amount: number; taskId: string };
+// A service line can settle several engagements, so tasks are a set.
+type LineDraft = { id?: string; description: string; amount: number; taskIds: string[] };
 
 type Tab = "invoices" | "receipts";
 
@@ -421,8 +427,26 @@ export default function InvoicesPage() {
         <PaymentModal
           invoice={payFor}
           onClose={() => setPayFor(null)}
-          onSaved={() => {
+          onSaved={(saved) => {
             setPayFor(null);
+            // The receipt is emailed to the client automatically — report
+            // whether it went out, or why it did not.
+            const r = saved.receiptEmail;
+            if (r) {
+              setEmailMsg(
+                r.status === "Sent"
+                  ? { kind: "ok", text: `Receipt ${saved.receiptNumber} emailed to ${r.to}.` }
+                  : r.status === "Simulated"
+                    ? {
+                        kind: "ok",
+                        text: `Receipt ${saved.receiptNumber} email simulated for ${r.to} (configure the firm email in Settings to send for real).`,
+                      }
+                    : {
+                        kind: "err",
+                        text: `Payment recorded, but the receipt was not emailed: ${r.reason ?? "delivery failed"}.`,
+                      },
+              );
+            }
             refresh();
           }}
         />
@@ -510,24 +534,38 @@ function InvoiceForm({
         id: l.id,
         description: l.description,
         amount: l.amount,
-        taskId: l.taskId ?? "",
+        taskIds: l.tasks?.length ? l.tasks.map((t) => t.id) : l.taskId ? [l.taskId] : [],
       }));
     }
     if (initial) {
       // Legacy invoice: seed a single line from its amount/description.
-      return [{ description: initial.description ?? "", amount: initial.amount ?? 0, taskId: "" }];
+      return [{ description: initial.description ?? "", amount: initial.amount ?? 0, taskIds: [] }];
     }
-    return [{ description: "", amount: 0, taskId: "" }];
+    return [{ description: "", amount: 0, taskIds: [] }];
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const isEdit = !!initial;
   const set = (k: keyof FormState, v: string | number) => setForm((f) => ({ ...f, [k]: v }));
 
-  const addLine = () => setLineItems((ls) => [...ls, { description: "", amount: 0, taskId: "" }]);
+  const addLine = () => setLineItems((ls) => [...ls, { description: "", amount: 0, taskIds: [] }]);
   const removeLine = (i: number) => setLineItems((ls) => ls.filter((_, idx) => idx !== i));
-  const updateLine = (i: number, key: keyof LineDraft, v: string | number) =>
+  const updateLine = (i: number, key: keyof LineDraft, v: string | number | string[]) =>
     setLineItems((ls) => ls.map((l, idx) => (idx === i ? { ...l, [key]: v } : l)));
+  // Tick a task on/off for a service line (a line can bill several tasks).
+  const toggleLineTask = (i: number, taskId: string) =>
+    setLineItems((ls) =>
+      ls.map((l, idx) =>
+        idx === i
+          ? {
+              ...l,
+              taskIds: l.taskIds.includes(taskId)
+                ? l.taskIds.filter((t) => t !== taskId)
+                : [...l.taskIds, taskId],
+            }
+          : l,
+      ),
+    );
 
   const rate = Number(form.taxRate) || 0;
   const gstMode = form.gstMode ?? "Auto";
@@ -561,7 +599,8 @@ function InvoiceForm({
           id: l.id,
           description: l.description.trim(),
           amount: Number(l.amount) || 0,
-          taskId: l.taskId || null,
+          taskId: l.taskIds[0] || null,
+          taskIds: l.taskIds,
         })),
       };
       if (isEdit) await apiMutate(`/api/invoices/${initial!.id}`, "PUT", payload);
@@ -716,21 +755,49 @@ function InvoiceForm({
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <span className="text-[11px] text-slate-400">Map to task</span>
-                  <select
-                    value={l.taskId}
-                    onChange={(e) => updateLine(i, "taskId", e.target.value)}
-                    disabled={!form.clientId}
-                    className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none disabled:bg-slate-50"
-                  >
-                    <option value="">— Not mapped —</option>
-                    {clientTasks.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.title} · {t.category}
-                      </option>
-                    ))}
-                  </select>
+                {/* One service line can settle several engagements — tick
+                    every task this line bills. */}
+                <div className="mt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-slate-400">
+                      Map to task{l.taskIds.length > 1 ? `s · ${l.taskIds.length} selected` : ""}
+                    </span>
+                    {l.taskIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => updateLine(i, "taskIds", [])}
+                        className="text-[11px] text-slate-500 hover:underline"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  {!form.clientId ? (
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      Select a client to map this service to their tasks.
+                    </p>
+                  ) : clientTasks.length === 0 ? (
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      This client has no tasks to map.
+                    </p>
+                  ) : (
+                    <div className="mt-1 max-h-28 space-y-0.5 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1.5">
+                      {clientTasks.map((t) => (
+                        <label
+                          key={t.id}
+                          className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={l.taskIds.includes(t.id)}
+                            onChange={() => toggleLineTask(i, t.id)}
+                            className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                          />
+                          {t.title} · {t.category}
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -803,7 +870,7 @@ function PaymentModal({
 }: {
   invoice: Invoice;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (saved: Invoice) => void;
 }) {
   const gross = Math.round(withTax(invoice));
   const [mode, setMode] = useState(invoice.paymentMode ?? "NEFT/IMPS/Transfer");
@@ -828,7 +895,7 @@ function PaymentModal({
     setBusy(true);
     setErr(null);
     try {
-      await apiMutate(`/api/invoices/${invoice.id}`, "PATCH", {
+      const saved = (await apiMutate(`/api/invoices/${invoice.id}`, "PATCH", {
         status: "Paid",
         paymentMode: mode,
         paidDate: paidDate || null,
@@ -837,8 +904,8 @@ function PaymentModal({
         chequeBank: isCheque ? chequeBank || null : null,
         transactionRef: isElectronic ? transactionRef || null : null,
         tdsDeducted: tdsAmount > 0 ? tdsAmount : null,
-      });
-      onSaved();
+      })) as Invoice;
+      onSaved(saved);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to record the payment");
     } finally {

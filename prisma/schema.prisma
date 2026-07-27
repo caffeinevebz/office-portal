@@ -280,6 +280,9 @@ model Task {
 
   // Invoice lines that bill this task (to show whether it has been billed).
   invoiceLines InvoiceLineItem[]
+  // Lines billing this task through the many-to-many mapping (a single
+  // service line can settle several tasks).
+  billedLines  InvoiceLineItem[] @relation("LineItemTasks")
   // Filing-register entry created when this task's filing is recorded.
   filingRecord ItrFiling?
   // Reimbursement claims raised against this engagement.
@@ -479,6 +482,12 @@ model Organization {
   isDefault     Boolean  @default(false)
   logo          Bytes? // small PNG/JPEG shown in the app and on PDFs
   logoMime      String?
+  // UPI payment QR printed on this firm's invoices (clients scan to pay).
+  upiQr         Bytes?
+  upiQrMime     String?
+  // Authorised signatory's signature image, printed on invoices & receipts.
+  signature     Bytes?
+  signatureMime String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -543,9 +552,13 @@ model InvoiceLineItem {
 
   invoiceId String
   invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  // The engagement this line bills (optional).
+  // The engagement this line bills (optional). Kept as the lead task for
+  // backward compatibility; `tasks` below carries the full set when one
+  // service line settles several engagements.
   taskId    String?
   task      Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  // All tasks billed by this line (many-to-many).
+  tasks     Task[]  @relation("LineItemTasks")
 
   @@index([invoiceId])
   @@index([taskId])

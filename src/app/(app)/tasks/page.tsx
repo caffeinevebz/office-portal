@@ -326,9 +326,13 @@ export default function TasksPage() {
                       const overdue = t.status !== "Completed" && (daysUntil(t.dueDate) ?? 0) < 0;
                       const meta = taskMeta(t);
                       const chk = checklistDone(t.checklist);
-                      const billedNos = (t.invoiceLines ?? [])
-                        .map((l) => l.invoice?.invoiceNumber)
-                        .filter((n): n is string => !!n);
+                      const billedNos = [
+                        ...new Set(
+                          [...(t.invoiceLines ?? []), ...(t.billedLines ?? [])]
+                            .map((l) => l.invoice?.invoiceNumber)
+                            .filter((n): n is string => !!n),
+                        ),
+                      ];
                       return (
                         <tr key={t.id} className="hover:bg-slate-50">
                           <td className="px-5 py-3">

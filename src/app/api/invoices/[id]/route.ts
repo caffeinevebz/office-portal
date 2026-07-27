@@ -3,6 +3,7 @@ import { ok, parse, route } from "@/lib/api";
 import { requirePermission } from "@/lib/auth/session";
 import { invoiceUpdateSchema, invoicePaymentSchema } from "@/lib/validation";
 import { nextReceiptNumber, orgForInvoice } from "@/lib/numbering";
+import { sendReceiptEmail } from "@/lib/receipt-email";
 import type { Prisma } from "@prisma/client";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -42,7 +43,7 @@ async function applyUpdate(id: string, data: Prisma.InvoiceUncheckedUpdateInput)
     include: {
       client: true,
       tradeName: true,
-      lineItems: { include: { task: { select: { id: true, title: true, category: true } } } },
+      lineItems: { include: { task: { select: { id: true, title: true, category: true } }, tasks: { select: { id: true, title: true, category: true } } } },
     },
   });
 }
@@ -58,15 +59,33 @@ export const PUT = route(async (req, ctx: Ctx) => {
       const keep = new Set(lineItems.filter((l) => l.id).map((l) => l.id));
       const remove = existing.filter((e) => !keep.has(e.id)).map((e) => e.id);
       if (remove.length) await tx.invoiceLineItem.deleteMany({ where: { id: { in: remove } } });
-      for (const { id: lid, ...fields } of lineItems) {
-        if (lid) await tx.invoiceLineItem.update({ where: { id: lid }, data: fields });
-        else await tx.invoiceLineItem.create({ data: { ...fields, invoiceId: id } });
+      for (const { id: lid, taskIds, ...fields } of lineItems) {
+        // Lead task stays on taskId; the full set lives on the m-n relation.
+        const data = {
+          ...fields,
+          taskId: fields.taskId || taskIds?.[0] || null,
+          tasks: taskIds ? { set: taskIds.map((tid) => ({ id: tid })) } : undefined,
+        };
+        if (lid) await tx.invoiceLineItem.update({ where: { id: lid }, data });
+        else
+          await tx.invoiceLineItem.create({
+            data: {
+              ...fields,
+              taskId: fields.taskId || taskIds?.[0] || null,
+              tasks: taskIds?.length ? { connect: taskIds.map((tid) => ({ id: tid })) } : undefined,
+              invoiceId: id,
+            },
+          });
       }
     });
     data.amount = lineItems.reduce((s, l) => s + (l.amount || 0), 0);
   }
   const invoice = await applyUpdate(id, data as Prisma.InvoiceUncheckedUpdateInput);
-  return ok(invoice);
+  // A paid invoice's receipt goes to the client's inbox automatically
+  // (once per receipt; skipped when the client has no email).
+  const receiptEmail =
+    invoice.status === "Paid" && invoice.receiptNumber ? await sendReceiptEmail(id) : undefined;
+  return ok(receiptEmail ? { ...invoice, receiptEmail } : invoice);
 });
 
 // Quick status change; marking Paid can carry the payment record — mode of
@@ -77,7 +96,9 @@ export const PATCH = route(async (req, ctx: Ctx) => {
   const { id } = await ctx.params;
   const data = await parse(req, invoicePaymentSchema);
   const invoice = await applyUpdate(id, data as Prisma.InvoiceUncheckedUpdateInput);
-  return ok(invoice);
+  const receiptEmail =
+    invoice.status === "Paid" && invoice.receiptNumber ? await sendReceiptEmail(id) : undefined;
+  return ok(receiptEmail ? { ...invoice, receiptEmail } : invoice);
 });
 
 export const DELETE = route(async (_req, ctx: Ctx) => {

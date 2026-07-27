@@ -172,15 +172,44 @@ export async function firmHeader(pdf: Pdf, title: string, lh: Letterhead): Promi
   return y - 22;
 }
 
-/** Signature block bottom-right + footer note, shared by both documents. */
-export function signatureAndFooter(pdf: Pdf, yTop: number, firmName: string) {
-  const { page, reg, bold } = pdf;
+/** Signature block bottom-right + footer note, shared by both documents.
+ *  When the letterhead carries the signatory's signature image it is drawn
+ *  between the "For FIRM" line and the "Authorised Signatory" caption. */
+export async function signatureAndFooter(
+  pdf: Pdf,
+  yTop: number,
+  firmName: string,
+  lh?: Pick<Letterhead, "signature" | "signatureMime">,
+) {
+  const { doc, page, reg, bold } = pdf;
   const x = A4.width - MARGIN;
+  let signed = false;
   text(page, `For ${firmName}`, { x, y: yTop, size: 9.5, font: bold, align: "right" });
-  text(page, "Authorised Signatory", { x, y: yTop - 46, size: 9, font: reg, color: MUTED, align: "right" });
+  if (lh?.signature && lh.signatureMime) {
+    try {
+      const img =
+        lh.signatureMime === "image/png"
+          ? await doc.embedPng(lh.signature)
+          : await doc.embedJpg(lh.signature);
+      // Fit into the gap between the firm line and the signatory caption.
+      const maxW = 120;
+      const maxH = 38;
+      const scale = Math.min(maxW / img.width, maxH / img.height);
+      const w = img.width * scale;
+      const h = img.height * scale;
+      page.drawImage(img, { x: x - w, y: yTop - 52, width: w, height: h });
+      signed = true;
+    } catch {
+      // Unreadable image — leave the space blank for a physical signature.
+    }
+  }
+  text(page, "Authorised Signatory", { x, y: yTop - 62, size: 9, font: reg, color: MUTED, align: "right" });
 
   hline(page, MARGIN, A4.width - MARGIN, 58);
-  text(page, "This is a computer-generated document and does not require a physical signature.", {
+  const footer = signed
+    ? "Computer-generated document bearing the authorised signatory's signature; no physical signature is required."
+    : "This is a computer-generated document and does not require a physical signature.";
+  text(page, footer, {
     x: A4.width / 2,
     y: 44,
     size: 7.5,
