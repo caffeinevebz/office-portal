@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useResource, useDebounced, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
-import type { Task, Client, Staff, ChecklistItem } from "@/lib/types";
+import type { Task, Client, ClientGroup, Staff, ChecklistItem } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -123,12 +123,15 @@ export default function TasksPage() {
   const [category, setCategory] = useState("All");
   const [assignee, setAssignee] = useState("All");
   const [fy, setFy] = useState("All");
+  // Filter the register by client group ("None" = ungrouped clients).
+  const [group, setGroup] = useState("All");
   const fys = financialYears(new Date(), 6);
 
   const qd = useDebounced(q);
   const url =
     `/api/tasks?view=${view}&q=${encodeURIComponent(qd)}&status=${status}` +
-    `&category=${encodeURIComponent(category)}&assigneeId=${assignee}&fy=${encodeURIComponent(fy)}`;
+    `&category=${encodeURIComponent(category)}&assigneeId=${assignee}&fy=${encodeURIComponent(fy)}` +
+    `&groupId=${encodeURIComponent(group)}`;
   const { data, loading, error, refresh, setData } = useResource<Task[]>(url);
 
   // Apply a PATCH result to the list in place — no full refetch per click.
@@ -146,6 +149,7 @@ export default function TasksPage() {
   }
   const { data: clients } = useResource<Client[]>("/api/clients?slim=1");
   const { data: staff } = useResource<Staff[]>("/api/staff");
+  const { data: groups } = useResource<ClientGroup[]>("/api/client-groups");
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
@@ -255,6 +259,22 @@ export default function TasksPage() {
                   </option>
                 ))}
               </select>
+              {(groups?.length ?? 0) > 0 && (
+                <select
+                  value={group}
+                  onChange={(e) => setGroup(e.target.value)}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+                  title="Filter tasks by the client's group"
+                >
+                  <option value="All">All groups</option>
+                  {groups!.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.code} · {g.name}
+                    </option>
+                  ))}
+                  <option value="None">No group</option>
+                </select>
+              )}
               {seeAll && (
                 <select
                   value={assignee}
@@ -741,6 +761,12 @@ function TaskForm({
   // The selected client's GST registrations (GSTINs) — a GST task is filed
   // under one of them, and can be created for several at once.
   const selectedClient = clients.find((c) => c.id === form.clientId);
+  // Single-client picker options: the search narrows the dropdown, but the
+  // currently selected client always stays listed so the value never breaks.
+  const singleClientOptions =
+    selectedClient && !searchedClients.some((c) => c.id === selectedClient.id)
+      ? [selectedClient, ...searchedClients]
+      : searchedClients;
   const clientGstRegs = (selectedClient?.gstRegistrations ?? []).filter((g) => g.active);
   const canMultiGstin = cat === "GST" && !multiClient && clientGstRegs.length > 1;
 
@@ -952,23 +978,38 @@ function TaskForm({
               )}
             </div>
           ) : (
-            <Select
-              value={form.clientId ?? ""}
-              onChange={(e) => {
-                // Switching client clears the GSTIN picks (they belong to the
-                // previous client's registrations).
-                setForm((f) => ({ ...f, clientId: e.target.value, gstRegistrationId: null, gstin: null }));
-                setMultiGstin(false);
-                setGstRegIds([]);
-              }}
-            >
-              <option value="">— Internal / none —</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
+            <div className="space-y-1.5">
+              <input
+                value={clientSearch}
+                onChange={(e) => setClientSearch(e.target.value)}
+                placeholder="Search client by name / PAN / GSTIN…"
+                className="w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+              />
+              <Select
+                value={form.clientId ?? ""}
+                onChange={(e) => {
+                  // Switching client clears the GSTIN picks (they belong to the
+                  // previous client's registrations).
+                  setForm((f) => ({ ...f, clientId: e.target.value, gstRegistrationId: null, gstin: null }));
+                  setMultiGstin(false);
+                  setGstRegIds([]);
+                }}
+              >
+                <option value="">— Internal / none —</option>
+                {singleClientOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
+              {clientSearch.trim() && (
+                <p className="px-0.5 text-[11px] text-slate-500">
+                  {searchedClients.length === 0
+                    ? `No clients match “${clientSearch}”.`
+                    : `Dropdown narrowed to ${searchedClients.length} matching client${searchedClients.length === 1 ? "" : "s"}.`}
+                </p>
+              )}
+            </div>
           )}
           {!isEdit && !recurring && (
             <label className="mt-1.5 flex cursor-pointer items-center gap-2 text-xs text-slate-600">
