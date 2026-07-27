@@ -3,6 +3,7 @@ import { ok, parse, route } from "@/lib/api";
 import { requireUser, requirePermission } from "@/lib/auth/session";
 import { invoiceCreateSchema } from "@/lib/validation";
 import { nextInvoiceNumber, nextReceiptNumber, orgForInvoice } from "@/lib/numbering";
+import { sendReceiptEmail } from "@/lib/receipt-email";
 import type { Prisma } from "@prisma/client";
 
 export const GET = route(async (req) => {
@@ -31,7 +32,7 @@ export const GET = route(async (req) => {
       organization: { select: { id: true, name: true } },
       lineItems: {
         orderBy: { createdAt: "asc" },
-        include: { task: { select: { id: true, title: true, category: true } } },
+        include: { task: { select: { id: true, title: true, category: true } }, tasks: { select: { id: true, title: true, category: true } } },
       },
     },
   });
@@ -71,16 +72,27 @@ export const POST = route(async (req) => {
           receiptNumber,
           lineItems:
             lineItems && lineItems.length
-              ? { create: lineItems.map(({ id: _id, ...li }) => li) }
+              ? {
+                  create: lineItems.map(({ id: _id, taskIds, ...li }) => ({
+                    ...li,
+                    // Lead task stays on taskId; the full set connects via m-n.
+                    taskId: li.taskId || taskIds?.[0] || null,
+                    tasks: taskIds?.length
+                      ? { connect: taskIds.map((tid) => ({ id: tid })) }
+                      : undefined,
+                  })),
+                }
               : undefined,
         },
         include: {
           client: true,
           tradeName: true,
-          lineItems: { include: { task: { select: { id: true, title: true, category: true } } } },
+          lineItems: { include: { task: { select: { id: true, title: true, category: true } }, tasks: { select: { id: true, title: true, category: true } } } },
         },
       });
-      return ok(invoice, 201);
+      // Created directly as Paid → the receipt goes straight to the client.
+      const receiptEmail = receiptNumber ? await sendReceiptEmail(invoice.id) : undefined;
+      return ok(receiptEmail ? { ...invoice, receiptEmail } : invoice, 201);
     } catch (e) {
       const code = (e as { code?: string }).code;
       // P2002 = unique constraint; regenerate only for auto numbers.

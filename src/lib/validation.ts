@@ -205,7 +205,8 @@ export const invoiceCreateSchema = z.object({
       z.coerce.number().min(0).nullable(),
     )
     .optional(),
-  // Service line items; each can optionally map to the Task it bills.
+  // Service line items; each can optionally map to the Task(s) it bills —
+  // one service line may settle several engagements at once.
   lineItems: z
     .array(
       z.object({
@@ -214,6 +215,7 @@ export const invoiceCreateSchema = z.object({
         amount: z.coerce.number().min(0),
         sacCode: optionalText,
         taskId: optionalText,
+        taskIds: z.array(z.string().trim().min(1)).optional(),
       }),
     )
     .optional(),

@@ -138,6 +138,8 @@ export type Task = {
   approver?: Staff | null;
   // Invoice lines that bill this task (present → the task has been billed).
   invoiceLines?: { invoice?: { id: string; invoiceNumber: string } | null }[];
+  // Lines billing this task through the multi-task mapping.
+  billedLines?: { invoice?: { id: string; invoiceNumber: string } | null }[];
 };
 
 export type ChecklistItem = { label: string; done: boolean };
@@ -180,6 +182,8 @@ export type Organization = {
   invoicePrefix: string | null;
   isDefault: boolean;
   hasLogo: boolean;
+  hasUpiQr: boolean;
+  hasSignature: boolean;
   createdAt: string;
   _count?: { invoices: number };
 };
@@ -213,6 +217,8 @@ export type Invoice = {
   organizationId: string | null;
   organization?: { id: string; name: string } | null;
   lineItems?: InvoiceLineItem[];
+  // Present on mutation responses when a receipt email was attempted.
+  receiptEmail?: { status: string; to?: string; reason?: string };
 };
 
 export type InvoiceLineItem = {
@@ -222,6 +228,8 @@ export type InvoiceLineItem = {
   sacCode: string | null;
   taskId: string | null;
   task?: { id: string; title: string; category: string } | null;
+  // All tasks this line bills (a line can settle several engagements).
+  tasks?: { id: string; title: string; category: string }[];
 };
 
 export type ItrFiling = {

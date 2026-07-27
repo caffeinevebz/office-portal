@@ -163,6 +163,6 @@ export async function buildReceiptPdf(inv: InvoiceForPdf): Promise<Uint8Array> {
     color: FAINT,
   });
 
-  signatureAndFooter(pdf, 168, lh.name);
+  await signatureAndFooter(pdf, 168, lh.name, lh);
   return pdf.doc.save();
 }

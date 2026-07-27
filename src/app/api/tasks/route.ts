@@ -88,8 +88,10 @@ export const GET = route(async (req) => {
       assignees: person,
       approver: person,
       gstRegistration: { select: { id: true, gstin: true, label: true, state: true } },
-      // Whether (and on which invoice) this task has been billed.
+      // Whether (and on which invoice) this task has been billed — via the
+      // lead-task link or the many-to-many line mapping.
       invoiceLines: { select: { invoice: { select: { id: true, invoiceNumber: true } } } },
+      billedLines: { select: { invoice: { select: { id: true, invoiceNumber: true } } } },
     },
   });
   // Auto priorities derive fresh from the due date on every read, so they

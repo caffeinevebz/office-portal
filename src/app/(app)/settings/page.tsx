@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Field, Input, Textarea } from "@/components/ui/Field";
+import { cn } from "@/lib/format";
 import { Loading, EmptyState } from "@/components/ui/EmptyState";
 
 type FormState = Partial<Organization>;
@@ -38,29 +39,41 @@ export default function SettingsPage() {
   const [logoBusy, setLogoBusy] = useState<string | null>(null);
   const [logoErr, setLogoErr] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [logoTarget, setLogoTarget] = useState<string | null>(null);
-  // bump to bust the browser cache of logo images after upload/remove
+  // Which organization + which image is being replaced: the letterhead logo,
+  // the UPI payment QR, or the authorised signatory's signature.
+  type AssetKind = "logo" | "upi-qr" | "signature";
+  const [imageTarget, setImageTarget] = useState<{ orgId: string; kind: AssetKind } | null>(null);
+  // bump to bust the browser cache of the images after upload/remove
   const [logoVersion, setLogoVersion] = useState(0);
 
-  function pickLogo(orgId: string) {
-    setLogoTarget(orgId);
+  const ASSET_LABEL: Record<AssetKind, string> = {
+    logo: "logo",
+    "upi-qr": "payment QR",
+    signature: "signature",
+  };
+  const assetUrl = (orgId: string, kind: AssetKind) =>
+    kind === "logo" ? `/api/orgs/${orgId}/logo` : `/api/orgs/${orgId}/asset/${kind}`;
+
+  function pickImage(orgId: string, kind: AssetKind) {
+    setImageTarget({ orgId, kind });
     setLogoErr(null);
     fileRef.current?.click();
   }
 
-  async function onLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onImageFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file || !logoTarget) return;
+    if (!file || !imageTarget) return;
+    const what = ASSET_LABEL[imageTarget.kind];
     if (!["image/png", "image/jpeg"].includes(file.type)) {
-      setLogoErr("The logo must be a PNG or JPEG image.");
+      setLogoErr(`The ${what} must be a PNG or JPEG image.`);
       return;
     }
     if (file.size > 512 * 1024) {
-      setLogoErr("The logo must be under 512 KB.");
+      setLogoErr(`The ${what} must be under 512 KB.`);
       return;
     }
-    setLogoBusy(logoTarget);
+    setLogoBusy(imageTarget.orgId);
     try {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const r = new FileReader();
@@ -68,21 +81,21 @@ export default function SettingsPage() {
         r.onerror = () => reject(new Error("Could not read the file"));
         r.readAsDataURL(file);
       });
-      await apiMutate(`/api/orgs/${logoTarget}/logo`, "PUT", { dataUrl });
+      await apiMutate(assetUrl(imageTarget.orgId, imageTarget.kind), "PUT", { dataUrl });
       setLogoVersion((v) => v + 1);
       refresh();
     } catch (err) {
       setLogoErr(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setLogoBusy(null);
-      setLogoTarget(null);
+      setImageTarget(null);
     }
   }
 
-  async function removeLogo(orgId: string) {
+  async function removeImage(orgId: string, kind: AssetKind) {
     setLogoBusy(orgId);
     try {
-      await apiMutate(`/api/orgs/${orgId}/logo`, "DELETE");
+      await apiMutate(assetUrl(orgId, kind), "DELETE");
       setLogoVersion((v) => v + 1);
       refresh();
     } finally {
@@ -99,7 +112,7 @@ export default function SettingsPage() {
     <div>
       <PageHeader
         title="Firm Settings"
-        subtitle="Billing organizations, letterhead details and logo"
+        subtitle="Billing organizations, letterhead details, payment QR and signature"
         actions={
           canManage ? (
             <Button
@@ -119,7 +132,7 @@ export default function SettingsPage() {
         type="file"
         accept="image/png,image/jpeg"
         className="hidden"
-        onChange={onLogoFile}
+        onChange={onImageFile}
       />
 
       {!canManage && (
@@ -218,6 +231,59 @@ export default function SettingsPage() {
                 {o.bankUpi && <span>UPI: {o.bankUpi}</span>}
               </div>
 
+              {/* Images printed on this firm's invoices and receipts:
+                  a scan-to-pay UPI QR and the signatory's signature. */}
+              <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
+                {(["upi-qr", "signature"] as const).map((kind) => {
+                  const present = kind === "upi-qr" ? o.hasUpiQr : o.hasSignature;
+                  const title = kind === "upi-qr" ? "Payment QR (UPI)" : "Signature";
+                  return (
+                    <div key={kind}>
+                      <p className="text-[11px] font-medium text-slate-500">{title}</p>
+                      {present ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={`/api/orgs/${o.id}/asset/${kind}?v=${logoVersion}`}
+                          alt=""
+                          className={cn(
+                            "mt-1 rounded-lg bg-white object-contain p-1 ring-1 ring-slate-200",
+                            kind === "upi-qr" ? "h-20 w-20" : "h-20 w-32",
+                          )}
+                        />
+                      ) : (
+                        <p className="mt-1 text-[11px] text-slate-400">
+                          {kind === "upi-qr"
+                            ? "Not set — clients cannot scan to pay."
+                            : "Not set — invoices print a blank signature space."}
+                        </p>
+                      )}
+                      {canManage && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          <button
+                            type="button"
+                            onClick={() => pickImage(o.id, kind)}
+                            disabled={logoBusy === o.id}
+                            className="text-[11px] text-brand-600 hover:underline disabled:opacity-50"
+                          >
+                            {present ? "Replace" : "Upload"}
+                          </button>
+                          {present && (
+                            <button
+                              type="button"
+                              onClick={() => removeImage(o.id, kind)}
+                              disabled={logoBusy === o.id}
+                              className="text-[11px] text-slate-500 hover:underline disabled:opacity-50"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
               <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
                 <span className="text-xs text-slate-400">
                   {o._count?.invoices ?? 0} invoice(s)
@@ -225,12 +291,12 @@ export default function SettingsPage() {
                 <span className="flex-1" />
                 {canManage && (
                   <>
-                    <Button size="sm" variant="secondary" onClick={() => pickLogo(o.id)} disabled={logoBusy === o.id}>
+                    <Button size="sm" variant="secondary" onClick={() => pickImage(o.id, "logo")} disabled={logoBusy === o.id}>
                       <Upload className="h-3.5 w-3.5" />
                       {logoBusy === o.id ? "Uploading…" : o.hasLogo ? "Replace logo" : "Upload logo"}
                     </Button>
                     {o.hasLogo && (
-                      <Button size="sm" variant="ghost" onClick={() => removeLogo(o.id)} disabled={logoBusy === o.id}>
+                      <Button size="sm" variant="ghost" onClick={() => removeImage(o.id, "logo")} disabled={logoBusy === o.id}>
                         <X className="h-3.5 w-3.5" /> Remove logo
                       </Button>
                     )}

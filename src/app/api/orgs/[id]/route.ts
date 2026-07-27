@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, fail, parse, route } from "@/lib/api";
 import { requirePermission } from "@/lib/auth/session";
 import { organizationUpdateSchema } from "@/lib/validation";
+import { ensureFirmAssets, resetFirmAssetsCheck } from "@/lib/firm-assets-install";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -10,8 +11,16 @@ export const PUT = route(async (req, ctx: Ctx) => {
   const { id } = await ctx.params;
   const data = await parse(req, organizationUpdateSchema);
   const org = await prisma.organization.update({ where: { id }, data });
-  const { logo, ...rest } = org;
-  return ok({ ...rest, hasLogo: !!logo });
+  // A rename can bring the firm into (or out of) a bundled-asset rule.
+  resetFirmAssetsCheck();
+  await ensureFirmAssets();
+  const { logo, upiQr, signature, ...rest } = org;
+  return ok({
+    ...rest,
+    hasLogo: !!logo,
+    hasUpiQr: !!upiQr,
+    hasSignature: !!signature,
+  });
 });
 
 export const DELETE = route(async (_req, ctx: Ctx) => {
