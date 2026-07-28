@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessagesSquare, Send, Users, ArrowLeft } from "lucide-react";
+import { MessagesSquare, Send, Users, ArrowLeft, Pencil, Check, X } from "lucide-react";
 import { useAuth } from "@/lib/auth/context";
 import { useAlerts } from "@/lib/alerts";
 import type { ChatMessage, Conversation } from "@/lib/types";
@@ -44,12 +44,17 @@ export default function MessagesPage() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // The message being edited (own messages only) and its working text.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
   // On phones the list and the thread share the screen, one at a time.
   const [showThread, setShowThread] = useState(false);
 
   const endRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<string | null>(null);
   activeRef.current = active;
+  const editingRef = useRef<string | null>(null);
+  editingRef.current = editingId;
 
   const loadConversations = useCallback(async () => {
     try {
@@ -76,11 +81,11 @@ export default function MessagesPage() {
       if (!res.ok) return;
       const data = (await res.json()) as ChatMessage[];
       setMessages((prev) => {
-        // Only re-render when something actually changed.
-        if (prev.length === data.length && prev[prev.length - 1]?.id === data[data.length - 1]?.id) {
-          return prev;
-        }
-        return data;
+        // Only re-render when something actually changed — a new message, or
+        // an edit to one already on screen.
+        const sig = (list: ChatMessage[]) =>
+          list.map((m) => `${m.id}:${m.editedAt ?? ""}`).join("|");
+        return sig(prev) === sig(data) ? prev : data;
       });
     } catch {
       // Next poll retries.
@@ -98,7 +103,8 @@ export default function MessagesPage() {
     loadMessages(active);
     refreshAlerts(); // opening clears its unread badge
     const t = setInterval(() => {
-      loadMessages(active, true);
+      // Pause refreshes while an edit is open so typing is never clobbered.
+      if (!editingRef.current) loadMessages(active, true);
       loadConversations();
     }, POLL_MS);
     return () => clearInterval(t);
@@ -132,6 +138,37 @@ export default function MessagesPage() {
       setErr(e instanceof Error ? e.message : "Could not send the message");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function saveEdit(id: string) {
+    const body = editDraft.trim();
+    if (!body || !active) return;
+    const original = messages.find((m) => m.id === id);
+    if (original && original.body === body) {
+      setEditingId(null);
+      return;
+    }
+    setErr(null);
+    try {
+      const res = await fetch(
+        `/api/chat/${encodeURIComponent(active)}/${encodeURIComponent(id)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body }),
+        },
+      );
+      if (!res.ok) {
+        const e = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(e.error ?? "Could not save the change");
+      }
+      const saved = (await res.json()) as ChatMessage;
+      setMessages((list) => list.map((m) => (m.id === id ? saved : m)));
+      setEditingId(null);
+      loadConversations(); // the preview may have changed
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not save the change");
     }
   }
 
@@ -275,14 +312,68 @@ export default function MessagesPage() {
                                 {m.sender?.name ?? "Team member"}
                               </p>
                             )}
-                            <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                            {editingId === m.id ? (
+                              <div className="min-w-[12rem]">
+                                <textarea
+                                  value={editDraft}
+                                  onChange={(e) => setEditDraft(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" && !e.shiftKey) {
+                                      e.preventDefault();
+                                      saveEdit(m.id);
+                                    }
+                                    if (e.key === "Escape") setEditingId(null);
+                                  }}
+                                  autoFocus
+                                  rows={2}
+                                  aria-label="Edit message"
+                                  className="w-full resize-y rounded-lg border border-white/40 bg-white/95 px-2 py-1.5 text-sm text-slate-800 focus:outline-none"
+                                />
+                                <div className="mt-1 flex items-center justify-end gap-1">
+                                  <button
+                                    onClick={() => setEditingId(null)}
+                                    aria-label="Cancel edit"
+                                    className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-brand-100 hover:bg-white/15"
+                                  >
+                                    <X className="h-3 w-3" /> Cancel
+                                  </button>
+                                  <button
+                                    onClick={() => saveEdit(m.id)}
+                                    disabled={!editDraft.trim()}
+                                    aria-label="Save edit"
+                                    className="inline-flex items-center gap-1 rounded bg-white/20 px-1.5 py-0.5 text-[11px] font-medium text-white hover:bg-white/30 disabled:opacity-50"
+                                  >
+                                    <Check className="h-3 w-3" /> Save
+                                  </button>
+                                </div>
+                                <p className="mt-0.5 text-[10px] text-brand-100">
+                                  Enter saves · Esc cancels
+                                </p>
+                              </div>
+                            ) : (
+                              <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                            )}
                             <p
                               className={cn(
-                                "mt-0.5 text-right text-[10px]",
+                                "mt-0.5 flex items-center justify-end gap-1.5 text-[10px]",
                                 mine ? "text-brand-100" : "text-slate-400",
                               )}
                             >
+                              {m.editedAt && <span title={`Edited ${timeLabel(m.editedAt)}`}>edited</span>}
                               {timeLabel(m.createdAt)}
+                              {mine && editingId !== m.id && (
+                                <button
+                                  onClick={() => {
+                                    setEditingId(m.id);
+                                    setEditDraft(m.body);
+                                  }}
+                                  className="rounded p-0.5 text-brand-100 hover:bg-white/20 hover:text-white"
+                                  title="Edit message"
+                                  aria-label="Edit message"
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </button>
+                              )}
                             </p>
                           </div>
                         </div>

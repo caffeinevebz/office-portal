@@ -182,6 +182,8 @@ model ChatMessage {
   // Set when the direct-message recipient has read it (Team posts use each
   // member's Staff.teamChatReadAt marker instead).
   readAt    DateTime?
+  // Set when the sender has edited the message after posting it.
+  editedAt  DateTime?
 
   senderId    String
   sender      Staff   @relation("ChatSender", fields: [senderId], references: [id], onDelete: Cascade)
