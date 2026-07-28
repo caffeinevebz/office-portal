@@ -7,7 +7,8 @@ import {
   LayoutDashboard,
   Users,
   ClipboardList,
-  Receipt,
+  ReceiptIndianRupee,
+  MessagesSquare,
   UsersRound,
   CalendarDays,
   FolderClosed,
@@ -31,14 +32,17 @@ import { ROLE_ACCESS, type Permission } from "@/lib/auth/roles";
 import { AppMark } from "@/components/LedgifyLogo";
 import { SetPinModal } from "@/components/SetPinModal";
 import { NotificationBell } from "@/components/NotificationBell";
+import { AlertToasts } from "@/components/AlertToasts";
+import { AlertsProvider, useAlerts } from "@/lib/alerts";
 
 const NAV: { href: string; label: string; icon: typeof Users; perm?: Permission }[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/tasks", label: "Tasks", icon: ClipboardList },
+  { href: "/messages", label: "Messages", icon: MessagesSquare },
   { href: "/itr", label: "Filing Register", icon: Landmark },
   // The receipt register lives inside Invoices (one billing module).
-  { href: "/invoices", label: "Invoices", icon: Receipt },
+  { href: "/invoices", label: "Invoices", icon: ReceiptIndianRupee },
   { href: "/expenses", label: "Reimbursements", icon: Wallet, perm: "raiseExpenses" },
   { href: "/staff", label: "Team", icon: UsersRound },
   { href: "/documents", label: "Documents", icon: FolderClosed },
@@ -64,10 +68,13 @@ function NavLinks({
 }) {
   const pathname = usePathname();
   const { can } = useAuth();
+  const { chatUnread } = useAlerts();
   return (
     <nav className="space-y-1 px-3">
       {NAV.filter((item) => !item.perm || can(item.perm)).map(({ href, label, icon: Icon }) => {
         const active = isActive(pathname, href);
+        // Unread team messages show as a count beside the Messages link.
+        const badge = href === "/messages" ? chatUnread : 0;
         return (
           <Link
             key={href}
@@ -92,6 +99,16 @@ function NavLinks({
               )}
             />
             {!collapsed && label}
+            {badge > 0 && (
+              <span
+                className={cn(
+                  "flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white",
+                  collapsed ? "absolute top-1 right-1" : "ml-auto",
+                )}
+              >
+                {badge > 99 ? "99+" : badge}
+              </span>
+            )}
           </Link>
         );
       })}
@@ -232,6 +249,7 @@ export function AppShell({
 
   return (
     <AuthProvider user={user} permissions={permissions}>
+      <AlertsProvider>
       <div className="min-h-screen">
         {/* Desktop sidebar */}
         <aside
@@ -324,6 +342,8 @@ export function AppShell({
           </main>
         </div>
       </div>
+      <AlertToasts />
+      </AlertsProvider>
     </AuthProvider>
   );
 }

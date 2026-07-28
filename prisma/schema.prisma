@@ -158,6 +158,10 @@ model Staff {
   pinFailedCount Int     @default(0)
   createdAt    DateTime @default(now())
 
+  // Last time this member opened the firm-wide Team chat channel; drives
+  // the channel's unread count (direct messages track readAt per message).
+  teamChatReadAt DateTime?
+
   tasks          Task[] @relation("TaskLeadAssignee")
   assignedTasks  Task[] @relation("TaskAssignees")
   tasksToApprove Task[] @relation("TaskApprover")
@@ -165,6 +169,29 @@ model Staff {
   itrFilings     ItrFiling[]
   notifications  AppNotification[]
   expenseClaims  ExpenseClaim[]
+  sentMessages     ChatMessage[] @relation("ChatSender")
+  receivedMessages ChatMessage[] @relation("ChatRecipient")
+}
+
+/// An instant message between team members: a direct message when
+/// `recipientId` is set, otherwise a post in the firm-wide Team channel.
+model ChatMessage {
+  id        String   @id @default(cuid())
+  body      String
+  createdAt DateTime @default(now())
+  // Set when the direct-message recipient has read it (Team posts use each
+  // member's Staff.teamChatReadAt marker instead).
+  readAt    DateTime?
+
+  senderId    String
+  sender      Staff   @relation("ChatSender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipientId String?
+  recipient   Staff?  @relation("ChatRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  // Conversation reads and unread counts.
+  @@index([recipientId, senderId, createdAt])
+  @@index([senderId, createdAt])
+  @@index([createdAt])
 }
 
 /// An in-app notification for a team member — task assignments, expense-claim

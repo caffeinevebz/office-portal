@@ -142,6 +142,29 @@ export type Task = {
   billedLines?: { invoice?: { id: string; invoiceNumber: string } | null }[];
 };
 
+export type ChatMessage = {
+  id: string;
+  body: string;
+  createdAt: string;
+  readAt: string | null;
+  senderId: string;
+  recipientId: string | null;
+  sender?: { id: string; name: string; role: string };
+};
+
+// A conversation in the Messages module: the firm-wide Team channel, or a
+// direct thread with one colleague.
+export type Conversation = {
+  id: string;
+  kind: "team" | "dm";
+  name: string;
+  role: string | null;
+  lastMessage: string | null;
+  lastAt: string | null;
+  lastFromSelf: boolean;
+  unread: number;
+};
+
 export type ChecklistItem = { label: string; done: boolean };
 
 export type ComplianceSchedule = {

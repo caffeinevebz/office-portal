@@ -413,6 +413,17 @@ export async function seedDemoData(prisma: PrismaClient) {
     ],
   });
 
+  console.log("Seeding team messages...");
+  const minsAgo = (m: number) => new Date(Date.now() - m * 60_000);
+  await prisma.chatMessage.createMany({
+    data: [
+      { body: "Morning all — GST filing week. Please keep the working papers updated as you go.", senderId: partner.id, recipientId: null, createdAt: minsAgo(240) },
+      { body: "Noted. I'll have the Nimbus GSTR-3B ready for review by noon.", senderId: senior.id, recipientId: null, createdAt: minsAgo(215) },
+      { body: "Amit, could you share the 26AS for Kavita Menon once downloaded?", senderId: manager.id, recipientId: accountant.id, createdAt: minsAgo(95) },
+      { body: "Sure, downloading it now — will send it across shortly.", senderId: accountant.id, recipientId: manager.id, createdAt: minsAgo(90) },
+    ],
+  });
+
   const counts = {
     staff: await prisma.staff.count(),
     clients: await prisma.client.count(),
@@ -424,6 +435,7 @@ export async function seedDemoData(prisma: PrismaClient) {
     packets: await prisma.docPacket.count(),
     orgs: await prisma.organization.count(),
     itrFilings: await prisma.itrFiling.count(),
+    messages: await prisma.chatMessage.count(),
   };
   console.log("Seed complete:", counts);
   return counts;
