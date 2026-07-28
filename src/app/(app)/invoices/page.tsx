@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Search, Plus, Pencil, Trash2, Receipt, FileDown, FileCheck2, Mail, IndianRupee, BookOpenCheck } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Receipt, FileDown, FileCheck2, Mail, IndianRupee, BookOpenCheck, MessageCircle } from "lucide-react";
+import { WhatsappModal } from "@/components/WhatsappModal";
 import { ReceiptRegisterPanel } from "@/components/ReceiptRegister";
 import { useResource, useDebounced, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
@@ -80,6 +81,8 @@ export default function InvoicesPage() {
   const [toDelete, setToDelete] = useState<Invoice | null>(null);
   // Invoice being marked Paid (or whose payment record is being edited).
   const [payFor, setPayFor] = useState<Invoice | null>(null);
+  // Invoice being sent to the client on WhatsApp.
+  const [waFor, setWaFor] = useState<Invoice | null>(null);
 
   const all = (data ?? []).filter(
     (i) => kindFilter === "All" || (i.kind ?? "Fee") === kindFilter,
@@ -366,6 +369,18 @@ export default function InvoicesPage() {
                             <IndianRupee className="h-4 w-4" />
                           </button>
                         )}
+                        <button
+                          onClick={() => setWaFor(i)}
+                          disabled={!i.client?.phone}
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-30"
+                          title={
+                            i.client?.phone
+                              ? `Send invoice details to ${i.client.name} on WhatsApp`
+                              : "Client has no phone number on record"
+                          }
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </button>
                         {canManage && (
                           <>
                             <button
@@ -449,6 +464,24 @@ export default function InvoicesPage() {
             }
             refresh();
           }}
+        />
+      )}
+
+      {waFor && (
+        <WhatsappModal
+          to={waFor.client?.phone}
+          recipientName={waFor.client?.name}
+          recipientType="Client"
+          title={`Send ${waFor.invoiceNumber} on WhatsApp`}
+          message={
+            `Dear ${waFor.client?.contactPerson || waFor.client?.name || "Sir/Madam"},\n\n` +
+            `${waFor.kind === "Reimbursement" ? "Reimbursement bill" : "Invoice"} ${waFor.invoiceNumber} ` +
+            `dated ${formatDate(waFor.issueDate)} for ${formatCurrency(withTax(waFor))} ` +
+            `${waFor.status === "Paid" ? "has been received with thanks." : "is due for payment."}` +
+            `${waFor.dueDate && waFor.status !== "Paid" ? ` Due date: ${formatDate(waFor.dueDate)}.` : ""}` +
+            `\n\nRegards,\n${waFor.organization?.name ?? ""}`
+          }
+          onClose={() => setWaFor(null)}
         />
       )}
 

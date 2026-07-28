@@ -1,6 +1,9 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { getDefaultOrg } from "@/lib/org";
+// Number/link rules are shared with the client so both build the same URL.
+import { waNumber, waLink } from "@/lib/format";
+export { waNumber, waLink };
 
 // Delivery layer for all outbound mail & WhatsApp: reminders, invoices,
 // invitations, password resets and alerts. Email goes out from the firm's
@@ -53,13 +56,13 @@ export async function getEmailConfig(): Promise<EmailConfig> {
 }
 
 export async function providerStatus() {
-  const email = await getEmailConfig();
+  const [email, wa] = await Promise.all([getEmailConfig(), getWhatsappConfig()]);
   return {
     email: email.live
       ? `${email.provider === "google" ? "Google SMTP" : "Resend"} (live) — from ${email.fromEmail}`
       : "Simulated",
-    whatsapp: WA_TOKEN && WA_PHONE_ID ? "Meta Cloud API (live)" : "Simulated",
-    live: Boolean(email.live || (WA_TOKEN && WA_PHONE_ID)),
+    whatsapp: wa.live ? "Meta Cloud API (live)" : "Simulated",
+    live: Boolean(email.live || wa.live),
   };
 }
 
@@ -152,20 +155,37 @@ async function sendEmail(
     : sendViaResend(cfg, to, subject, body, attachments);
 }
 
+export type WhatsappConfig = {
+  phoneNumberId: string | null;
+  accessToken: string | null;
+  live: boolean;
+};
+
+/** Effective WhatsApp configuration: Firm Settings first, env fallback. */
+export async function getWhatsappConfig(): Promise<WhatsappConfig> {
+  const row = await prisma.whatsappSettings
+    .findUnique({ where: { id: "default" } })
+    .catch(() => null);
+  const phoneNumberId = row?.phoneNumberId?.trim() || WA_PHONE_ID || null;
+  const accessToken = row?.accessToken?.trim() || WA_TOKEN || null;
+  return { phoneNumberId, accessToken, live: Boolean(phoneNumberId && accessToken) };
+}
+
 async function sendWhatsapp(to: string, body: string): Promise<DeliveryStatus> {
-  if (!WA_TOKEN || !WA_PHONE_ID) return "Simulated";
+  const cfg = await getWhatsappConfig();
+  if (!cfg.live) return "Simulated";
   try {
     const res = await fetch(
-      `https://graph.facebook.com/v20.0/${WA_PHONE_ID}/messages`,
+      `https://graph.facebook.com/v20.0/${cfg.phoneNumberId}/messages`,
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${WA_TOKEN}`,
+          Authorization: `Bearer ${cfg.accessToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           messaging_product: "whatsapp",
-          to: to.replace(/[^\d+]/g, ""),
+          to: waNumber(to),
           type: "text",
           text: { body },
         }),

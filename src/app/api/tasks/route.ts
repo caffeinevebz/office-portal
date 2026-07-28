@@ -83,7 +83,7 @@ export const GET = route(async (req) => {
     // The completed list reads newest-first; the working list by due date.
     orderBy: view === "Completed" ? [{ completedAt: "desc" }] : [{ dueDate: "asc" }],
     include: {
-      client: { select: { id: true, name: true } },
+      client: { select: { id: true, name: true, phone: true } },
       assignee: person,
       assignees: person,
       approver: person,
@@ -92,6 +92,8 @@ export const GET = route(async (req) => {
       // lead-task link or the many-to-many line mapping.
       invoiceLines: { select: { invoice: { select: { id: true, invoiceNumber: true } } } },
       billedLines: { select: { invoice: { select: { id: true, invoiceNumber: true } } } },
+      // Clarification points — the list shows how many are still open.
+      queries: { orderBy: { createdAt: "asc" } },
     },
   });
   // Auto priorities derive fresh from the due date on every read, so they

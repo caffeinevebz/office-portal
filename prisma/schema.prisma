@@ -196,6 +196,35 @@ model ChatMessage {
   @@index([createdAt])
 }
 
+/// A point on a task that needs clarification from the client — a query
+/// raised while doing the work, and the client's answer once it comes back.
+model TaskQuery {
+  id         String    @id @default(cuid())
+  point      String // what needs clarifying
+  response   String? // the client's answer
+  status     String    @default("Open") // Open, Answered
+  askedAt    DateTime  @default(now())
+  answeredAt DateTime?
+  // Who raised the point (kept as a name so the record survives staff edits).
+  askedBy    String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, status])
+}
+
+/// Outbound WhatsApp configuration (Meta WhatsApp Cloud API). Without
+/// credentials the app falls back to opening a wa.me chat in the browser.
+model WhatsappSettings {
+  id            String   @id @default("default")
+  phoneNumberId String? // Meta "Phone number ID" of the firm's WhatsApp sender
+  accessToken   String? // permanent access token for that WhatsApp app
+  updatedAt     DateTime @updatedAt
+}
+
 /// An in-app notification for a team member — task assignments, expense-claim
 /// decisions and the like. Surfaced in the header bell and mirrored to the
 /// device via the browser Notification API.
@@ -307,6 +336,8 @@ model Task {
   schedule   ComplianceSchedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
   periodKey  String? // e.g. "2026-07"; unique per schedule occurrence for idempotent generation
 
+  // Points awaiting the client's clarification.
+  queries      TaskQuery[]
   // Invoice lines that bill this task (to show whether it has been billed).
   invoiceLines InvoiceLineItem[]
   // Lines billing this task through the many-to-many mapping (a single

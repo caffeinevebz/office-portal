@@ -140,6 +140,20 @@ export type Task = {
   invoiceLines?: { invoice?: { id: string; invoiceNumber: string } | null }[];
   // Lines billing this task through the multi-task mapping.
   billedLines?: { invoice?: { id: string; invoiceNumber: string } | null }[];
+  // Clarification points raised with the client on this task.
+  queries?: TaskQuery[];
+};
+
+// A point on a task awaiting the client's clarification.
+export type TaskQuery = {
+  id: string;
+  point: string;
+  response: string | null;
+  status: string;
+  askedAt: string;
+  answeredAt: string | null;
+  askedBy: string | null;
+  taskId: string;
 };
 
 export type ChatMessage = {

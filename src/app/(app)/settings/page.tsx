@@ -12,6 +12,7 @@ import {
   Landmark,
   Mail,
   Send,
+  MessageCircle,
 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
@@ -314,6 +315,7 @@ export default function SettingsPage() {
       )}
 
       {canManage && <EmailSettingsCard />}
+      {canManage && <WhatsappSettingsCard />}
 
       {formOpen && (
         <OrgForm
@@ -756,6 +758,130 @@ function EmailSettingsCard() {
             </p>
           )}
         </div>
+      )}
+    </Card>
+  );
+}
+
+type WhatsappView = { live: boolean; phoneNumberId: string | null; hasToken: boolean };
+
+/**
+ * The firm's WhatsApp Business (Cloud API) sender. Without credentials the
+ * app still sends — by opening the message in the member's own WhatsApp.
+ */
+function WhatsappSettingsCard() {
+  const { data, loading, refresh } = useResource<WhatsappView>("/api/whatsapp");
+  const [phoneNumberId, setPhoneNumberId] = useState<string | null>(null);
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  if (data && phoneNumberId === null) setPhoneNumberId(data.phoneNumberId ?? "");
+
+  async function save(clear = false) {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const saved = (await apiMutate("/api/whatsapp", "PUT", {
+        phoneNumberId: clear ? null : (phoneNumberId ?? null),
+        accessToken: clear ? null : token || undefined,
+      })) as WhatsappView;
+      setToken("");
+      setPhoneNumberId(saved.phoneNumberId ?? "");
+      refresh();
+      setMsg({
+        kind: "ok",
+        text: saved.live
+          ? "Saved — messages now go out from the firm's WhatsApp number."
+          : clear
+            ? "Credentials removed. Messages will open in your own WhatsApp."
+            : "Saved. Add both the phone number ID and a token to send from the firm's number.",
+      });
+    } catch (e) {
+      setMsg({ kind: "err", text: e instanceof Error ? e.message : "Could not save" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="mt-4 p-5">
+      <CardHeader
+        title={
+          <span className="flex items-center gap-2">
+            <MessageCircle className="h-4 w-4 text-emerald-500" /> WhatsApp
+          </span>
+        }
+        subtitle="Send messages to clients straight from the app"
+      />
+      {loading && !data ? (
+        <Loading label="Loading WhatsApp settings…" />
+      ) : (
+        <>
+          <p className="mb-3 text-xs text-slate-500">
+            {data?.live ? (
+              <span className="font-medium text-emerald-700">
+                Connected — messages are sent from the firm&apos;s WhatsApp number.
+              </span>
+            ) : (
+              <>
+                Not connected. Messages composed in the app open in the sender&apos;s own
+                WhatsApp with the text ready to send. To send directly from the firm&apos;s
+                number instead, add a{" "}
+                <a
+                  href="https://developers.facebook.com/docs/whatsapp/cloud-api/get-started"
+                  target="_blank"
+                  rel="noopener"
+                  className="underline"
+                >
+                  WhatsApp Cloud API
+                </a>{" "}
+                phone number ID and access token.
+              </>
+            )}
+          </p>
+          {msg && (
+            <div
+              className={`mb-3 rounded-lg px-3 py-2 text-xs ring-1 ${
+                msg.kind === "ok"
+                  ? "bg-emerald-50 text-emerald-800 ring-emerald-200"
+                  : "bg-rose-50 text-rose-700 ring-rose-200"
+              }`}
+            >
+              {msg.text}
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Phone number ID" hint="From the WhatsApp app in Meta for Developers">
+              <Input
+                value={phoneNumberId ?? ""}
+                onChange={(e) => setPhoneNumberId(e.target.value)}
+                placeholder="123456789012345"
+              />
+            </Field>
+            <Field
+              label="Access token"
+              hint={data?.hasToken ? "A token is stored — type a new one to replace it" : "Permanent access token"}
+            >
+              <Input
+                type="password"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder={data?.hasToken ? "••••••••" : "EAAG…"}
+              />
+            </Field>
+          </div>
+          <div className="mt-4 flex gap-2">
+            <Button onClick={() => save()} disabled={busy}>
+              {busy ? "Saving…" : "Save WhatsApp settings"}
+            </Button>
+            {(data?.hasToken || data?.phoneNumberId) && (
+              <Button variant="secondary" onClick={() => save(true)} disabled={busy}>
+                Disconnect
+              </Button>
+            )}
+          </div>
+        </>
       )}
     </Card>
   );
