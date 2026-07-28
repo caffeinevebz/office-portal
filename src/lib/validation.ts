@@ -239,6 +239,11 @@ export const invoicePaymentSchema = z.object({
     .optional(),
 });
 
+// A team instant message (direct or in the firm-wide Team channel).
+export const chatMessageSchema = z.object({
+  body: z.string().trim().min(1, "Type a message").max(4000, "Message is too long"),
+});
+
 export const documentCreateSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
   category: oneOf(DOC_CATEGORIES, "category").default("Other"),

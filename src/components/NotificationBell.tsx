@@ -1,22 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, CheckCheck, ClipboardList, IndianRupee, BadgeCheck } from "lucide-react";
-import { apiMutate } from "@/lib/useApi";
+import { Bell, CheckCheck, ClipboardList, IndianRupee, BadgeCheck, Volume2, VolumeX } from "lucide-react";
+import { useAlerts, type NotificationItem as Item } from "@/lib/alerts";
 import { cn } from "@/lib/format";
-
-type Item = {
-  id: string;
-  type: string;
-  title: string;
-  body: string | null;
-  href: string | null;
-  readAt: string | null;
-  createdAt: string;
-};
-
-const POLL_MS = 30_000;
 
 function typeIcon(type: string) {
   if (type.startsWith("expense")) return IndianRupee;
@@ -33,79 +21,27 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-/** Pop the notification on the device via the browser Notification API. */
-function popOnDevice(items: Item[]) {
-  if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-  for (const n of items.slice(0, 3)) {
-    try {
-      new Notification(n.title, {
-        body: n.body ?? undefined,
-        icon: "/icon-192.png",
-        tag: n.id, // dedupe if the poll fires twice
-      });
-    } catch {
-      // Some browsers (mobile Chrome) require a service worker — fail quietly.
-    }
-  }
-}
-
 export function NotificationBell() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<Item[]>([]);
-  const [unread, setUnread] = useState(0);
-  // Newest createdAt already seen — anything newer pops on the device.
-  const newestSeen = useRef<string | null>(null);
-  const firstLoad = useRef(true);
-
-  const poll = useCallback(async () => {
-    try {
-      const res = await fetch("/api/notifications", { cache: "no-store" });
-      if (!res.ok) return;
-      const data = (await res.json()) as { items: Item[]; unread: number };
-      setItems(data.items);
-      setUnread(data.unread);
-      const newest = data.items[0]?.createdAt ?? null;
-      if (!firstLoad.current && newestSeen.current && newest && newest > newestSeen.current) {
-        popOnDevice(data.items.filter((n) => n.createdAt > newestSeen.current!));
-      }
-      if (newest) newestSeen.current = newest;
-      firstLoad.current = false;
-    } catch {
-      // Network hiccup — the next poll will catch up.
-    }
-  }, []);
-
-  useEffect(() => {
-    poll();
-    const t = setInterval(poll, POLL_MS);
-    return () => clearInterval(t);
-  }, [poll]);
+  // Notifications, the unread count and the alert sound all come from the
+  // shared alerts poll (the same one that pops toasts and chimes).
+  const { items, unread, markRead, soundOn, setSoundOn, enableDeviceAlerts } = useAlerts();
 
   function toggle() {
     setOpen((o) => !o);
-    // Ask for device-notification permission on the first interaction (a
-    // user gesture is required by the browser).
-    if (typeof Notification !== "undefined" && Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
-    }
+    // Opening the bell is a user gesture — the moment to ask for device
+    // notification permission and unlock the alert sound.
+    enableDeviceAlerts();
   }
 
   async function markAllRead() {
-    setUnread(0);
-    setItems((list) => list.map((n) => ({ ...n, readAt: n.readAt ?? new Date().toISOString() })));
-    await apiMutate("/api/notifications", "POST").catch(() => {});
+    await markRead();
   }
 
   async function openItem(n: Item) {
     setOpen(false);
-    if (!n.readAt) {
-      setUnread((u) => Math.max(0, u - 1));
-      setItems((list) =>
-        list.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x)),
-      );
-      apiMutate("/api/notifications", "POST", { ids: [n.id] }).catch(() => {});
-    }
+    if (!n.readAt) void markRead([n.id]);
     if (n.href) router.push(n.href);
   }
 
@@ -131,6 +67,14 @@ export function NotificationBell() {
           <div className="absolute right-0 z-20 mt-2 w-80 max-w-[90vw] rounded-xl border border-slate-200 bg-white shadow-lg">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
               <p className="text-sm font-semibold text-slate-800">Notifications</p>
+              <button
+                onClick={() => setSoundOn(!soundOn)}
+                className="ml-auto mr-3 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                title={soundOn ? "Alert sound on — click to mute" : "Alert sound muted — click to unmute"}
+                aria-label={soundOn ? "Mute alert sound" : "Unmute alert sound"}
+              >
+                {soundOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+              </button>
               {unread > 0 && (
                 <button
                   onClick={markAllRead}
