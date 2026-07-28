@@ -77,3 +77,14 @@ export function initials(name: string) {
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
+
+/** Digits only, as WhatsApp expects; a bare 10-digit Indian mobile gains 91. */
+export function waNumber(raw: string): string {
+  const digits = (raw ?? "").replace(/\D/g, "");
+  return digits.length === 10 ? `91${digits}` : digits;
+}
+
+/** A WhatsApp click-to-chat link with the message ready to send. */
+export function waLink(to: string, body: string): string {
+  return `https://wa.me/${waNumber(to)}?text=${encodeURIComponent(body)}`;
+}

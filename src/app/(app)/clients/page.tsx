@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Search, Plus, Pencil, Trash2, Eye, Users, FileUp, Download, FolderTree, Building2, X, Landmark, AlertTriangle } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Eye, Users, FileUp, Download, FolderTree, Building2, X, Landmark, AlertTriangle, MessageCircle } from "lucide-react";
+import { WhatsappModal } from "@/components/WhatsappModal";
 import { useResource, useDebounced, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
 import type { Client, ClientGroup } from "@/lib/types";
@@ -44,6 +45,8 @@ export default function ClientsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
   const [toDelete, setToDelete] = useState<Client | null>(null);
+  // Client being messaged on WhatsApp.
+  const [waFor, setWaFor] = useState<Client | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [groupsOpen, setGroupsOpen] = useState(false);
 
@@ -214,6 +217,18 @@ export default function ClientsPage() {
                         >
                           <Eye className="h-4 w-4" />
                         </Link>
+                        <button
+                          onClick={() => setWaFor(c)}
+                          disabled={!c.phone}
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-30"
+                          title={
+                            c.phone
+                              ? `Send ${c.name} a WhatsApp message`
+                              : "No phone number on record"
+                          }
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                        </button>
                         {canManage && (
                           <button
                             onClick={() => openEdit(c)}
@@ -270,6 +285,16 @@ export default function ClientsPage() {
         <ImportModal
           onClose={() => setImportOpen(false)}
           onImported={refresh}
+        />
+      )}
+
+      {waFor && (
+        <WhatsappModal
+          to={waFor.phone}
+          recipientName={waFor.name}
+          recipientType="Client"
+          message={`Dear ${waFor.contactPerson || waFor.name},\n\n`}
+          onClose={() => setWaFor(null)}
         />
       )}
 

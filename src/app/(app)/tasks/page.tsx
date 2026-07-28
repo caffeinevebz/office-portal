@@ -12,11 +12,12 @@ import {
   ListChecks,
   Receipt,
   ShieldCheck,
+  HelpCircle,
   X,
 } from "lucide-react";
 import { useResource, useDebounced, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
-import type { Task, Client, ClientGroup, Staff, ChecklistItem } from "@/lib/types";
+import type { Task, Client, ClientGroup, Staff, ChecklistItem, TaskQuery } from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -26,6 +27,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Loading, EmptyState } from "@/components/ui/EmptyState";
 import { RecurringPanel, AddRecurringButton } from "@/components/RecurringPanel";
+import { TaskQueriesPanel } from "@/components/TaskQueries";
 import {
   TASK_CATEGORIES,
   TASK_STATUSES,
@@ -158,6 +160,13 @@ export default function TasksPage() {
   const [addRecurring, setAddRecurring] = useState(0);
   // Task whose checklist is expanded inline in the table.
   const [openChecklist, setOpenChecklist] = useState<string | null>(null);
+  // Task whose client-clarification points are expanded inline.
+  const [openQueries, setOpenQueries] = useState<string | null>(null);
+
+  // Keep a task's clarification points in the list without a full refetch.
+  function applyQueries(taskId: string, queries: TaskQuery[]) {
+    setData((list) => (list ? list.map((t) => (t.id === taskId ? { ...t, queries } : t)) : list));
+  }
 
   async function quickStatus(t: Task, newStatus: string) {
     const updated = (await apiMutate(`/api/tasks/${t.id}`, "PATCH", { status: newStatus })) as Task;
@@ -326,6 +335,7 @@ export default function TasksPage() {
                       const overdue = t.status !== "Completed" && (daysUntil(t.dueDate) ?? 0) < 0;
                       const meta = taskMeta(t);
                       const chk = checklistDone(t.checklist);
+                      const openCount = (t.queries ?? []).filter((q) => q.status !== "Answered").length;
                       const billedNos = [
                         ...new Set(
                           [...(t.invoiceLines ?? []), ...(t.billedLines ?? [])]
@@ -360,6 +370,27 @@ export default function TasksPage() {
                                   {chk.done}/{chk.total}
                                 </button>
                               )}
+                              {/* Client clarifications: amber while any point
+                                  is still awaiting an answer. */}
+                              <button
+                                onClick={() => setOpenQueries(openQueries === t.id ? null : t.id)}
+                                className={cn(
+                                  "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs",
+                                  openQueries === t.id
+                                    ? "bg-amber-50 text-amber-800 ring-1 ring-amber-200"
+                                    : openCount > 0
+                                      ? "bg-amber-50 text-amber-700 hover:bg-amber-100"
+                                      : "text-slate-400 hover:bg-slate-100",
+                                )}
+                                title={
+                                  openCount > 0
+                                    ? `${openCount} point(s) awaiting the client's clarification`
+                                    : "Clarifications from the client"
+                                }
+                              >
+                                <HelpCircle className="h-3.5 w-3.5" />
+                                {openCount > 0 ? openCount : ""}
+                              </button>
                               {billedNos.length > 0 && (
                                 <Badge tone="green">
                                   <Receipt className="h-3 w-3" />
@@ -400,6 +431,13 @@ export default function TasksPage() {
                                   Status updates automatically from the steps checked.
                                 </li>
                               </ul>
+                            )}
+                            {openQueries === t.id && (
+                              <TaskQueriesPanel
+                                task={t}
+                                canManage={canManage}
+                                onChanged={(queries) => applyQueries(t.id, queries)}
+                              />
                             )}
                           </td>
                           <td className="px-5 py-3 text-slate-600">

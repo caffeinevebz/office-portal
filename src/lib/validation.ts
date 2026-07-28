@@ -239,6 +239,32 @@ export const invoicePaymentSchema = z.object({
     .optional(),
 });
 
+// A point on a task that needs the client's clarification.
+export const taskQuerySchema = z.object({
+  point: z.string().trim().min(1, "Describe what needs clarification").max(2000),
+  response: optionalText,
+});
+export const taskQueryUpdateSchema = z.object({
+  point: z.string().trim().min(1).max(2000).optional(),
+  response: optionalText,
+  status: oneOf(["Open", "Answered"], "status").optional(),
+});
+
+// An outbound WhatsApp message composed in the app.
+export const whatsappSendSchema = z.object({
+  to: z.string().trim().min(6, "A WhatsApp number is required"),
+  body: z.string().trim().min(1, "Type a message").max(4000, "Message is too long"),
+  // Who it is going to, for the delivery log.
+  recipientName: optionalText,
+  recipientType: optionalText,
+});
+
+// Firm WhatsApp credentials (Meta WhatsApp Cloud API).
+export const whatsappSettingsSchema = z.object({
+  phoneNumberId: optionalText,
+  accessToken: optionalText,
+});
+
 // A team instant message (direct or in the firm-wide Team channel).
 export const chatMessageSchema = z.object({
   body: z.string().trim().min(1, "Type a message").max(4000, "Message is too long"),
