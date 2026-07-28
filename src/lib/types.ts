@@ -147,6 +147,8 @@ export type ChatMessage = {
   body: string;
   createdAt: string;
   readAt: string | null;
+  // Set once the sender has edited the message.
+  editedAt: string | null;
   senderId: string;
   recipientId: string | null;
   sender?: { id: string; name: string; role: string };
