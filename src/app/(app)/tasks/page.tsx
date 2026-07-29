@@ -27,7 +27,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Loading, EmptyState } from "@/components/ui/EmptyState";
 import { RecurringPanel, AddRecurringButton } from "@/components/RecurringPanel";
-import { TaskQueriesPanel } from "@/components/TaskQueries";
+import { TaskQueriesModal } from "@/components/TaskQueries";
 import {
   TASK_CATEGORIES,
   TASK_STATUSES,
@@ -160,13 +160,16 @@ export default function TasksPage() {
   const [addRecurring, setAddRecurring] = useState(0);
   // Task whose checklist is expanded inline in the table.
   const [openChecklist, setOpenChecklist] = useState<string | null>(null);
-  // Task whose client-clarification points are expanded inline.
+  // Task whose client-clarification points are open in the modal.
   const [openQueries, setOpenQueries] = useState<string | null>(null);
 
   // Keep a task's clarification points in the list without a full refetch.
   function applyQueries(taskId: string, queries: TaskQuery[]) {
     setData((list) => (list ? list.map((t) => (t.id === taskId ? { ...t, queries } : t)) : list));
   }
+
+  // Resolved from the live list so newly added points show immediately.
+  const queriesFor = (data ?? []).find((t) => t.id === openQueries) ?? null;
 
   async function quickStatus(t: Task, newStatus: string) {
     const updated = (await apiMutate(`/api/tasks/${t.id}`, "PATCH", { status: newStatus })) as Task;
@@ -373,7 +376,7 @@ export default function TasksPage() {
                               {/* Client clarifications: amber while any point
                                   is still awaiting an answer. */}
                               <button
-                                onClick={() => setOpenQueries(openQueries === t.id ? null : t.id)}
+                                onClick={() => setOpenQueries(t.id)}
                                 className={cn(
                                   "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs",
                                   openQueries === t.id
@@ -432,13 +435,7 @@ export default function TasksPage() {
                                 </li>
                               </ul>
                             )}
-                            {openQueries === t.id && (
-                              <TaskQueriesPanel
-                                task={t}
-                                canManage={canManage}
-                                onChanged={(queries) => applyQueries(t.id, queries)}
-                              />
-                            )}
+
                           </td>
                           <td className="px-5 py-3 text-slate-600">
                             {t.client?.name ?? <span className="text-slate-400">—</span>}
@@ -573,6 +570,15 @@ export default function TasksPage() {
             setFilingFor(null);
             refresh();
           }}
+        />
+      )}
+
+      {queriesFor && (
+        <TaskQueriesModal
+          task={queriesFor}
+          canManage={canManage}
+          onChanged={(queries) => applyQueries(queriesFor.id, queries)}
+          onClose={() => setOpenQueries(null)}
         />
       )}
 

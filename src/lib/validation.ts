@@ -246,7 +246,15 @@ export const taskQuerySchema = z.object({
 });
 export const taskQueryUpdateSchema = z.object({
   point: z.string().trim().min(1).max(2000).optional(),
-  response: optionalText,
+  // An absent `response` must stay absent (leave the recorded answer alone);
+  // only an explicit null or "" clears it. `optionalText` would fold the
+  // absent case to null and silently wipe the answer on a point-only edit.
+  response: z
+    .string()
+    .trim()
+    .nullable()
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v ? v : null)),
   status: oneOf(["Open", "Answered"], "status").optional(),
 });
 
