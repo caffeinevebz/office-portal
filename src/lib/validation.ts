@@ -267,6 +267,14 @@ export const whatsappSendSchema = z.object({
   recipientType: optionalText,
 });
 
+// Send an invoice or its receipt to a client on WhatsApp, PDF and all.
+export const whatsappDocumentSchema = z.object({
+  kind: z.enum(["invoice", "receipt"]),
+  to: z.string().trim().min(6, "A WhatsApp number is required"),
+  body: z.string().trim().min(1, "Type a message").max(4000, "Message is too long"),
+  recipientName: optionalText,
+});
+
 // Firm WhatsApp credentials (Meta WhatsApp Cloud API).
 export const whatsappSettingsSchema = z.object({
   phoneNumberId: optionalText,

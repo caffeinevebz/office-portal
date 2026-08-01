@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Search, Plus, Pencil, Trash2, Receipt, FileDown, FileCheck2, Mail, IndianRupee, BookOpenCheck, MessageCircle } from "lucide-react";
 import { WhatsappModal } from "@/components/WhatsappModal";
+import { PdfViewer } from "@/components/PdfViewer";
 import { ReceiptRegisterPanel } from "@/components/ReceiptRegister";
 import { useResource, useDebounced, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
@@ -31,6 +32,46 @@ import {
 
 const withTax = (i: { amount: number; taxRate: number; gstMode?: string }) =>
   invoiceGross(i.amount, i.taxRate, i.gstMode);
+
+// One of the two documents an invoice produces — the bill itself, or the
+// receipt once it is paid. The viewer and the WhatsApp sender both work on
+// either, so they travel together as one target.
+type DocTarget = { invoice: Invoice; kind: "invoice" | "receipt" };
+
+const invoiceLabel = (i: Invoice) =>
+  i.kind === "Reimbursement" ? "Reimbursement bill" : "Invoice";
+
+function docTitle(t: DocTarget): string {
+  return t.kind === "receipt"
+    ? `Receipt for ${t.invoice.invoiceNumber}`
+    : `${invoiceLabel(t.invoice)} ${t.invoice.invoiceNumber}`;
+}
+function docSrc(t: DocTarget): string {
+  return `/api/invoices/${t.invoice.id}/${t.kind === "receipt" ? "receipt" : "pdf"}`;
+}
+function docFilename(t: DocTarget): string {
+  const base = t.invoice.invoiceNumber.replace(/\//g, "-");
+  return t.kind === "receipt" ? `Receipt-${base}.pdf` : `${base}.pdf`;
+}
+
+/** The covering note that goes with the document on WhatsApp. */
+function docMessage(t: DocTarget): string {
+  const { invoice: i } = t;
+  const greeting = `Dear ${i.client?.contactPerson || i.client?.name || "Sir/Madam"},`;
+  const sign = `\n\nRegards,\n${i.organization?.name ?? ""}`;
+  if (t.kind === "receipt") {
+    return (
+      `${greeting}\n\nPlease find the receipt for ${invoiceLabel(i).toLowerCase()} ${i.invoiceNumber} ` +
+      `dated ${formatDate(i.issueDate)} for ${formatCurrency(withTax(i))}, received with thanks.${sign}`
+    );
+  }
+  return (
+    `${greeting}\n\n${invoiceLabel(i)} ${i.invoiceNumber} ` +
+    `dated ${formatDate(i.issueDate)} for ${formatCurrency(withTax(i))} ` +
+    `${i.status === "Paid" ? "has been received with thanks." : "is due for payment."}` +
+    `${i.dueDate && i.status !== "Paid" ? ` Due date: ${formatDate(i.dueDate)}.` : ""}${sign}`
+  );
+}
 
 // A short summary of an invoice's billed services (line items, else its note).
 function servicesSummary(i: Invoice): string {
@@ -81,8 +122,10 @@ export default function InvoicesPage() {
   const [toDelete, setToDelete] = useState<Invoice | null>(null);
   // Invoice being marked Paid (or whose payment record is being edited).
   const [payFor, setPayFor] = useState<Invoice | null>(null);
-  // Invoice being sent to the client on WhatsApp.
-  const [waFor, setWaFor] = useState<Invoice | null>(null);
+  // The document being sent on WhatsApp, and the one open in the viewer —
+  // either the invoice itself or its payment receipt.
+  const [waFor, setWaFor] = useState<DocTarget | null>(null);
+  const [viewing, setViewing] = useState<DocTarget | null>(null);
 
   const all = (data ?? []).filter(
     (i) => kindFilter === "All" || (i.kind ?? "Fee") === kindFilter,
@@ -336,25 +379,25 @@ export default function InvoicesPage() {
                     </td>
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <a
-                          href={`/api/invoices/${i.id}/pdf`}
-                          target="_blank"
-                          rel="noopener"
+                        {/* PDFs open inside the app, so there is always a way
+                            back and a way to share them. */}
+                        <button
+                          onClick={() => setViewing({ invoice: i, kind: "invoice" })}
+                          data-testid={`open-invoice-${i.invoiceNumber}`}
                           className="rounded-lg p-1.5 text-slate-400 hover:bg-brand-50 hover:text-brand-600"
-                          title="Invoice PDF"
+                          title="Open the invoice PDF"
                         >
                           <FileDown className="h-4 w-4" />
-                        </a>
+                        </button>
                         {i.status === "Paid" && (
-                          <a
-                            href={`/api/invoices/${i.id}/receipt`}
-                            target="_blank"
-                            rel="noopener"
+                          <button
+                            onClick={() => setViewing({ invoice: i, kind: "receipt" })}
+                            data-testid={`open-receipt-${i.invoiceNumber}`}
                             className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
-                            title="Payment receipt PDF"
+                            title="Open the payment receipt PDF"
                           >
                             <FileCheck2 className="h-4 w-4" />
-                          </a>
+                          </button>
                         )}
                         {i.status === "Paid" && canManage && (
                           <button
@@ -370,12 +413,13 @@ export default function InvoicesPage() {
                           </button>
                         )}
                         <button
-                          onClick={() => setWaFor(i)}
+                          onClick={() => setWaFor({ invoice: i, kind: "invoice" })}
                           disabled={!i.client?.phone}
+                          data-testid={`wa-invoice-${i.invoiceNumber}`}
                           className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-30"
                           title={
                             i.client?.phone
-                              ? `Send invoice details to ${i.client.name} on WhatsApp`
+                              ? `Send the invoice PDF to ${i.client.name} on WhatsApp`
                               : "Client has no phone number on record"
                           }
                         >
@@ -467,20 +511,36 @@ export default function InvoicesPage() {
         />
       )}
 
+      {viewing && (
+        <PdfViewer
+          src={docSrc(viewing)}
+          title={docTitle(viewing)}
+          filename={docFilename(viewing)}
+          onWhatsapp={
+            viewing.invoice.client?.phone
+              ? () => {
+                  const target = viewing;
+                  setViewing(null);
+                  setWaFor(target);
+                }
+              : undefined
+          }
+          onClose={() => setViewing(null)}
+        />
+      )}
+
       {waFor && (
         <WhatsappModal
-          to={waFor.client?.phone}
-          recipientName={waFor.client?.name}
+          to={waFor.invoice.client?.phone}
+          recipientName={waFor.invoice.client?.name}
           recipientType="Client"
-          title={`Send ${waFor.invoiceNumber} on WhatsApp`}
-          message={
-            `Dear ${waFor.client?.contactPerson || waFor.client?.name || "Sir/Madam"},\n\n` +
-            `${waFor.kind === "Reimbursement" ? "Reimbursement bill" : "Invoice"} ${waFor.invoiceNumber} ` +
-            `dated ${formatDate(waFor.issueDate)} for ${formatCurrency(withTax(waFor))} ` +
-            `${waFor.status === "Paid" ? "has been received with thanks." : "is due for payment."}` +
-            `${waFor.dueDate && waFor.status !== "Paid" ? ` Due date: ${formatDate(waFor.dueDate)}.` : ""}` +
-            `\n\nRegards,\n${waFor.organization?.name ?? ""}`
-          }
+          title={`Send ${docTitle(waFor)} on WhatsApp`}
+          message={docMessage(waFor)}
+          document={{
+            invoiceId: waFor.invoice.id,
+            kind: waFor.kind,
+            src: docSrc(waFor),
+          }}
           onClose={() => setWaFor(null)}
         />
       )}

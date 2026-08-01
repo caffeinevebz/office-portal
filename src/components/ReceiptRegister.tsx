@@ -16,6 +16,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Loading, EmptyState } from "@/components/ui/EmptyState";
 import { StatCard } from "@/components/ui/StatCard";
+import { PdfViewer } from "@/components/PdfViewer";
 import { financialYears } from "@/lib/constants";
 import { formatCurrency, formatDate, cn } from "@/lib/format";
 
@@ -93,6 +94,9 @@ export function ReceiptRegisterPanel() {
 
   const totals = data?.totals ?? { count: 0, gross: 0, tds: 0, net: 0 };
   const allFirms = org === "All";
+  // The register PDF opens in the app's own viewer, so it can be shared and
+  // stepped back out of like any other document.
+  const [viewing, setViewing] = useState(false);
 
   return (
     <div>
@@ -181,15 +185,14 @@ export function ReceiptRegisterPanel() {
               />
             </div>
           )}
-          <a
-            href={`/api/receipts/pdf?${params}`}
-            target="_blank"
-            rel="noopener"
+          <button
+            onClick={() => setViewing(true)}
+            data-testid="open-register-pdf"
             className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 lg:ml-auto"
             title={allFirms ? "Register PDF, grouped per firm" : "Register PDF on this firm's letterhead"}
           >
             <FileDown className="h-4 w-4" /> Register PDF
-          </a>
+          </button>
         </div>
       </Card>
 
@@ -292,6 +295,15 @@ export function ReceiptRegisterPanel() {
         Expense reimbursement bills (EXP series) are not part of professional
         receipts and are excluded from this register.
       </p>
+
+      {viewing && (
+        <PdfViewer
+          src={`/api/receipts/pdf?${params}`}
+          title={`Receipt register — ${data?.label ?? ""}`}
+          filename={`Receipt-register-${(data?.label ?? "period").replace(/[^\w-]+/g, "-")}.pdf`}
+          onClose={() => setViewing(false)}
+        />
+      )}
     </div>
   );
 }

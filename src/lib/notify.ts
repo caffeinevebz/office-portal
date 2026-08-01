@@ -197,6 +197,55 @@ async function sendWhatsapp(to: string, body: string): Promise<DeliveryStatus> {
   }
 }
 
+/**
+ * Send a PDF as a real WhatsApp attachment from the firm's number. Two hops,
+ * because the Cloud API will not take bytes inline: upload the file to Meta's
+ * media store, then send a document message referring to the uploaded media.
+ *
+ * Only possible when the firm has Cloud API credentials; without them the
+ * caller falls back to a wa.me hand-off carrying a share link instead.
+ */
+export async function sendWhatsappDocument(
+  to: string,
+  pdf: Uint8Array,
+  filename: string,
+  caption: string,
+): Promise<DeliveryStatus> {
+  const cfg = await getWhatsappConfig();
+  if (!cfg.live) return "Simulated";
+  try {
+    const form = new FormData();
+    form.set("messaging_product", "whatsapp");
+    form.set("type", "application/pdf");
+    form.set("file", new Blob([new Uint8Array(pdf)], { type: "application/pdf" }), filename);
+    const upload = await fetch(`https://graph.facebook.com/v20.0/${cfg.phoneNumberId}/media`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${cfg.accessToken}` },
+      body: form,
+    });
+    if (!upload.ok) return "Failed";
+    const { id } = (await upload.json()) as { id?: string };
+    if (!id) return "Failed";
+
+    const res = await fetch(`https://graph.facebook.com/v20.0/${cfg.phoneNumberId}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cfg.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: waNumber(to),
+        type: "document",
+        document: { id, filename, caption },
+      }),
+    });
+    return res.ok ? "Sent" : "Failed";
+  } catch {
+    return "Failed";
+  }
+}
+
 export async function deliver(
   channel: string,
   to: string,
