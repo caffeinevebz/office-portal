@@ -344,6 +344,23 @@ export const dscCreateSchema = z.object({
 });
 export const dscUpdateSchema = dscCreateSchema.partial();
 
+// Send renewal reminders for chosen certificates, now.
+export const dscRemindSchema = z.object({
+  dscIds: z.array(z.string().trim().min(1)).min(1, "Select at least one certificate"),
+  channels: z.array(z.enum(["Email", "WhatsApp"])).min(1, "Choose a channel"),
+  days: z.number().int().min(0).max(365).optional(),
+});
+
+// Circulate a period's statutory due dates to clients.
+export const bulletinSendSchema = z.object({
+  from: z.coerce.date(),
+  to: z.coerce.date(),
+  laws: z.array(z.enum(["Income Tax", "GST", "MCA"])).default([]),
+  // Omit to write to every active client that can be reached.
+  clientIds: z.array(z.string().trim().min(1)).optional(),
+  channels: z.array(z.enum(["Email", "WhatsApp"])).min(1, "Choose a channel"),
+});
+
 export const packetCreateSchema = z.object({
   receivedFrom: z.string().trim().min(1, "Delivered-by person is required"),
   // Summary line; derived from `items` server-side when the list is used.

@@ -15,6 +15,7 @@ import {
   Eye,
   EyeOff,
   Link2Off,
+  BellRing,
 } from "lucide-react";
 import { useResource, useDebounced, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
@@ -28,6 +29,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Loading, EmptyState } from "@/components/ui/EmptyState";
 import { StatCard } from "@/components/ui/StatCard";
+import { DscReminderModal } from "@/components/DscReminderModal";
 import { DSC_CLASSES, DSC_AUTHORITIES, DSC_STATUSES } from "@/lib/constants";
 import { formatDate, toDateInput, daysUntil, initials, cn } from "@/lib/format";
 
@@ -56,6 +58,9 @@ export default function DscPage() {
   const { can } = useAuth();
   const canManage = can("manageDsc");
   const canDelete = can("deleteDsc");
+  // Writing to clients is a reminders permission, not a register one.
+  const canRemind = can("manageReminders");
+  const [remindOpen, setRemindOpen] = useState(false);
 
   const [q, setQ] = useState("");
   const qd = useDebounced(q);
@@ -86,14 +91,21 @@ export default function DscPage() {
         subtitle="Digital Signature Certificates: validity and token custody"
         actions={
           canManage ? (
-            <Button
-              onClick={() => {
-                setEditing(null);
-                setFormOpen(true);
-              }}
-            >
-              <Plus className="h-4 w-4" /> Add DSC
-            </Button>
+            <div className="flex items-center gap-2">
+              {canRemind && (
+                <Button variant="secondary" onClick={() => setRemindOpen(true)} data-testid="dsc-remind-open">
+                  <BellRing className="h-4 w-4" /> Renewal reminders
+                </Button>
+              )}
+              <Button
+                onClick={() => {
+                  setEditing(null);
+                  setFormOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4" /> Add DSC
+              </Button>
+            </div>
           ) : undefined
         }
       />
@@ -330,6 +342,8 @@ export default function DscPage() {
           )}
         </Modal>
       )}
+
+      {remindOpen && <DscReminderModal onClose={() => setRemindOpen(false)} />}
 
       <ConfirmDialog
         open={!!toDelete}
