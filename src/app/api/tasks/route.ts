@@ -35,6 +35,9 @@ export const GET = route(async (req) => {
   const assigneeId = searchParams.get("assigneeId")?.trim();
   const clientId = searchParams.get("clientId")?.trim();
   const groupId = searchParams.get("groupId")?.trim();
+  // "firm" = raised by the firm, "statutory" = generated from a recurring
+  // schedule (the statutory calendars). Absent/"all" = everything.
+  const source = searchParams.get("source")?.trim();
   const fy = searchParams.get("fy")?.trim();
   const q = searchParams.get("q")?.trim();
 
@@ -52,6 +55,8 @@ export const GET = route(async (req) => {
   // Filter by the client's group ("None" = clients outside any group).
   if (groupId && groupId !== "All")
     and.push({ client: { groupId: groupId === "None" ? null : groupId } });
+  if (source === "firm") where.scheduleId = null;
+  else if (source === "statutory") where.scheduleId = { not: null };
   if (fy && fy !== "All") where.financialYear = fy;
   if (q) {
     and.push({

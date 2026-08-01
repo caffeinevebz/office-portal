@@ -121,3 +121,31 @@ export function describeSchedule(rule: ScheduleRule): string {
       return rule.frequency;
   }
 }
+
+/**
+ * Every occurrence of a rule inside an arbitrary window — including months
+ * already past, which `computeOccurrences` skips because it only ever looks
+ * forward. Used to paint the statutory calendar for the month on screen.
+ */
+export function occurrencesBetween(rule: ScheduleRule, from: Date, to: Date): Occurrence[] {
+  const anchor = Math.min(12, Math.max(1, rule.anchorMonth || 1));
+  const out: Occurrence[] = [];
+  let cur = startOfMonth(from);
+  while (cur <= to) {
+    const year = cur.getFullYear();
+    const m1 = cur.getMonth() + 1;
+    if (isDueMonth(rule.frequency, m1, anchor)) {
+      const day = Math.min(rule.dueDay || 1, daysInMonth(year, m1));
+      const dueDate = new Date(year, m1 - 1, day, 12, 0, 0, 0);
+      if (dueDate >= from && dueDate <= to) {
+        out.push({
+          dueDate,
+          periodKey: `${year}-${String(m1).padStart(2, "0")}`,
+          title: `${rule.title} — ${periodLabel(rule.frequency, dueDate)}`,
+        });
+      }
+    }
+    cur = addMonths(cur, 1);
+  }
+  return out;
+}

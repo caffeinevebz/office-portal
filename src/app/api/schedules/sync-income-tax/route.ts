@@ -1,19 +1,31 @@
 import { prisma } from "@/lib/prisma";
 import { ok, route } from "@/lib/api";
 import { requirePermission } from "@/lib/auth/session";
-import { IT_CALENDAR, IT_CALENDAR_SOURCE } from "@/lib/it-calendar";
+import { STATUTORY_CALENDAR, type StatutoryLaw } from "@/lib/it-calendar";
 
-// Sync the built-in Income Tax Department compliance calendar into the
-// firm's recurring schedules. Idempotent: entries are keyed by sourceKey,
+// Sync the built-in statutory calendars — Income Tax, GST and MCA/ROC — into
+// the firm's recurring schedules. Idempotent: entries are keyed by sourceKey,
 // so re-running updates dates in place and never duplicates. Schedules the
 // user deactivated stay deactivated.
-export const POST = route(async () => {
+//
+// POST { law?: "Income Tax" | "GST" | "MCA" } syncs one calendar; omit it to
+// sync all three.
+const SOURCE: Record<StatutoryLaw, string> = {
+  "Income Tax": "income-tax",
+  GST: "gst",
+  MCA: "mca",
+};
+
+export const POST = route(async (req) => {
   await requirePermission("manageSchedules");
+  const body = (await req.json().catch(() => ({}))) as { law?: string };
+  const wanted = body.law && body.law !== "All" ? body.law : null;
+  const entries = STATUTORY_CALENDAR.filter((e) => !wanted || e.law === wanted);
 
   let created = 0;
   let updated = 0;
-  for (const e of IT_CALENDAR) {
-    const sourceKey = `${IT_CALENDAR_SOURCE}:${e.key}`;
+  for (const e of entries) {
+    const sourceKey = `${SOURCE[e.law]}:${e.key}`;
     const existing = await prisma.complianceSchedule.findUnique({ where: { sourceKey } });
     if (!existing) {
       await prisma.complianceSchedule.create({
@@ -25,7 +37,7 @@ export const POST = route(async () => {
           anchorMonth: e.anchorMonth,
           priority: e.priority,
           notes: e.notes,
-          source: IT_CALENDAR_SOURCE,
+          source: SOURCE[e.law],
           sourceKey,
         },
       });
@@ -58,7 +70,8 @@ export const POST = route(async () => {
   return ok({
     created,
     updated,
-    unchanged: IT_CALENDAR.length - created - updated,
-    total: IT_CALENDAR.length,
+    unchanged: entries.length - created - updated,
+    total: entries.length,
+    law: wanted ?? "All",
   });
 });
