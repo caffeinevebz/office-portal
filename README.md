@@ -33,11 +33,11 @@ beside a clean sign-in card; stacked on phones).
 | **Team** | Manage partners, managers, accountants and article assistants, with their open-task load. **Enrol new members by email invitation**: send an invite link (7-day expiry), the invitee sets their own password on a public accept page, and pending invites can be revoked. |
 | **Access Control** | Admins can **add user categories (roles)** and **edit each category's access level** in a permission × role grid — grouped by area, with per-permission toggles. Built-in roles can be re-tuned; the Partner role is the locked super-admin so a firm can never lock itself out. |
 | **Documents** | A register of statutory documents (PAN, GST, ITR, financials, agreements) linked to clients. |
-| **DSC Register** | Digital Signature Certificates per client signatory: class, authority, the **DSC PIN/password** needed to use the token (stored masked, revealed on demand), validity with expiry countdowns, and a physical-token custody in/out register stamped with the acting user. **Holders not yet linked to a client are highlighted** (amber row + banner count) so they can be mapped. DSC expiries feed the reminders engine. |
+| **DSC Register** | Digital Signature Certificates per client signatory: class, authority, the **DSC PIN/password** needed to use the token (stored masked, revealed on demand), validity with expiry countdowns, and a physical-token custody in/out register stamped with the acting user. **Holders not yet linked to a client are highlighted** (amber row + banner count) so they can be mapped. DSC expiries feed the reminders engine, and **Renewal reminders** writes to the holders on demand — every certificate expired or expiring within 30 days, each listed with the address it will go to, pick the ones to write to and send. |
 | **Inward/Outward Register** | The office's physical-document register, digitized: every packet of originals received gets an auto-issued inward number (IN-2627-001…) with the deliverer, mode/courier docket and storage location. The **documents received are entered as a list** (one row per document/file), so returning them to the client means **simply selecting from that list** — a dispatch ticks the chosen documents off (issuing an outward number), the entry shows *Partly returned* with an n/m count until everything is back with the client, and documents can be received back the same way. The movement trail records exactly **which documents moved in each dispatch/receipt**. Legacy free-text entries convert to the list on their next edit. Long-held packets (90+ days) are flagged. |
 | **Calendar** | A month view showing the **statutory due dates prescribed by law — Income Tax, GST and MCA/ROC** — alongside the firm's own deadlines. The statutory dates need no setup: they are computed from the built-in calendars, so every month (past or future) is painted the moment you navigate to it. Each law can be **toggled on or off** with a chip, day cells tint statutory rows by law (violet = Income Tax, green = GST, amber = MCA/ROC), the header counts *N statutory due date(s) · M firm deadline(s)*, and a list beneath the grid spells out the month's statutory dates with the legal note for each (e.g. *"20 Aug — GSTR-3B, summary return and tax payment for the preceding month"*). |
 | **Recurring** *(a tab within Tasks)* | A statutory calendar of recurring obligations (monthly GST, quarterly TDS/advance tax, annual ITR/ROC…) that auto-generates the upcoming deadline tasks — idempotently. One click **syncs a statutory calendar — Income Tax, GST or MCA/ROC (or all three)** — into the list; re-syncing updates dates in place and never duplicates. An obligation can be created for **one client, several clients at once, or every active client** — each client gets their own copy, so their deadlines generate and can be assigned independently. |
-| **Deadline reminders** | Email & WhatsApp nudges for tasks that are due soon or overdue, to the assignee and/or client, with a preview, a delivery log and configurable lead time. |
+| **Deadline reminders** | Email & WhatsApp nudges for tasks that are due soon or overdue, to the assignee and/or client, with a preview, a delivery log and configurable lead time. Two things can also be sent **on demand**: **DSC renewal reminders** to the holders whose certificates have lapsed or lapse within 30 days, and a **statutory due-date circular** to every client listing the Income Tax / GST / MCA dates falling in a period. |
 | **Login & roles** | Session-based sign-in with role-based access, enforced on both the API and the UI. Roles are dynamic: the built-in five ship with sensible defaults, and admins can add custom roles and adjust any role's permissions from **Access Control**. A **Forgot password?** flow emails a one-time reset link (60-minute expiry). |
 | **Mobile & PWA** | Fully responsive on phones, plus a web-app manifest: open the site on a phone and *Add to Home Screen* to install Ledgify like an app (full-screen, own icon). |
 | **Quick-access PIN** | Any member can set a **4-digit PIN** from their profile menu; the sign-in screen then offers one-tap PIN unlock for that device (5 wrong attempts lock the PIN until a password sign-in). |
@@ -210,7 +210,32 @@ The **Reminders** page sends nudges for open tasks that are **due within N days
 or overdue**. Configure who is notified (the assigned staff member and/or the
 client) and on which channels (email, WhatsApp), preview exactly what will go
 out, and run it. Each recipient/channel is deduplicated per day, so running it
-repeatedly never double-sends. Every send is written to a **delivery log**.
+repeatedly never double-sends. Every send is written to a **delivery log**, and
+every message is signed with the **firm's own name**, taken from the billing
+organization.
+
+### Sending on demand
+
+Two things do not wait for the nightly run:
+
+**DSC renewal reminders.** *Renewal reminders* on the DSC Register lists every
+certificate that has **expired or expires within 30 days**, each with its
+holder, client, expiry and the address it would be written at — the holder's
+own email/phone, falling back to their client's. Holders with neither are shown
+but cannot be selected. Pick the ones to write to, choose email and/or
+WhatsApp, and send. Because it is a deliberate act it is **not** suppressed by
+the day's automatic run, and every message still lands in the delivery log.
+
+**A statutory due-date circular.** On the Reminders page, *Statutory due-date
+circular* writes to **every client at once** with the dates falling in a
+period — this month, next month or a custom range — under whichever of Income
+Tax, GST and MCA/ROC you tick. The dates come from the built-in calendars, so
+nobody types them out, and each client gets **one message covering all of
+them** rather than one per date. Before sending you can read the exact message
+a client will receive, see how many will be reached on each channel, and
+deselect any client. Re-sending the same period is skipped (one circular per
+client per period), while the next period's goes out normally. The circular
+says plainly that not every date listed will apply to every client.
 
 Delivery is **pluggable and dependency-free**:
 

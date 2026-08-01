@@ -19,6 +19,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Loading, EmptyState } from "@/components/ui/EmptyState";
+import { StatutoryBulletinCard } from "@/components/StatutoryBulletin";
 import { formatDate, dueLabel, daysUntil, cn } from "@/lib/format";
 
 type Preview = {
@@ -131,6 +132,9 @@ export default function RemindersPage() {
               {runMsg}
             </div>
           )}
+
+          {/* One circular to everyone with the period's statutory dates */}
+          <StatutoryBulletinCard canManage={canManage} onSent={refreshAll} />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             {/* Settings */}

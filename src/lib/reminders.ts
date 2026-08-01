@@ -3,6 +3,7 @@ import { startOfDay, addDays, format } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { formatDate, dueLabel } from "@/lib/format";
 import { deliver } from "@/lib/notify";
+import { getDefaultOrg } from "@/lib/org";
 
 export type ReminderCandidate = {
   taskId: string | null;
@@ -19,6 +20,18 @@ export type ReminderCandidate = {
 };
 
 type TaskWithRefs = Awaited<ReturnType<typeof loadDueTasks>>[number];
+
+/**
+ * How the firm signs off on anything it sends a client. Read from the billing
+ * organization, so a firm's own name appears on its reminders — these used to
+ * carry the demo firm's name regardless of who was running the portal.
+ */
+export async function firmSignature(): Promise<{ name: string; full: string }> {
+  const org = await getDefaultOrg();
+  const name = org?.name?.trim() || "your Chartered Accountants";
+  const tagline = org?.tagline?.trim();
+  return { name, full: tagline ? `${name}, ${tagline}` : name };
+}
 
 /** Get the singleton settings row, creating it with defaults if absent. */
 export async function getSettings() {
@@ -43,6 +56,7 @@ function render(
   name: string,
   task: TaskWithRefs,
   due: Date,
+  firm: { name: string; full: string },
 ) {
   const firstName = name.replace(/^CA\s+/, "").split(" ")[0];
   const forClient = task.client ? ` for ${task.client.name}` : "";
@@ -52,30 +66,43 @@ function render(
   if (channel === "WhatsApp") {
     const body =
       recipientType === "Client"
-        ? `Dear ${firstName}, a reminder from Sharma & Associates: *${task.title}* is due on ${formatDate(due)}. Please share the required details/documents at the earliest. Thank you.`
-        : `⏰ *${task.title}*${forClient} — ${status} (due ${formatDate(due)}). Priority: ${task.priority}. — Sharma & Associates`;
+        ? `Dear ${firstName}, a reminder from ${firm.name}: *${task.title}* is due on ${formatDate(due)}. Please share the required details/documents at the earliest. Thank you.`
+        : `⏰ *${task.title}*${forClient} — ${status} (due ${formatDate(due)}). Priority: ${task.priority}. — ${firm.name}`;
     return { subject, body };
   }
 
   const body =
     recipientType === "Client"
-      ? `Dear ${firstName},\n\nThis is a reminder from Sharma & Associates regarding "${task.title}", due on ${formatDate(due)}. Kindly share the required information/documents at the earliest so we can complete it on time.\n\nWarm regards,\nSharma & Associates, Chartered Accountants`
-      : `Hi ${firstName},\n\nReminder: "${task.title}"${forClient} is ${status} (due ${formatDate(due)}).\nCategory: ${task.category} · Priority: ${task.priority}.\n\nOpen Ledgify to update its status.\n\n— Sharma & Associates · Ledgify`;
+      ? `Dear ${firstName},\n\nThis is a reminder from ${firm.name} regarding "${task.title}", due on ${formatDate(due)}. Kindly share the required information/documents at the earliest so we can complete it on time.\n\nWarm regards,\n${firm.full}`
+      : `Hi ${firstName},\n\nReminder: "${task.title}"${forClient} is ${status} (due ${formatDate(due)}).\nCategory: ${task.category} · Priority: ${task.priority}.\n\nOpen Ledgify to update its status.\n\n— ${firm.name} · Ledgify`;
   return { subject, body };
 }
 
-/** DSC expiry reminders: to the holder (or client contact) for certificates
- *  expiring within the DSC lead window, or already expired but still Active. */
-async function computeDscCandidates(
-  settings: Awaited<ReturnType<typeof getSettings>>,
-  channels: ("Email" | "WhatsApp")[],
-  todayIso: string,
-): Promise<ReminderCandidate[]> {
-  if (!settings.notifyDscExpiry) return [];
-  const horizon = addDays(startOfDay(new Date()), settings.dscLeadDays);
+/**
+ * Renewal reminders for certificates that have expired, or expire within
+ * `days`. Shared by the nightly run and the "send now" action on the DSC
+ * register, so a manual send says exactly what the automatic one would.
+ *
+ * `dscIds` narrows it to a hand-picked set (the manual path); omit it for
+ * every certificate inside the window.
+ */
+export async function dscRenewalCandidates(opts: {
+  days: number;
+  channels: ("Email" | "WhatsApp")[];
+  firm: { name: string; full: string };
+  dscIds?: string[];
+  todayIso?: string;
+}): Promise<ReminderCandidate[]> {
+  const today = startOfDay(new Date());
+  const todayIso = opts.todayIso ?? format(today, "yyyy-MM-dd");
+  const horizon = addDays(today, opts.days);
 
   const dscs = await prisma.dsc.findMany({
-    where: { status: "Active", expiryDate: { lte: horizon } },
+    where: {
+      status: "Active",
+      expiryDate: { lte: horizon },
+      ...(opts.dscIds?.length ? { id: { in: opts.dscIds } } : {}),
+    },
     include: { client: true },
     orderBy: { expiryDate: "asc" },
   });
@@ -86,16 +113,19 @@ async function computeDscCandidates(
     const firstName = name.split(" ")[0];
     const email = d.email || d.client?.email || null;
     const phone = d.phone || d.client?.phone || null;
-    const expired = d.expiryDate < startOfDay(new Date());
+    const expired = d.expiryDate < today;
     const subject = `Reminder: DSC of ${name} ${expired ? "has expired" : `expires ${formatDate(d.expiryDate)}`}`;
 
-    for (const channel of channels) {
+    for (const channel of opts.channels) {
       const to = channel === "Email" ? email : phone;
       if (!to) continue;
+      const when = expired
+        ? `expired on ${formatDate(d.expiryDate)}`
+        : `expires on ${formatDate(d.expiryDate)}`;
       const body =
         channel === "WhatsApp"
-          ? `Dear ${firstName}, your ${d.class} DSC${d.client ? ` (${d.client.name})` : ""} ${expired ? `expired on ${formatDate(d.expiryDate)}` : `expires on ${formatDate(d.expiryDate)}`}. Please arrange renewal to avoid filing delays. — Sharma & Associates`
-          : `Dear ${firstName},\n\nYour ${d.class} Digital Signature Certificate${d.client ? ` associated with ${d.client.name}` : ""} ${expired ? `expired on ${formatDate(d.expiryDate)}` : `expires on ${formatDate(d.expiryDate)}`}.\n\nPlease arrange its renewal at the earliest so statutory filings are not delayed. We can assist with the renewal process.\n\nWarm regards,\nSharma & Associates, Chartered Accountants`;
+          ? `Dear ${firstName}, your ${d.class} DSC${d.client ? ` (${d.client.name})` : ""} ${when}. Please arrange renewal to avoid filing delays. — ${opts.firm.name}`
+          : `Dear ${firstName},\n\nYour ${d.class} Digital Signature Certificate${d.client ? ` associated with ${d.client.name}` : ""} ${when}.\n\nPlease arrange its renewal at the earliest so statutory filings are not delayed. We can assist with the renewal process.\n\nWarm regards,\n${opts.firm.full}`;
       out.push({
         taskId: null,
         taskTitle: `DSC expiry: ${name} (${d.class})`,
@@ -129,8 +159,11 @@ export async function computeCandidates(
   if (settings.channelWhatsapp) channels.push("WhatsApp");
   if (channels.length === 0) return [];
 
+  const firm = await firmSignature();
   const tasks = await loadDueTasks(horizon);
-  const out: ReminderCandidate[] = await computeDscCandidates(settings, channels, todayIso);
+  const out: ReminderCandidate[] = settings.notifyDscExpiry
+    ? await dscRenewalCandidates({ days: settings.dscLeadDays, channels, firm, todayIso })
+    : [];
 
   for (const t of tasks) {
     const due = t.dueDate!;
@@ -156,7 +189,7 @@ export async function computeCandidates(
       for (const channel of channels) {
         const to = channel === "Email" ? r.email : r.phone;
         if (!to) continue;
-        const { subject, body } = render(channel, r.type, r.name, t, due);
+        const { subject, body } = render(channel, r.type, r.name, t, due, firm);
         out.push({
           taskId: t.id,
           taskTitle: t.title,
@@ -176,21 +209,45 @@ export async function computeCandidates(
   return out;
 }
 
-/** Send (or simulate) all due reminders, skipping ones already sent today. */
-export async function runReminders() {
-  const settings = await getSettings();
-  const candidates = await computeCandidates(settings);
+export type SendResult = {
+  total: number;
+  sent: number;
+  simulated: number;
+  failed: number;
+  skipped: number;
+};
 
-  const result = { total: candidates.length, sent: 0, simulated: 0, failed: 0, skipped: 0 };
+/**
+ * Deliver a set of candidates and log every one. Anything already logged
+ * under the same dedupe key is skipped, so re-running — or clicking "send"
+ * twice — never double-messages a client.
+ *
+ * `force` bypasses that for a deliberate manual send: the operator asked for
+ * it, so it goes out even if the nightly run already covered it today.
+ */
+export async function sendCandidates(
+  candidates: ReminderCandidate[],
+  opts: { force?: boolean } = {},
+): Promise<SendResult> {
+  const result: SendResult = {
+    total: candidates.length,
+    sent: 0,
+    simulated: 0,
+    failed: 0,
+    skipped: 0,
+  };
   if (candidates.length === 0) return result;
 
-  const existing = await prisma.notificationLog.findMany({
-    where: { dedupeKey: { in: candidates.map((c) => c.dedupeKey) } },
-    select: { dedupeKey: true },
-  });
-  const seen = new Set(existing.map((e) => e.dedupeKey));
-  const fresh = candidates.filter((c) => !seen.has(c.dedupeKey));
-  result.skipped = candidates.length - fresh.length;
+  let fresh = candidates;
+  if (!opts.force) {
+    const existing = await prisma.notificationLog.findMany({
+      where: { dedupeKey: { in: candidates.map((c) => c.dedupeKey) } },
+      select: { dedupeKey: true },
+    });
+    const seen = new Set(existing.map((e) => e.dedupeKey));
+    fresh = candidates.filter((c) => !seen.has(c.dedupeKey));
+    result.skipped = candidates.length - fresh.length;
+  }
 
   for (const c of fresh) {
     const status = await deliver(c.channel, c.to, c.subject, c.body);
@@ -207,9 +264,16 @@ export async function runReminders() {
         body: c.body,
         status,
         taskId: c.taskId,
-        dedupeKey: c.dedupeKey,
+        // A forced re-send must not collide with the entry already logged.
+        dedupeKey: opts.force ? `${c.dedupeKey}:${Date.now()}` : c.dedupeKey,
       },
     });
   }
   return result;
+}
+
+/** Send (or simulate) all due reminders, skipping ones already sent today. */
+export async function runReminders() {
+  const settings = await getSettings();
+  return sendCandidates(await computeCandidates(settings));
 }
