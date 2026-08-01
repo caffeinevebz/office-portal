@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Search,
   Plus,
@@ -13,6 +13,7 @@ import {
   Receipt,
   ShieldCheck,
   HelpCircle,
+  Landmark,
   X,
 } from "lucide-react";
 import { useResource, useDebounced, apiMutate } from "@/lib/useApi";
@@ -103,7 +104,10 @@ function checklistDone(list: ChecklistItem[] | null | undefined) {
 }
 
 type FormState = Partial<Task>;
-type Tab = "tasks" | "recurring";
+// The register is split three ways so one list never mixes concerns: work the
+// firm raised, deadlines the statutory calendars generated, and the recurring
+// definitions themselves.
+type Tab = "tasks" | "statutory" | "recurring";
 
 export default function TasksPage() {
   const { can, user } = useAuth();
@@ -130,11 +134,23 @@ export default function TasksPage() {
   const fys = financialYears(new Date(), 6);
 
   const qd = useDebounced(q);
+  // The service-type filter is applied in the browser so the chips can show a
+  // live count per service without a round trip for every click.
+  const source = tab === "statutory" ? "statutory" : "firm";
   const url =
     `/api/tasks?view=${view}&q=${encodeURIComponent(qd)}&status=${status}` +
-    `&category=${encodeURIComponent(category)}&assigneeId=${assignee}&fy=${encodeURIComponent(fy)}` +
+    `&source=${source}&assigneeId=${assignee}&fy=${encodeURIComponent(fy)}` +
     `&groupId=${encodeURIComponent(group)}`;
   const { data, loading, error, refresh, setData } = useResource<Task[]>(url);
+
+  // Tasks per service type, for the chip counts — over the whole (unfiltered
+  // by category) list, so every chip shows its true size.
+  const counts = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const t of data ?? []) map[t.category] = (map[t.category] ?? 0) + 1;
+    return map;
+  }, [data]);
+  const rows = (data ?? []).filter((t) => category === "All" || t.category === category);
 
   // Apply a PATCH result to the list in place — no full refetch per click.
   // A task whose status leaves the current view (e.g. completed while looking
@@ -206,7 +222,7 @@ export default function TasksPage() {
         >
           <Plus className="h-4 w-4" /> New Task
         </Button>
-      ) : canRecur ? (
+      ) : tab === "recurring" && canRecur ? (
         <AddRecurringButton onClick={() => setAddRecurring((n) => n + 1)} />
       ) : undefined;
 
@@ -215,16 +231,23 @@ export default function TasksPage() {
       <PageHeader
         title="Tasks"
         subtitle={
-          seeAll
-            ? "Income-tax, TDS, GST, MCA/ROC, audit & registration engagements — one-time or recurring"
-            : "Your work — tasks where you are an assignee or the approver"
+          !seeAll
+            ? "Your work — tasks where you are an assignee or the approver"
+            : tab === "statutory"
+              ? "Deadlines generated from the Income Tax, GST and MCA/ROC calendars"
+              : tab === "recurring"
+                ? "Recurring obligations — the definitions your dated tasks are generated from"
+                : "Work raised by the firm — income-tax, TDS, GST, MCA/ROC, audit & registration engagements"
         }
         actions={headerAction}
       />
 
-      <div className="mb-4 flex gap-1 border-b border-slate-200">
+      <div className="mb-4 flex gap-1 overflow-x-auto border-b border-slate-200">
         <TabButton active={tab === "tasks"} onClick={() => setTab("tasks")} icon={ClipboardList}>
           Tasks
+        </TabButton>
+        <TabButton active={tab === "statutory"} onClick={() => setTab("statutory")} icon={Landmark}>
+          Statutory
         </TabButton>
         <TabButton active={tab === "recurring"} onClick={() => setTab("recurring")} icon={Repeat}>
           Recurring
@@ -235,6 +258,23 @@ export default function TasksPage() {
         <RecurringPanel addSignal={addRecurring} />
       ) : (
         <>
+          {tab === "statutory" && (
+            <div className="mb-4 flex items-start gap-2 rounded-xl border border-fern-200 bg-fern-50/60 px-4 py-3 text-sm text-fern-800">
+              <Landmark className="mt-0.5 h-4 w-4 shrink-0 text-fern-600" />
+              <p>
+                These deadlines come from the statutory calendars, so they stay out of the firm&apos;s own
+                task list. Sync a calendar and generate its dates from the{" "}
+                <button
+                  onClick={() => setTab("recurring")}
+                  className="font-medium underline underline-offset-2 hover:text-fern-900"
+                >
+                  Recurring
+                </button>{" "}
+                tab.
+              </p>
+            </div>
+          )}
+
           <div className="mb-4 inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
             <ViewButton active={view === "Active"} onClick={() => setView("Active")}>
               In Progress
@@ -258,7 +298,6 @@ export default function TasksPage() {
               {view === "Active" && (
                 <FilterSelect value={status} onChange={setStatus} label="status" options={TASK_STATUSES} />
               )}
-              <FilterSelect value={category} onChange={setCategory} label="category" options={TASK_CATEGORIES} />
               <select
                 value={fy}
                 onChange={(e) => setFy(e.target.value)}
@@ -302,6 +341,9 @@ export default function TasksPage() {
                 </select>
               )}
             </div>
+            {/* Service type: one chip per practice area, each with its live
+                count, so a service's work is one click away. */}
+            <ServiceChips value={category} onChange={setCategory} counts={counts} total={(data ?? []).length} />
           </Card>
 
           <Card>
@@ -309,14 +351,22 @@ export default function TasksPage() {
               <Loading label="Loading tasks…" />
             ) : error ? (
               <p className="p-6 text-sm text-rose-600">Failed to load: {error}</p>
-            ) : !data || data.length === 0 ? (
+            ) : rows.length === 0 ? (
               <EmptyState
-                icon={view === "Completed" ? FileCheck2 : ClipboardList}
-                title={view === "Completed" ? "No completed tasks yet" : "No tasks match"}
+                icon={tab === "statutory" ? Landmark : view === "Completed" ? FileCheck2 : ClipboardList}
+                title={
+                  tab === "statutory"
+                    ? "No statutory deadlines here"
+                    : view === "Completed"
+                      ? "No completed tasks yet"
+                      : "No tasks match"
+                }
                 message={
-                  view === "Completed"
-                    ? "Tasks you complete will be listed here, keeping the in-progress list clear."
-                    : "Adjust the filters or create a new task."
+                  tab === "statutory"
+                    ? "Sync the Income Tax, GST or MCA calendar in the Recurring tab, then generate its dates."
+                    : view === "Completed"
+                      ? "Tasks you complete will be listed here, keeping the in-progress list clear."
+                      : "Adjust the filters or create a new task."
                 }
               />
             ) : (
@@ -334,7 +384,7 @@ export default function TasksPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {data.map((t) => {
+                    {rows.map((t) => {
                       const overdue = t.status !== "Completed" && (daysUntil(t.dueDate) ?? 0) < 0;
                       const meta = taskMeta(t);
                       const chk = checklistDone(t.checklist);
@@ -350,10 +400,14 @@ export default function TasksPage() {
                         <tr key={t.id} className="hover:bg-slate-50">
                           <td className="px-5 py-3">
                             <div className="flex flex-wrap items-center gap-2">
-                              {t.scheduleId && (
-                                <Repeat className="h-3.5 w-3.5 shrink-0 text-brand-400" aria-label="Recurring" />
-                              )}
-                              <span className="font-medium text-slate-800">{t.title}</span>
+                              {/* The recurring marker stays glued to the title
+                                  so it never wraps onto a line of its own. */}
+                              <span className="flex items-center gap-1.5 font-medium text-slate-800">
+                                {t.scheduleId && (
+                                  <Repeat className="h-3.5 w-3.5 shrink-0 text-brand-400" aria-label="Recurring" />
+                                )}
+                                {t.title}
+                              </span>
                               <Badge tone={CATEGORY_TONE[t.category]}>{t.category}</Badge>
                               {chk && (
                                 <button
@@ -642,6 +696,78 @@ function TabButton({
       <Icon className="h-4 w-4" />
       {children}
     </button>
+  );
+}
+
+// Chip tints per service type — the same colour family the category badge
+// uses, so a service reads the same everywhere in the app.
+const SERVICE_CHIP: Record<string, { on: string; off: string }> = {
+  All: { on: "bg-slate-800 text-white ring-slate-800", off: "bg-white text-slate-600 ring-slate-300 hover:bg-slate-50" },
+  "Income Tax": { on: "bg-violet-600 text-white ring-violet-600", off: "bg-violet-50 text-violet-700 ring-violet-200 hover:bg-violet-100" },
+  TDS: { on: "bg-blue-600 text-white ring-blue-600", off: "bg-blue-50 text-blue-700 ring-blue-200 hover:bg-blue-100" },
+  GST: { on: "bg-indigo-600 text-white ring-indigo-600", off: "bg-indigo-50 text-indigo-700 ring-indigo-200 hover:bg-indigo-100" },
+  "MCA/ROC": { on: "bg-amber-600 text-white ring-amber-600", off: "bg-amber-50 text-amber-800 ring-amber-200 hover:bg-amber-100" },
+  Audit: { on: "bg-rose-600 text-white ring-rose-600", off: "bg-rose-50 text-rose-700 ring-rose-200 hover:bg-rose-100" },
+  Registration: { on: "bg-fern-600 text-white ring-fern-600", off: "bg-fern-50 text-fern-700 ring-fern-200 hover:bg-fern-100" },
+  Other: { on: "bg-slate-600 text-white ring-slate-600", off: "bg-slate-50 text-slate-600 ring-slate-200 hover:bg-slate-100" },
+};
+
+/**
+ * Service-type filter — one chip per practice area with its live count, so
+ * "show me only the GST work" is a single click instead of a dropdown hunt.
+ */
+function ServiceChips({
+  value,
+  onChange,
+  counts,
+  total,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  counts: Record<string, number>;
+  total: number;
+}) {
+  // Every master category is offered; ones with no work read as muted zeros
+  // so the register's shape stays visible at a glance.
+  const items: { key: string; count: number }[] = [
+    { key: "All", count: total },
+    ...TASK_CATEGORIES.map((c) => ({ key: c as string, count: counts[c] ?? 0 })),
+    // Legacy values that survived a rename still deserve a chip when present.
+    ...Object.keys(counts)
+      .filter((c) => !TASK_CATEGORIES.includes(c as (typeof TASK_CATEGORIES)[number]))
+      .map((c) => ({ key: c, count: counts[c] })),
+  ];
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 px-3 py-2.5">
+      <span className="mr-0.5 text-xs font-medium text-slate-400">Service</span>
+      {items.map(({ key, count }) => {
+        const active = value === key;
+        const style = SERVICE_CHIP[key] ?? SERVICE_CHIP.Other;
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={() => onChange(key)}
+            data-testid={`service-chip-${key}`}
+            aria-pressed={active}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition-colors",
+              active ? style.on : count === 0 ? "bg-white text-slate-400 ring-slate-200 hover:bg-slate-50" : style.off,
+            )}
+          >
+            {key}
+            <span
+              className={cn(
+                "rounded-full px-1.5 text-[10px] tabular-nums",
+                active ? "bg-white/25" : "bg-white/70",
+              )}
+            >
+              {count}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

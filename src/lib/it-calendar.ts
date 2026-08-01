@@ -1,15 +1,24 @@
-// The Income Tax Department's statutory compliance calendar
-// (incometax.gov.in → Compliance Calendar), expressed as recurring
-// schedules the generation engine understands. Syncing upserts these as
-// firm-wide schedules keyed by `sourceKey`, so re-syncs are idempotent and
-// never duplicate — and any dates the department revises are updated in place.
+// The statutory compliance calendar the app ships with: the Income Tax
+// Department's calendar (incometax.gov.in), the GST return calendar, and the
+// MCA/ROC filing calendar — expressed as recurring schedules the generation
+// engine understands. Syncing upserts these as firm-wide schedules keyed by
+// `sourceKey`, so re-syncs are idempotent and never duplicate — and any dates
+// revised by the department are updated in place.
+//
+// Half-yearly obligations are written as two annual entries (one per due
+// month), which keeps the schedule engine's three frequencies sufficient.
 
 export const IT_CALENDAR_SOURCE = "income-tax";
+
+/** The law a statutory due date arises under. */
+export const STATUTORY_LAWS = ["Income Tax", "GST", "MCA"] as const;
+export type StatutoryLaw = (typeof STATUTORY_LAWS)[number];
 
 export type ItCalendarEntry = {
   key: string; // stable identifier → ComplianceSchedule.sourceKey
   title: string;
   category: string; // Task category
+  law?: StatutoryLaw; // which statute it arises under (defaults to Income Tax)
   frequency: "Monthly" | "Quarterly" | "Annually";
   dueDay: number;
   anchorMonth: number; // 1-12; for Annually = the due month
@@ -138,4 +147,290 @@ export const IT_CALENDAR: ItCalendarEntry[] = [
     priority: "Medium",
     notes: "u/s 139(4)/139(5): belated or revised returns for the assessment year, due 31 December.",
   },
+];
+
+// ---------------------------------------------------------------------------
+// GST return calendar (CGST Act & rules). Monthly filers and QRMP filers have
+// different dates; both are listed so a firm can keep whichever apply.
+// ---------------------------------------------------------------------------
+const GST_ENTRIES: ItCalendarEntry[] = [
+  {
+    key: "gstr-7-tds",
+    title: "GSTR-7 – TDS under GST",
+    category: "GST",
+    law: "GST",
+    frequency: "Monthly",
+    dueDay: 10,
+    anchorMonth: 4,
+    priority: "Medium",
+    notes: "Return by deductors of tax at source under GST, for the preceding month.",
+  },
+  {
+    key: "gstr-8-tcs",
+    title: "GSTR-8 – TCS by e-commerce operators",
+    category: "GST",
+    law: "GST",
+    frequency: "Monthly",
+    dueDay: 10,
+    anchorMonth: 4,
+    priority: "Medium",
+    notes: "Statement of tax collected at source by e-commerce operators, for the preceding month.",
+  },
+  {
+    key: "gstr-1-monthly",
+    title: "GSTR-1 – outward supplies (monthly filers)",
+    category: "GST",
+    law: "GST",
+    frequency: "Monthly",
+    dueDay: 11,
+    anchorMonth: 4,
+    priority: "High",
+    notes: "Turnover above Rs. 5 crore or monthly filers: details of outward supplies for the preceding month.",
+  },
+  {
+    key: "gstr-6-isd",
+    title: "GSTR-6 – Input Service Distributor",
+    category: "GST",
+    law: "GST",
+    frequency: "Monthly",
+    dueDay: 13,
+    anchorMonth: 4,
+    priority: "Medium",
+    notes: "Return by an Input Service Distributor for the preceding month.",
+  },
+  {
+    key: "gstr-1-qrmp",
+    title: "GSTR-1 (quarterly) / IFF – QRMP filers",
+    category: "GST",
+    law: "GST",
+    frequency: "Quarterly",
+    dueDay: 13,
+    anchorMonth: 7,
+    priority: "High",
+    notes: "QRMP scheme: quarterly GSTR-1 by the 13th of the month following the quarter; the optional IFF for the first two months of a quarter is also due on the 13th.",
+  },
+  {
+    key: "cmp-08",
+    title: "CMP-08 – composition dealers' statement",
+    category: "GST",
+    law: "GST",
+    frequency: "Quarterly",
+    dueDay: 18,
+    anchorMonth: 7,
+    priority: "Medium",
+    notes: "Statement-cum-challan of self-assessed tax by composition taxpayers for the quarter.",
+  },
+  {
+    key: "gstr-3b-monthly",
+    title: "GSTR-3B – summary return (monthly filers)",
+    category: "GST",
+    law: "GST",
+    frequency: "Monthly",
+    dueDay: 20,
+    anchorMonth: 4,
+    priority: "High",
+    notes: "Summary return and tax payment for the preceding month.",
+  },
+  {
+    key: "gstr-3b-qrmp",
+    title: "GSTR-3B (quarterly) – QRMP filers",
+    category: "GST",
+    law: "GST",
+    frequency: "Quarterly",
+    dueDay: 22,
+    anchorMonth: 7,
+    priority: "High",
+    notes: "QRMP scheme: 22nd or 24th of the month following the quarter, by the state group the taxpayer belongs to.",
+  },
+  {
+    key: "pmt-06",
+    title: "PMT-06 – monthly tax payment (QRMP)",
+    category: "GST",
+    law: "GST",
+    frequency: "Monthly",
+    dueDay: 25,
+    anchorMonth: 4,
+    priority: "Medium",
+    notes: "Tax payment for the first two months of a quarter under the QRMP scheme.",
+  },
+  {
+    key: "gstr-4-annual",
+    title: "GSTR-4 – composition annual return",
+    category: "GST",
+    law: "GST",
+    frequency: "Annually",
+    dueDay: 30,
+    anchorMonth: 6,
+    priority: "High",
+    notes: "Annual return by composition taxpayers for the preceding financial year, due 30 June.",
+  },
+  {
+    key: "gstr-9-9c",
+    title: "GSTR-9 / GSTR-9C – annual return & reconciliation",
+    category: "GST",
+    law: "GST",
+    frequency: "Annually",
+    dueDay: 31,
+    anchorMonth: 12,
+    priority: "High",
+    notes: "Annual return (and the reconciliation statement where turnover exceeds Rs. 5 crore) for the preceding financial year, due 31 December.",
+  },
+  {
+    key: "gst-lut",
+    title: "LUT renewal for exports without payment of tax",
+    category: "GST",
+    law: "GST",
+    frequency: "Annually",
+    dueDay: 31,
+    anchorMonth: 3,
+    priority: "Medium",
+    notes: "Furnish a fresh Letter of Undertaking (RFD-11) for the coming financial year before 31 March.",
+  },
+];
+
+// ---------------------------------------------------------------------------
+// MCA / ROC filing calendar (Companies Act 2013 & LLP Act 2008). Dates that
+// run from the AGM assume an AGM held on the last permitted day (30 Sep).
+// ---------------------------------------------------------------------------
+const MCA_ENTRIES: ItCalendarEntry[] = [
+  {
+    key: "msme-1-apr",
+    title: "MSME-1 – half-yearly return (Oct–Mar)",
+    category: "MCA/ROC",
+    law: "MCA",
+    frequency: "Annually",
+    dueDay: 30,
+    anchorMonth: 4,
+    priority: "Medium",
+    notes: "Return of outstanding dues to micro & small enterprises for October–March, due 30 April.",
+  },
+  {
+    key: "llp-form-11",
+    title: "LLP Form 11 – annual return",
+    category: "MCA/ROC",
+    law: "MCA",
+    frequency: "Annually",
+    dueDay: 30,
+    anchorMonth: 5,
+    priority: "High",
+    notes: "Annual return of an LLP for the preceding financial year, due 30 May.",
+  },
+  {
+    key: "pas-6-may",
+    title: "PAS-6 – share capital reconciliation (Oct–Mar)",
+    category: "MCA/ROC",
+    law: "MCA",
+    frequency: "Annually",
+    dueDay: 30,
+    anchorMonth: 5,
+    priority: "Low",
+    notes: "Unlisted public companies: reconciliation of share capital audit report for the half-year ended 31 March, within 60 days.",
+  },
+  {
+    key: "dpt-3",
+    title: "DPT-3 – return of deposits",
+    category: "MCA/ROC",
+    law: "MCA",
+    frequency: "Annually",
+    dueDay: 30,
+    anchorMonth: 6,
+    priority: "High",
+    notes: "Annual return of deposits and outstanding money not treated as deposits as on 31 March, due 30 June.",
+  },
+  {
+    key: "agm",
+    title: "Annual General Meeting",
+    category: "MCA/ROC",
+    law: "MCA",
+    frequency: "Annually",
+    dueDay: 30,
+    anchorMonth: 9,
+    priority: "High",
+    notes: "Within six months of the financial year end, i.e. by 30 September (first AGM: nine months).",
+  },
+  {
+    key: "dir-3-kyc",
+    title: "DIR-3 KYC – directors' KYC",
+    category: "MCA/ROC",
+    law: "MCA",
+    frequency: "Annually",
+    dueDay: 30,
+    anchorMonth: 9,
+    priority: "High",
+    notes: "KYC of every director holding a DIN as on 31 March, due 30 September.",
+  },
+  {
+    key: "adt-1",
+    title: "ADT-1 – auditor appointment",
+    category: "MCA/ROC",
+    law: "MCA",
+    frequency: "Annually",
+    dueDay: 14,
+    anchorMonth: 10,
+    priority: "Medium",
+    notes: "Intimation of auditor appointment within 15 days of the AGM.",
+  },
+  {
+    key: "aoc-4",
+    title: "AOC-4 – financial statements",
+    category: "MCA/ROC",
+    law: "MCA",
+    frequency: "Annually",
+    dueDay: 30,
+    anchorMonth: 10,
+    priority: "High",
+    notes: "Filing of financial statements within 30 days of the AGM.",
+  },
+  {
+    key: "llp-form-8",
+    title: "LLP Form 8 – statement of account & solvency",
+    category: "MCA/ROC",
+    law: "MCA",
+    frequency: "Annually",
+    dueDay: 30,
+    anchorMonth: 10,
+    priority: "High",
+    notes: "Statement of account and solvency of an LLP for the preceding financial year, due 30 October.",
+  },
+  {
+    key: "msme-1-oct",
+    title: "MSME-1 – half-yearly return (Apr–Sep)",
+    category: "MCA/ROC",
+    law: "MCA",
+    frequency: "Annually",
+    dueDay: 31,
+    anchorMonth: 10,
+    priority: "Medium",
+    notes: "Return of outstanding dues to micro & small enterprises for April–September, due 31 October.",
+  },
+  {
+    key: "mgt-7",
+    title: "MGT-7 / MGT-7A – annual return",
+    category: "MCA/ROC",
+    law: "MCA",
+    frequency: "Annually",
+    dueDay: 29,
+    anchorMonth: 11,
+    priority: "High",
+    notes: "Annual return within 60 days of the AGM (MGT-7A for OPCs and small companies).",
+  },
+  {
+    key: "pas-6-nov",
+    title: "PAS-6 – share capital reconciliation (Apr–Sep)",
+    category: "MCA/ROC",
+    law: "MCA",
+    frequency: "Annually",
+    dueDay: 29,
+    anchorMonth: 11,
+    priority: "Low",
+    notes: "Unlisted public companies: reconciliation of share capital audit report for the half-year ended 30 September, within 60 days.",
+  },
+];
+
+/** Every statutory due date the app ships with, tagged by the law it arises
+ *  under. Income-tax entries carry no explicit `law`, so default them. */
+export const STATUTORY_CALENDAR: (ItCalendarEntry & { law: StatutoryLaw })[] = [
+  ...IT_CALENDAR.map((e) => ({ ...e, law: e.law ?? ("Income Tax" as StatutoryLaw) })),
+  ...GST_ENTRIES.map((e) => ({ ...e, law: e.law ?? ("GST" as StatutoryLaw) })),
+  ...MCA_ENTRIES.map((e) => ({ ...e, law: e.law ?? ("MCA" as StatutoryLaw) })),
 ];

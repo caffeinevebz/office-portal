@@ -30,10 +30,18 @@ import {
   STATUTORY_PRESETS,
   CATEGORY_TONE,
 } from "@/lib/constants";
+import { STATUTORY_LAWS } from "@/lib/it-calendar";
 import { describeSchedule, computeOccurrences } from "@/lib/schedule";
 import { formatDate } from "@/lib/format";
 
 type FormState = Partial<ComplianceSchedule>;
+
+// Which statutory calendar an obligation was synced from, for the row badge.
+const SOURCE_LABEL: Record<string, string> = {
+  "income-tax": "IT calendar",
+  gst: "GST calendar",
+  mca: "MCA calendar",
+};
 
 function nextDue(s: ComplianceSchedule) {
   const occ = computeOccurrences(
@@ -61,6 +69,8 @@ export function RecurringPanel({ addSignal }: { addSignal?: number }) {
   const [months, setMonths] = useState(3);
   const [gen, setGen] = useState<{ busy: boolean; msg: string | null }>({ busy: false, msg: null });
   const [sync, setSync] = useState<{ busy: boolean; msg: string | null }>({ busy: false, msg: null });
+  // Which statutory calendar to pull in — one law, or all three at once.
+  const [syncLaw, setSyncLaw] = useState<string>("All");
 
   // The parent's "Add recurring" button bumps addSignal to open the form.
   const seenSignal = useRef(addSignal);
@@ -89,21 +99,22 @@ export function RecurringPanel({ addSignal }: { addSignal?: number }) {
     }
   }
 
-  async function syncIncomeTax() {
+  async function syncCalendar() {
     setSync({ busy: true, msg: null });
     try {
-      const res = (await apiMutate("/api/schedules/sync-income-tax", "POST")) as {
+      const res = (await apiMutate("/api/schedules/sync-income-tax", "POST", { law: syncLaw })) as {
         created: number;
         updated: number;
         unchanged: number;
         total: number;
       };
+      const what = syncLaw === "All" ? "statutory calendars" : `${syncLaw} calendar`;
       setSync({
         busy: false,
         msg:
           res.created === 0 && res.updated === 0
-            ? `Already in sync — all ${res.total} income-tax calendar entries are up to date.`
-            : `Income-tax calendar synced: ${res.created} added, ${res.updated} updated, ${res.unchanged} already current.`,
+            ? `Already in sync — all ${res.total} ${what} entries are up to date.`
+            : `${syncLaw === "All" ? "Statutory calendars" : `${syncLaw} calendar`} synced: ${res.created} added, ${res.updated} updated, ${res.unchanged} already current.`,
       });
       refresh();
     } catch (e) {
@@ -142,15 +153,30 @@ export function RecurringPanel({ addSignal }: { addSignal?: number }) {
             <div className="flex items-start gap-2 text-sm text-slate-600">
               <Landmark className="mt-0.5 h-4 w-4 shrink-0 text-fern-600" />
               <p>
-                Pull the <strong>Income Tax Department&apos;s compliance calendar</strong> (advance tax, TDS payments
-                &amp; returns, ITR &amp; audit due dates, Form 16, SFT) into this list. Re-syncing updates dates in
-                place, never duplicates.
+                Pull the <strong>statutory due-date calendars</strong> — Income Tax (advance tax, TDS payments &amp;
+                returns, ITR &amp; audit dates), GST (GSTR-1/3B, QRMP, annual returns) and MCA/ROC (AOC-4, MGT-7,
+                DIR-3 KYC, DPT-3) — into this list. Re-syncing updates dates in place, never duplicates.
               </p>
             </div>
-            <Button variant="secondary" onClick={syncIncomeTax} disabled={sync.busy} className="shrink-0">
-              <RefreshCw className={`h-4 w-4 ${sync.busy ? "animate-spin" : ""}`} />
-              {sync.busy ? "Syncing…" : "Sync income-tax calendar"}
-            </Button>
+            <div className="flex shrink-0 items-center gap-2">
+              <Select
+                value={syncLaw}
+                onChange={(e) => setSyncLaw(e.target.value)}
+                className="w-auto"
+                aria-label="Statutory calendar to sync"
+              >
+                <option value="All">All calendars</option>
+                {STATUTORY_LAWS.map((l) => (
+                  <option key={l} value={l}>
+                    {l === "MCA" ? "MCA / ROC" : l}
+                  </option>
+                ))}
+              </Select>
+              <Button variant="secondary" onClick={syncCalendar} disabled={sync.busy}>
+                <RefreshCw className={`h-4 w-4 ${sync.busy ? "animate-spin" : ""}`} />
+                {sync.busy ? "Syncing…" : "Sync calendar"}
+              </Button>
+            </div>
           </div>
           {sync.msg && (
             <div className="border-t border-slate-100 bg-fern-50/60 px-4 py-2 text-xs text-fern-700">{sync.msg}</div>
@@ -191,9 +217,9 @@ export function RecurringPanel({ addSignal }: { addSignal?: number }) {
                         <Repeat className="h-3.5 w-3.5 text-brand-400" />
                         <span className="font-medium text-slate-800">{s.title}</span>
                         <Badge tone={CATEGORY_TONE[s.category]}>{s.category}</Badge>
-                        {s.source === "income-tax" && (
+                        {SOURCE_LABEL[s.source ?? ""] && (
                           <Badge tone="amber">
-                            <Landmark className="h-3 w-3" /> IT calendar
+                            <Landmark className="h-3 w-3" /> {SOURCE_LABEL[s.source ?? ""]}
                           </Badge>
                         )}
                         {!s.active && <Badge tone="slate">Paused</Badge>}
@@ -308,6 +334,21 @@ function ScheduleForm({
   const isEdit = !!initial;
   const set = (k: keyof FormState, v: string | number | boolean) => setForm((f) => ({ ...f, [k]: v }));
 
+  // One obligation, many clients: create a separate schedule per client so
+  // each generates (and can be reassigned) on its own. Create mode only —
+  // an existing schedule belongs to exactly one client.
+  const [scope, setScope] = useState<"one" | "many" | "all">("one");
+  const [clientIds, setClientIds] = useState<string[]>([]);
+  const [clientSearch, setClientSearch] = useState("");
+  const toggleClient = (id: string) =>
+    setClientIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  const searchedClients = clients.filter((c) => {
+    const s = clientSearch.trim().toLowerCase();
+    if (!s) return true;
+    return [c.name, c.pan, c.gstin, c.tan, c.group?.code].some((v) => v?.toLowerCase().includes(s));
+  });
+  const activeCount = clients.filter((c) => c.status !== "Inactive").length;
+
   function applyPreset(label: string) {
     const p = STATUTORY_PRESETS.find((x) => x.label === label);
     if (!p) return;
@@ -333,7 +374,10 @@ function ScheduleForm({
         anchorMonth: Number(form.anchorMonth) || 4,
         priority: form.priority,
         active: form.active ?? true,
-        clientId: form.clientId || null,
+        clientId: isEdit || scope === "one" ? form.clientId || null : null,
+        // Fan out to several clients (or every active one) on create.
+        clientIds: !isEdit && scope === "many" && clientIds.length > 0 ? clientIds : undefined,
+        allClients: !isEdit && scope === "all" ? true : undefined,
         assigneeId: form.assigneeId || null,
         notes: form.notes,
       };
@@ -361,8 +405,16 @@ function ScheduleForm({
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={busy || !form.title}>
-            {busy ? "Saving…" : isEdit ? "Save changes" : "Create obligation"}
+          <Button onClick={submit} disabled={busy || !form.title || (scope === "many" && clientIds.length === 0)}>
+            {busy
+              ? "Saving…"
+              : isEdit
+                ? "Save changes"
+                : scope === "many" && clientIds.length > 1
+                  ? `Create for ${clientIds.length} clients`
+                  : scope === "all"
+                    ? `Create for ${activeCount} clients`
+                    : "Create obligation"}
           </Button>
         </>
       }
@@ -424,15 +476,104 @@ function ScheduleForm({
             </Select>
           </Field>
         )}
-        <Field label="Client">
-          <Select value={form.clientId ?? ""} onChange={(e) => set("clientId", e.target.value)}>
-            <option value="">— None / firm-wide —</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
+        <Field
+          label={scope === "one" ? "Client" : "Clients"}
+          className={scope === "one" ? undefined : "sm:col-span-2"}
+          hint={
+            isEdit
+              ? undefined
+              : scope === "many"
+                ? "One obligation is created per selected client."
+                : scope === "all"
+                  ? `One obligation will be created for each of the ${activeCount} active client(s).`
+                  : undefined
+          }
+        >
+          {!isEdit && (
+            <div className="mb-2 inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+              {(
+                [
+                  ["one", "One client"],
+                  ["many", "Several clients"],
+                  ["all", "All active clients"],
+                ] as const
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setScope(k)}
+                  data-testid={`schedule-scope-${k}`}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                    scope === k ? "bg-white text-brand-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {isEdit || scope === "one" ? (
+            <Select value={form.clientId ?? ""} onChange={(e) => set("clientId", e.target.value)}>
+              <option value="">— None / firm-wide —</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          ) : scope === "all" ? (
+            <p className="rounded-lg bg-fern-50 px-3 py-2 text-xs text-fern-800 ring-1 ring-fern-200">
+              Every active client gets their own copy of this obligation, so each client&apos;s deadlines
+              generate and can be assigned separately.
+            </p>
+          ) : (
+            <div className="rounded-lg border border-brand-200 bg-brand-50/40 p-2 shadow-sm">
+              <div className="mb-1.5 flex items-center justify-between px-0.5">
+                <span className="text-xs font-medium text-brand-700">
+                  {clientIds.length > 0 ? `${clientIds.length} selected` : "Select clients"}
+                </span>
+                <div className="flex gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setClientIds((ids) => [...new Set([...ids, ...searchedClients.map((c) => c.id)])])
+                    }
+                    className="text-brand-600 hover:underline"
+                  >
+                    {clientSearch.trim() ? "Select matching" : "Select all"}
+                  </button>
+                  <button type="button" onClick={() => setClientIds([])} className="text-slate-500 hover:underline">
+                    Clear
+                  </button>
+                </div>
+              </div>
+              <input
+                value={clientSearch}
+                onChange={(e) => setClientSearch(e.target.value)}
+                placeholder="Search client by name / PAN / GSTIN…"
+                className="mb-1.5 w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"
+              />
+              <div className="max-h-44 space-y-1 overflow-y-auto rounded-md border border-slate-200 bg-white p-2">
+                {searchedClients.length === 0 && (
+                  <p className="px-1.5 py-1 text-xs text-slate-400">No clients match “{clientSearch}”.</p>
+                )}
+                {searchedClients.map((c) => (
+                  <label
+                    key={c.id}
+                    className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={clientIds.includes(c.id)}
+                      onChange={() => toggleClient(c.id)}
+                      className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                    />
+                    {c.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
         </Field>
         <Field label="Default assignee">
           <Select value={form.assigneeId ?? ""} onChange={(e) => set("assigneeId", e.target.value)}>

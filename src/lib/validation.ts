@@ -296,6 +296,11 @@ export const scheduleCreateSchema = z.object({
   priority: oneOf(TASK_PRIORITIES, "priority").default("Medium"),
   active: z.boolean().default(true),
   clientId: optionalText,
+  // Create the same recurring obligation for several clients in one go —
+  // one schedule per client, so each generates its own dated tasks.
+  clientIds: z.array(z.string().trim().min(1)).optional(),
+  // Apply it to every active client on the register.
+  allClients: z.boolean().optional(),
   assigneeId: optionalText,
   notes: optionalText,
 });
