@@ -1,13 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { ok, parse, route } from "@/lib/api";
-import { requireUser, requirePermission } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { invoiceCreateSchema } from "@/lib/validation";
 import { nextInvoiceNumber, nextReceiptNumber, orgForInvoice } from "@/lib/numbering";
 import { sendReceiptEmail } from "@/lib/receipt-email";
 import type { Prisma } from "@prisma/client";
 
 export const GET = route(async (req) => {
-  await requireUser();
+  await requirePermission("viewInvoices");
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status")?.trim();
   const clientId = searchParams.get("clientId")?.trim();

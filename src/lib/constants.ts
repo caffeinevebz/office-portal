@@ -305,7 +305,19 @@ export function defaultChecklist(
     ]);
   }
   if (category === "GST") {
-    return mk(["Data reconciled with books", "Return prepared", "Return filed & ARN saved"]);
+    // The whole run of a GST return, from the client's papers arriving to the
+    // filing being entered in the register.
+    return mk([
+      "Data / Documents received from client",
+      "GSTR-2B reconciled with purchase register",
+      "Sales register reconciled with books",
+      "Tax liability & ITC computed",
+      "Working shared with client for confirmation",
+      "Tax paid (challan saved)",
+      "Return prepared",
+      "Return filed & ARN saved",
+      "Filing entry recorded (date & ARN)",
+    ]);
   }
   if (category === "Income Tax" && opts.taskType === "ITR Filing") {
     return mk([

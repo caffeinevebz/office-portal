@@ -311,6 +311,11 @@ export const scheduleCreateSchema = z.object({
   allClients: z.boolean().optional(),
   assigneeId: optionalText,
   notes: optionalText,
+  // Template steps copied onto every task this obligation generates.
+  checklist: z
+    .array(z.object({ label: z.string().trim().min(1), done: z.boolean().default(false) }))
+    .nullable()
+    .optional(),
 });
 export const scheduleUpdateSchema = scheduleCreateSchema.partial();
 

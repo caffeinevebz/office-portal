@@ -42,7 +42,7 @@ const NAV: { href: string; label: string; icon: typeof Users; perm?: Permission 
   { href: "/messages", label: "Messages", icon: MessagesSquare },
   { href: "/itr", label: "Filing Register", icon: Landmark },
   // The receipt register lives inside Invoices (one billing module).
-  { href: "/invoices", label: "Invoices", icon: ReceiptIndianRupee },
+  { href: "/invoices", label: "Invoices", icon: ReceiptIndianRupee, perm: "viewInvoices" },
   { href: "/expenses", label: "Reimbursements", icon: Wallet, perm: "raiseExpenses" },
   { href: "/staff", label: "Team", icon: UsersRound },
   { href: "/documents", label: "Documents", icon: FolderClosed },

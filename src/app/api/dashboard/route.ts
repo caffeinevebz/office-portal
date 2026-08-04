@@ -28,6 +28,9 @@ export const GET = route(async () => {
   // Staff-level members see their own task numbers (matching the task list);
   // partners/admins/managers see the whole firm's.
   const viewAll = await roleHasPermission(user.role, "viewAllTasks");
+  // Billing figures are partner-level. Without the permission they are not
+  // merely hidden in the UI — they never leave the server.
+  const seeBilling = await roleHasPermission(user.role, "viewInvoices");
   const taskWhere: Prisma.TaskWhereInput = viewAll
     ? {}
     : {
@@ -65,6 +68,10 @@ export const GET = route(async () => {
       select: { expiryDate: true, clientId: true },
     }),
   ]);
+
+  const openQueries = await prisma.taskQuery.count({
+    where: { status: { not: "Answered" }, task: taskWhere },
+  });
 
   const openTasks = tasks.filter((t) => t.status !== "Completed");
   const overdue = openTasks.filter((t) => t.dueDate && t.dueDate < today);
@@ -144,13 +151,20 @@ export const GET = route(async () => {
       openTasks: openTasks.length,
       overdueTasks: overdue.length,
       dueSoon: dueSoon.length,
-      outstanding,
-      collected,
-      overdueInvoices: invoices.filter((i) => i.status === "Overdue").length,
+      // Points still awaiting a client's answer — what a non-billing member
+      // sees in place of the receivables figure.
+      openQueries,
+      ...(seeBilling
+        ? {
+            outstanding,
+            collected,
+            overdueInvoices: invoices.filter((i) => i.status === "Overdue").length,
+          }
+        : {}),
     },
     statusBreakdown,
     categoryBreakdown,
-    months,
+    months: seeBilling ? months : [],
     upcoming,
     dscSummary,
   });

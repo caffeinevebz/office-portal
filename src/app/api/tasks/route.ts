@@ -10,6 +10,7 @@ import {
   priorityFromDueDate,
 } from "@/lib/constants";
 import { notifyTaskAssignment, notifyTaskApprover } from "@/lib/notifications";
+import { ensureCurrentMonthTasks } from "@/lib/generate";
 import type { Prisma } from "@prisma/client";
 
 // Migrate legacy category values (ROC/MCA, Accounting) to the current master
@@ -28,6 +29,10 @@ async function backfillCategories() {
 export const GET = route(async (req) => {
   const user = await requireUser();
   await backfillCategories();
+  // Recurring obligations become real tasks at the start of the month they
+  // fall due, without anyone pressing a button. Runs once per month per
+  // process and is idempotent, so reads stay cheap.
+  await ensureCurrentMonthTasks();
   const { searchParams } = new URL(req.url);
   const view = searchParams.get("view")?.trim(); // Active (default) or Completed
   const status = searchParams.get("status")?.trim();
