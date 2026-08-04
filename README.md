@@ -38,7 +38,7 @@ beside a clean sign-in card; stacked on phones).
 | **Calendar** | A month view showing the **statutory due dates prescribed by law — Income Tax, GST and MCA/ROC** — alongside the firm's own deadlines. The statutory dates need no setup: they are computed from the built-in calendars, so every month (past or future) is painted the moment you navigate to it. Each law can be **toggled on or off** with a chip, day cells tint statutory rows by law (violet = Income Tax, green = GST, amber = MCA/ROC), the header counts *N statutory due date(s) · M firm deadline(s)*, and a list beneath the grid spells out the month's statutory dates with the legal note for each (e.g. *"20 Aug — GSTR-3B, summary return and tax payment for the preceding month"*). |
 | **Recurring** *(a tab within Tasks)* | A statutory calendar of recurring obligations (monthly GST, quarterly TDS/advance tax, annual ITR/ROC…) that auto-generates the upcoming deadline tasks — idempotently. One click **syncs a statutory calendar — Income Tax, GST or MCA/ROC (or all three)** — into the list; re-syncing updates dates in place and never duplicates. An obligation can be created for **one client, several clients at once, or every active client** — each client gets their own copy, so their deadlines generate and can be assigned independently. |
 | **Deadline reminders** | Email & WhatsApp nudges for tasks that are due soon or overdue, to the assignee and/or client, with a preview, a delivery log and configurable lead time. Two things can also be sent **on demand**: **DSC renewal reminders** to the holders whose certificates have lapsed or lapse within 30 days, and a **statutory due-date circular** to every client listing the Income Tax / GST / MCA dates falling in a period. |
-| **Login & roles** | Session-based sign-in with role-based access, enforced on both the API and the UI. Roles are dynamic: the built-in five ship with sensible defaults, and admins can add custom roles and adjust any role's permissions from **Access Control**. A **Forgot password?** flow emails a one-time reset link (60-minute expiry). |
+| **Login & roles** | Session-based sign-in with role-based access, enforced on both the API and the UI. Roles are dynamic: the built-in five ship with sensible defaults, and admins can add custom roles and adjust any role's permissions from **Access Control**. **Billing is partner-level** — invoices, receipts and the firm's billing figures are visible to Partners and Admins only; other roles get no Invoices tab, no receivables figure and no billing data at all (see below). A **Forgot password?** flow emails a one-time reset link (60-minute expiry). |
 | **Mobile & PWA** | Fully responsive on phones, plus a web-app manifest: open the site on a phone and *Add to Home Screen* to install Ledgify like an app (full-screen, own icon). |
 | **Quick-access PIN** | Any member can set a **4-digit PIN** from their profile menu; the sign-in screen then offers one-tap PIN unlock for that device (5 wrong attempts lock the PIN until a password sign-in). |
 
@@ -147,11 +147,41 @@ Tax*, *GST*, *MCA / ROC*, or all three. Syncing is keyed by source so re-running
 updates revised dates in place and never duplicates; obligations you paused stay
 paused.
 
-Clicking **Generate tasks** creates the actual deadline tasks for the next
-3 / 6 / 12 months, with correct due dates and period labels (e.g. "GSTR-3B —
-Jun 2026", "Advance Tax — Q2 FY 2026-27", "Tax Audit — FY 2025-26"). Generation
-is **idempotent**: each occurrence is keyed by schedule + period, so re-running
-never creates duplicates.
+### Tasks appear by themselves
+
+An obligation's task is created **at the start of the month it falls due**, for
+every client the obligation covers — nobody has to remember to press a button
+for work the law already scheduled. A *GSTR-3B, monthly, due 20th* obligation
+covering three clients produces three dated tasks on the 1st, and they show up
+in the ordinary register like any other task. Create an obligation mid-month
+and this month's task appears immediately.
+
+The pass runs on the first task-list read of each month (a serverless
+deployment has no resident scheduler), and again whenever an obligation is
+created. It is **idempotent twice over** — existing occurrences are filtered
+out, and a unique index on (schedule, period) means two servers generating at
+once still cannot duplicate. `POST /api/schedules/generate {"mode":"month"}` does
+the same thing on demand, for a daily scheduler.
+
+**Generate tasks** still reaches further ahead — the next 3 / 6 / 12 months —
+with correct due dates and period labels (e.g. "GSTR-3B — Jun 2026", "Advance
+Tax — Q2 FY 2026-27", "Tax Audit — FY 2025-26"), for planning the season.
+
+### A work programme on the obligation
+
+Each obligation carries a **checklist that is copied onto every task it
+generates**, unticked. Choosing a category offers that category's standard
+steps; a GST obligation runs the full length of a return —
+
+> Data / Documents received from client → GSTR-2B reconciled with purchase
+> register → Sales register reconciled with books → Tax liability & ITC
+> computed → Working shared with client for confirmation → Tax paid (challan
+> saved) → Return prepared → Return filed & ARN saved → Filing entry recorded
+
+— and the steps are editable, so a firm can write its own. Ticking them off on
+the generated task drives its status as usual (none → Pending, some → In
+Progress, all → Completed). Obligations synced from a statutory calendar pick
+up their category's standard programme automatically.
 
 Generated deadlines land in their **own Statutory tab**, not in the firm's task
 list — automatic creation from the calendars would otherwise swamp it. The Tasks
@@ -284,8 +314,9 @@ users: each `Staff` record can have a login password.
 | Accountant | `amit@sharmaassociates.in` | `staff@123` |
 | Article Assistant | `sneha@sharmaassociates.in` | `staff@123` |
 
-**Access levels** — everyone can *view* everything; these gate the write actions.
-The table below shows the **built-in defaults**: from **Access Control** an
+**Access levels** — most modules are readable by everyone and these gate the
+write actions; **billing is the exception**, where seeing anything at all needs
+a permission of its own. The table below shows the **built-in defaults**: from **Access Control** an
 admin can change any of them per role, and add new roles (user categories)
 with their own set of permissions. Only the Partner role is fixed — it is the
 super-admin and always has full access, so the firm can never lock itself out.
@@ -296,7 +327,8 @@ super-admin and always has full access, so the firm can never lock itself out.
 | Delete clients | ✓ | ✓ | — | — |
 | Manage tasks | ✓ | ✓ | ✓ | ✓ |
 | Delete tasks | ✓ | ✓ | ✓ | — |
-| Manage invoices (billing) | ✓ | ✓ | — | — |
+| **See invoices, receipts & billing figures** | ✓ | — | — | — |
+| Create, edit & delete invoices | ✓ | — | — | — |
 | Manage documents | ✓ | ✓ | ✓ | ✓ |
 | Manage recurring obligations & generate | ✓ | ✓ | — | — |
 | Configure & send reminders | ✓ | ✓ | — | — |
@@ -310,7 +342,13 @@ super-admin and always has full access, so the firm can never lock itself out.
 | Manage the team & roles | ✓ | — | — | — |
 
 Permissions are enforced server-side on every API route (a denied action returns
-`403`) and mirrored in the UI (buttons hidden / controls read-only). Partners and
+`403`) and mirrored in the UI (buttons hidden / controls read-only). Billing goes
+further than hiding: without `viewInvoices` the Invoices entry is absent from the
+sidebar, `/invoices` says so plainly rather than showing an empty register, the
+dashboard drops the receivables figure and the Billing tab — and the billing
+numbers **never leave the server** in the first place, so they cannot be read out
+of a network response either. A partner can grant it to any role from Access
+Control. Partners and
 Admins can set or reset a member's login password from the **Team** page, or
 **invite a member by email** — the invitee opens the link and sets their own
 password. Members who forget their password can use **Forgot password?** on

@@ -8,10 +8,12 @@ type Ctx = { params: Promise<{ id: string }> };
 export const PUT = route(async (req, ctx: Ctx) => {
   await requirePermission("manageSchedules");
   const { id } = await ctx.params;
-  const data = await parse(req, scheduleUpdateSchema);
+  // clientIds/allClients only make sense when creating (they fan out into
+  // several schedules); an existing one belongs to exactly one client.
+  const { clientIds: _c, allClients: _a, ...data } = await parse(req, scheduleUpdateSchema);
   const schedule = await prisma.complianceSchedule.update({
     where: { id },
-    data,
+    data: { ...data, checklist: data.checklist ?? undefined },
     include: { client: true, assignee: true, _count: { select: { tasks: true } } },
   });
   return ok(schedule);

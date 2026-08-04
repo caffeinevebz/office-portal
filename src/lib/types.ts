@@ -193,6 +193,8 @@ export type ComplianceSchedule = {
   priority: string;
   active: boolean;
   notes: string | null;
+  // Template steps copied onto each generated task.
+  checklist?: ChecklistItem[] | null;
   source: string | null;
   sourceKey: string | null;
   createdAt: string;

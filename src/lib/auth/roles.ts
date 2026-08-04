@@ -11,6 +11,7 @@ export type Permission =
   | "viewAllTasks"
   | "raiseExpenses"
   | "approveExpenses"
+  | "viewInvoices"
   | "manageInvoices"
   | "manageDocuments"
   | "deleteDocuments"
@@ -55,6 +56,10 @@ export const PERMISSION_META: Record<
   manageSchedules: { label: "Manage recurring obligations & generate", category: "Tasks" },
   manageItr: { label: "Manage ITR filings", category: "Tasks" },
   deleteItr: { label: "Delete ITR filings", category: "Tasks" },
+  viewInvoices: {
+    label: "See invoices, receipts & billing figures",
+    category: "Billing",
+  },
   manageInvoices: { label: "Create, edit & delete invoices", category: "Billing" },
   manageDocuments: { label: "Manage documents", category: "Documents & registers" },
   deleteDocuments: { label: "Delete documents", category: "Documents & registers" },
@@ -95,7 +100,10 @@ export const DEFAULT_MATRIX: Record<Permission, string[]> = {
   manageSchedules: ["Partner", "Admin", "Manager"],
   manageItr: ["Partner", "Admin", "Manager", "Accountant", "Article Assistant"],
   deleteItr: ["Partner", "Admin", "Manager", "Accountant"],
-  manageInvoices: ["Partner", "Admin", "Manager"],
+  // Billing is the partners' business: what the firm has billed, collected and
+  // is owed stays with them unless a partner grants it in Access Control.
+  viewInvoices: ["Partner", "Admin"],
+  manageInvoices: ["Partner", "Admin"],
   manageDocuments: ["Partner", "Admin", "Manager", "Accountant", "Article Assistant"],
   deleteDocuments: ["Partner", "Admin", "Manager", "Accountant"],
   manageDsc: ["Partner", "Admin", "Manager", "Accountant"],
@@ -119,7 +127,7 @@ export function defaultAllowed(role: string | null | undefined, permission: Perm
 export const ROLE_ACCESS: Record<string, string> = {
   Partner: "Full access, including the team, roles and firm settings",
   Admin: "Full access, including the team, roles and firm settings",
-  Manager: "Clients, compliance, billing and documents; not firm settings",
-  Accountant: "Clients, compliance and documents; view-only billing",
-  "Article Assistant": "Compliance and documents; view-only clients & billing",
+  Manager: "Clients, compliance and documents; not billing or firm settings",
+  Accountant: "Clients, compliance and documents; no billing",
+  "Article Assistant": "Compliance and documents; view-only clients, no billing",
 };

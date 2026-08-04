@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { ok, fail, parse, route } from "@/lib/api";
-import { requireUser } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { whatsappDocumentSchema } from "@/lib/validation";
 import { getWhatsappConfig, sendWhatsappDocument, waLink, waNumber } from "@/lib/notify";
 import { buildDocument } from "@/lib/pdf/document";
@@ -14,7 +14,7 @@ type Ctx = { params: Promise<{ id: string }> };
  * WhatsApp is a plain navigation that cannot wait on a request.
  */
 export const GET = route(async (req, ctx: Ctx) => {
-  await requireUser();
+  await requirePermission("viewInvoices");
   const { id } = await ctx.params;
   const kind = new URL(req.url).searchParams.get("kind") === "receipt" ? "receipt" : "invoice";
   const built = await buildDocument(kind, id);
@@ -39,7 +39,7 @@ export const GET = route(async (req, ctx: Ctx) => {
  * ends up with the document, and either way the send is logged.
  */
 export const POST = route(async (req, ctx: Ctx) => {
-  const user = await requireUser();
+  const user = await requirePermission("viewInvoices");
   const { id } = await ctx.params;
   const data = await parse(req, whatsappDocumentSchema);
 

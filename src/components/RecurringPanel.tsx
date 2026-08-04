@@ -11,10 +11,11 @@ import {
   Info,
   Landmark,
   RefreshCw,
+  ListChecks,
 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
-import type { ComplianceSchedule, Client, Staff } from "@/lib/types";
+import type { ComplianceSchedule, Client, Staff, ChecklistItem } from "@/lib/types";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -29,9 +30,11 @@ import {
   MONTHS,
   STATUTORY_PRESETS,
   CATEGORY_TONE,
+  defaultChecklist,
 } from "@/lib/constants";
 import { STATUTORY_LAWS } from "@/lib/it-calendar";
 import { describeSchedule, computeOccurrences } from "@/lib/schedule";
+import { ChecklistEditor } from "@/components/ChecklistEditor";
 import { formatDate } from "@/lib/format";
 
 type FormState = Partial<ComplianceSchedule>;
@@ -222,6 +225,11 @@ export function RecurringPanel({ addSignal }: { addSignal?: number }) {
                             <Landmark className="h-3 w-3" /> {SOURCE_LABEL[s.source ?? ""]}
                           </Badge>
                         )}
+                        {(s.checklist?.length ?? 0) > 0 && (
+                          <Badge tone="indigo">
+                            <ListChecks className="h-3 w-3" /> {s.checklist!.length} steps
+                          </Badge>
+                        )}
                         {!s.active && <Badge tone="slate">Paused</Badge>}
                       </div>
                     </td>
@@ -349,6 +357,17 @@ function ScheduleForm({
   });
   const activeCount = clients.filter((c) => c.status !== "Inactive").length;
 
+  // The work-programme every generated task starts with — for a GST return,
+  // the run from the client's papers arriving to the filing being entered.
+  const [checklist, setChecklist] = useState<ChecklistItem[]>(
+    () => (initial?.checklist as ChecklistItem[] | undefined) ?? [],
+  );
+  const standard = defaultChecklist(form.category ?? "", {});
+  const usingStandard =
+    standard.length > 0 &&
+    checklist.length === standard.length &&
+    checklist.every((c, i) => c.label === standard[i].label);
+
   function applyPreset(label: string) {
     const p = STATUTORY_PRESETS.find((x) => x.label === label);
     if (!p) return;
@@ -380,6 +399,8 @@ function ScheduleForm({
         allClients: !isEdit && scope === "all" ? true : undefined,
         assigneeId: form.assigneeId || null,
         notes: form.notes,
+        // The steps every generated task starts with.
+        checklist: checklist.length > 0 ? checklist : null,
       };
       if (isEdit) await apiMutate(`/api/schedules/${initial!.id}`, "PUT", payload);
       else await apiMutate("/api/schedules", "POST", payload);
@@ -443,7 +464,17 @@ function ScheduleForm({
           <Input value={form.title ?? ""} onChange={(e) => set("title", e.target.value)} placeholder="e.g. GSTR-3B" />
         </Field>
         <Field label="Category">
-          <Select value={form.category ?? ""} onChange={(e) => set("category", e.target.value)}>
+          <Select
+            data-testid="schedule-category"
+            value={form.category ?? ""}
+            onChange={(e) => {
+              set("category", e.target.value);
+              // Offer the category's standard work programme when no steps
+              // have been written yet — GST returns run a long one.
+              const std = defaultChecklist(e.target.value, {});
+              setChecklist((cur) => (cur.length === 0 ? std.map((s) => ({ ...s })) : cur));
+            }}
+          >
             {TASK_CATEGORIES.map((c) => (
               <option key={c}>{c}</option>
             ))}
@@ -458,6 +489,7 @@ function ScheduleForm({
         </Field>
         <Field label="Due day of month" hint="1–31 (clamped to shorter months)">
           <Input
+            data-testid="schedule-dueday"
             type="number"
             min={1}
             max={31}
@@ -601,6 +633,47 @@ function ScheduleForm({
             <option>Paused</option>
           </Select>
         </Field>
+        {/* Work programme carried onto every generated task */}
+        <div className="sm:col-span-2">
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 px-0.5">
+            <span className="text-sm font-medium text-slate-700">
+              Checklist for each generated task
+            </span>
+            <div className="flex gap-2 text-xs">
+              {standard.length > 0 && !usingStandard && (
+                <button
+                  type="button"
+                  onClick={() => setChecklist(standard.map((s) => ({ ...s })))}
+                  data-testid="use-standard-checklist"
+                  className="text-brand-600 hover:underline"
+                >
+                  Use the standard {form.category} steps
+                </button>
+              )}
+              {checklist.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setChecklist([])}
+                  className="text-slate-500 hover:underline"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+          <ChecklistEditor
+            items={checklist}
+            onChange={setChecklist}
+            showTicks={false}
+            title="Steps"
+            hint={
+              checklist.length === 0
+                ? "Optional. Add the steps this obligation runs through and every task generated from it starts with them, unticked."
+                : "Copied onto every task generated from this obligation, ready to be ticked off."
+            }
+          />
+        </div>
+
         <Field label="Notes" className="sm:col-span-2">
           <Textarea value={form.notes ?? ""} onChange={(e) => set("notes", e.target.value)} />
         </Field>

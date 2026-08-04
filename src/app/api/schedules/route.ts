@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, parse, route } from "@/lib/api";
 import { requireUser, requirePermission } from "@/lib/auth/session";
 import { scheduleCreateSchema } from "@/lib/validation";
+import { generateForMonth } from "@/lib/generate";
 
 export const GET = route(async () => {
   await requireUser();
@@ -45,11 +46,16 @@ export const POST = route(async (req) => {
   for (const clientId of targets) {
     schedules.push(
       await prisma.complianceSchedule.create({
-        data: { ...data, clientId },
+        // A Json column takes undefined to mean "leave it out", not null.
+        data: { ...data, checklist: data.checklist ?? undefined, clientId },
         include: INCLUDE,
       }),
     );
   }
+  // If the new obligation already falls due this month, its task belongs in
+  // the register now — waiting for next month's pass would quietly skip it.
+  for (const s of schedules) await generateForMonth(new Date(), s.id).catch(() => {});
+
   // A single schedule still answers with an object, as before.
   return ok(schedules.length === 1 ? schedules[0] : schedules, 201);
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Search, Plus, Pencil, Trash2, Receipt, FileDown, FileCheck2, Mail, IndianRupee, BookOpenCheck, MessageCircle } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Receipt, FileDown, FileCheck2, Mail, IndianRupee, BookOpenCheck, MessageCircle, Lock } from "lucide-react";
 import { WhatsappModal } from "@/components/WhatsappModal";
 import { PdfViewer } from "@/components/PdfViewer";
 import { ReceiptRegisterPanel } from "@/components/ReceiptRegister";
@@ -96,6 +96,7 @@ type Tab = "invoices" | "receipts";
 
 export default function InvoicesPage() {
   const { can } = useAuth();
+  const canView = can("viewInvoices");
   const canManage = can("manageInvoices");
   // Billing lives in one module: raising invoices, and the firm-wise receipt
   // register of what was actually collected.
@@ -177,6 +178,23 @@ export default function InvoicesPage() {
     } finally {
       setEmailBusy(null);
     }
+  }
+
+  // Billing is partner-level: someone who reaches this URL without the
+  // permission is told so plainly rather than shown an empty register.
+  if (!canView) {
+    return (
+      <div>
+        <PageHeader title="Invoices" subtitle="Professional fee billing and collections" />
+        <Card>
+          <EmptyState
+            icon={Lock}
+            title="Billing is restricted"
+            message="Invoices, receipts and the firm's billing figures are visible to partners and admins. Ask a partner if you need access — it can be granted per role in Access Control."
+          />
+        </Card>
+      </div>
+    );
   }
 
   return (

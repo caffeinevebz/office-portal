@@ -14,6 +14,7 @@ import {
   ShieldAlert,
   ShieldX,
   Link2Off,
+  HelpCircle,
 } from "lucide-react";
 import { useResource } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
@@ -39,9 +40,11 @@ type Dashboard = {
     openTasks: number;
     overdueTasks: number;
     dueSoon: number;
-    outstanding: number;
-    collected: number;
-    overdueInvoices: number;
+    openQueries: number;
+    // Billing figures are only present with the viewInvoices permission.
+    outstanding?: number;
+    collected?: number;
+    overdueInvoices?: number;
   };
   statusBreakdown: { status: string; count: number }[];
   categoryBreakdown: { category: string; count: number }[];
@@ -59,11 +62,15 @@ type Dashboard = {
   dscSummary: { expired: number; expiringSoon: number; valid: number; unlinked: number };
 };
 
-const TABS = ["Tasks", "Billing", "DSC"] as const;
-type Tab = (typeof TABS)[number];
+const ALL_TABS = ["Tasks", "Billing", "DSC"] as const;
+type Tab = (typeof ALL_TABS)[number];
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
+  // What the firm has billed, collected and is owed is partner-level, so the
+  // billing tab and the receivables figure only appear with that permission.
+  const canSeeBilling = can("viewInvoices");
+  const TABS = ALL_TABS.filter((t) => t !== "Billing" || canSeeBilling);
   const { data, loading, error } = useResource<Dashboard>("/api/dashboard");
   const [tab, setTab] = useState<Tab>("Tasks");
   const firstName =
@@ -115,13 +122,27 @@ export default function DashboardPage() {
           icon={AlertTriangle}
           accent={kpis.overdueTasks > 0 ? "rose" : "emerald"}
         />
-        <StatCard
-          label="Outstanding Receivables"
-          value={formatCurrency(kpis.outstanding)}
-          hint={`${kpis.overdueInvoices} invoice(s) overdue`}
-          icon={IndianRupee}
-          accent="amber"
-        />
+        {canSeeBilling ? (
+          <StatCard
+            label="Outstanding Receivables"
+            value={formatCurrency(kpis.outstanding)}
+            hint={`${kpis.overdueInvoices} invoice(s) overdue`}
+            icon={IndianRupee}
+            accent="amber"
+          />
+        ) : (
+          <StatCard
+            label="Clarifications Awaiting"
+            value={kpis.openQueries ?? 0}
+            hint={
+              (kpis.openQueries ?? 0) > 0
+                ? "Points the client still has to answer"
+                : "Nothing pending with clients"
+            }
+            icon={HelpCircle}
+            accent={(kpis.openQueries ?? 0) > 0 ? "amber" : "emerald"}
+          />
+        )}
       </div>
 
       {/* Summary tabs — one focused panel at a time keeps the page uncluttered */}
@@ -277,7 +298,7 @@ export default function DashboardPage() {
               value={formatCurrency(kpis.outstanding)}
               hint={`${kpis.overdueInvoices} invoice(s) overdue`}
               icon={IndianRupee}
-              accent={kpis.overdueInvoices > 0 ? "rose" : "amber"}
+              accent={(kpis.overdueInvoices ?? 0) > 0 ? "rose" : "amber"}
             />
             <Link
               href="/invoices"

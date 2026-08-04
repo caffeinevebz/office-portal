@@ -504,6 +504,9 @@ model ComplianceSchedule {
   priority    String   @default("Medium")
   active      Boolean  @default(true)
   notes       String?
+  // Template steps copied onto every generated task — e.g. a GST obligation
+  // running from documents received through to the filing entry.
+  checklist Json? // [{ label, done }]
   // Set when the schedule came from a built-in statutory calendar sync
   // (e.g. "income-tax"); sourceKey makes re-syncs idempotent.
   source    String?
