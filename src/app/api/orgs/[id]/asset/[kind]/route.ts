@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { ok, fail, route } from "@/lib/api";
 import { requireUser, requirePermission } from "@/lib/auth/session";
+import { renderUpiQr } from "@/lib/upi-qr";
 
 type Ctx = { params: Promise<{ id: string; kind: string }> };
 
@@ -51,10 +52,22 @@ export const GET = route(async (_req, ctx: Ctx) => {
   if (!field) return fail("Unknown asset", 404);
   const org = await prisma.organization.findUnique({
     where: { id },
-    select: { [field.data]: true, [field.mime]: true },
+    select: { [field.data]: true, [field.mime]: true, name: true, bankUpi: true },
   });
-  const data = org?.[field.data as keyof typeof org] as Uint8Array | null | undefined;
-  const mime = org?.[field.mime as keyof typeof org] as string | null | undefined;
+  let data = org?.[field.data as keyof typeof org] as Uint8Array | null | undefined;
+  let mime = org?.[field.mime as keyof typeof org] as string | null | undefined;
+  // No uploaded QR: preview the one rendered from the firm's UPI ID, which is
+  // what the invoice will actually print.
+  if (kind === "upi-qr" && !data) {
+    const generated = await renderUpiQr(
+      org?.bankUpi as string | null | undefined,
+      org?.name as string | null | undefined,
+    );
+    if (generated) {
+      data = generated;
+      mime = "image/png";
+    }
+  }
   if (!data || !mime) return fail("No image", 404);
   return new Response(Buffer.from(data), {
     headers: { "Content-Type": mime, "Cache-Control": "no-store" },

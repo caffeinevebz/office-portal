@@ -238,6 +238,9 @@ export default function SettingsPage() {
                 {(["upi-qr", "signature"] as const).map((kind) => {
                   const present = kind === "upi-qr" ? o.hasUpiQr : o.hasSignature;
                   const title = kind === "upi-qr" ? "Payment QR (UPI)" : "Signature";
+                  // A QR drawn from the UPI ID isn't a stored image — there is
+                  // nothing to remove, and changing the ID changes the code.
+                  const generated = kind === "upi-qr" && o.upiQrGenerated;
                   return (
                     <div key={kind}>
                       <p className="text-[11px] font-medium text-slate-500">{title}</p>
@@ -254,8 +257,13 @@ export default function SettingsPage() {
                       ) : (
                         <p className="mt-1 text-[11px] text-slate-400">
                           {kind === "upi-qr"
-                            ? "Not set — clients cannot scan to pay."
+                            ? "No UPI ID — clients cannot scan to pay."
                             : "Not set — invoices print a blank signature space."}
+                        </p>
+                      )}
+                      {generated && (
+                        <p className="mt-1 text-[11px] text-slate-400">
+                          Drawn from the UPI ID above, so the two always match.
                         </p>
                       )}
                       {canManage && (
@@ -266,9 +274,9 @@ export default function SettingsPage() {
                             disabled={logoBusy === o.id}
                             className="text-[11px] text-brand-600 hover:underline disabled:opacity-50"
                           >
-                            {present ? "Replace" : "Upload"}
+                            {generated ? "Use my bank's QR instead" : present ? "Replace" : "Upload"}
                           </button>
-                          {present && (
+                          {present && !generated && (
                             <button
                               type="button"
                               onClick={() => removeImage(o.id, kind)}
