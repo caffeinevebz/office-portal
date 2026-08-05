@@ -230,7 +230,10 @@ export type Organization = {
   invoicePrefix: string | null;
   isDefault: boolean;
   hasLogo: boolean;
+  /** A scan-to-pay QR will print — either uploaded, or drawn from the UPI ID. */
   hasUpiQr: boolean;
+  /** …and it is the drawn one, not an upload. */
+  upiQrGenerated?: boolean;
   hasSignature: boolean;
   createdAt: string;
   _count?: { invoices: number };

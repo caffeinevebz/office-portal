@@ -3,6 +3,7 @@ import { ok, parse, route } from "@/lib/api";
 import { requireUser, requirePermission } from "@/lib/auth/session";
 import { organizationSchema } from "@/lib/validation";
 import { ensureFirmAssets, resetFirmAssetsCheck } from "@/lib/firm-assets-install";
+import { isUpiId } from "@/lib/upi-qr";
 
 // Image bytes are excluded from list payloads; has* flags their presence.
 const LIST_SELECT = {
@@ -13,10 +14,23 @@ const LIST_SELECT = {
   _count: { select: { invoices: true } },
 } as const;
 
-const withFlags = <T extends { logoMime: string | null; upiQrMime: string | null; signatureMime: string | null }>(o: T) => ({
+const withFlags = <
+  T extends {
+    logoMime: string | null;
+    upiQrMime: string | null;
+    signatureMime: string | null;
+    bankUpi: string | null;
+  },
+>(
+  o: T,
+) => ({
   ...o,
   hasLogo: !!o.logoMime,
-  hasUpiQr: !!o.upiQrMime,
+  // A scan-to-pay QR prints whenever there is one to print: the firm's own
+  // upload, or one rendered from its UPI ID.
+  hasUpiQr: !!o.upiQrMime || isUpiId(o.bankUpi),
+  // …and this says which, so Firm Settings can label it honestly.
+  upiQrGenerated: !o.upiQrMime && isUpiId(o.bankUpi),
   hasSignature: !!o.signatureMime,
 });
 

@@ -4,6 +4,7 @@ import type { Invoice, Client, Organization, TradeName, InvoiceLineItem } from "
 import { getDefaultOrg, toLetterhead, type Letterhead } from "@/lib/org";
 import { prisma } from "@/lib/prisma";
 import { ensureFirmAssets } from "@/lib/firm-assets-install";
+import { firmUpiQr } from "@/lib/upi-qr";
 import { rupeesInWords } from "./words";
 import {
   A4,
@@ -241,12 +242,15 @@ export async function buildInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   }
 
   // Scan-to-pay UPI QR, centred between the bank details and the signature.
-  if (lh.upiQr && lh.upiQrMime) {
+  // Rendered from the firm's UPI ID unless it uploaded a QR of its own, so the
+  // code and the ID printed under it always point at the same account.
+  const upiQr = await firmUpiQr(lh);
+  if (upiQr) {
     try {
       const qr =
-        lh.upiQrMime === "image/png"
-          ? await pdf.doc.embedPng(lh.upiQr)
-          : await pdf.doc.embedJpg(lh.upiQr);
+        upiQr.mime === "image/png"
+          ? await pdf.doc.embedPng(upiQr.bytes)
+          : await pdf.doc.embedJpg(upiQr.bytes);
       const size = 78;
       const qx = 318;
       text(page, "SCAN TO PAY (UPI)", { x: qx + size / 2, y: bankTop, size: 7.5, font: bold, color: FAINT, align: "center" });
