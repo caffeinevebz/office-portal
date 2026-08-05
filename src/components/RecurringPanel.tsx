@@ -31,6 +31,7 @@ import {
   STATUTORY_PRESETS,
   CATEGORY_TONE,
   defaultChecklist,
+  gstRegLabel,
 } from "@/lib/constants";
 import { STATUTORY_LAWS } from "@/lib/it-calendar";
 import { describeSchedule, computeOccurrences } from "@/lib/schedule";
@@ -58,10 +59,24 @@ function nextDue(s: ComplianceSchedule) {
  * The "Recurring" workspace — recurring obligations and the tools that turn
  * them into dated tasks. Rendered inside the Tasks page as its second tab.
  */
-export function RecurringPanel({ addSignal }: { addSignal?: number }) {
+export function RecurringPanel({
+  addSignal,
+  onChanged,
+}: {
+  addSignal?: number;
+  /** Called whenever this panel creates, changes or generates something —
+   *  the page around it shows the tasks that come out of here. */
+  onChanged?: () => void;
+}) {
   const { can } = useAuth();
   const canManage = can("manageSchedules");
   const { data, loading, error, refresh } = useResource<ComplianceSchedule[]>("/api/schedules");
+  // Refresh this list and tell the page, which is showing the register the
+  // generated tasks land in and the tab bar the synced calendar unlocks.
+  const changed = () => {
+    refresh();
+    onChanged?.();
+  };
   const { data: clients } = useResource<Client[]>("/api/clients?slim=1");
   const { data: staff } = useResource<Staff[]>("/api/staff");
 
@@ -96,7 +111,7 @@ export function RecurringPanel({ addSignal }: { addSignal?: number }) {
             ? `Created ${res.created} task${res.created === 1 ? "" : "s"} for the next ${months} month${months === 1 ? "" : "s"}.`
             : "All upcoming tasks are already generated — nothing to do.",
       });
-      refresh();
+      changed();
     } catch (e) {
       setGen({ busy: false, msg: e instanceof Error ? e.message : "Generation failed" });
     }
@@ -119,7 +134,7 @@ export function RecurringPanel({ addSignal }: { addSignal?: number }) {
             ? `Already in sync — all ${res.total} ${what} entries are up to date.`
             : `${syncLaw === "All" ? "Statutory calendars" : `${syncLaw} calendar`} synced: ${res.created} added, ${res.updated} updated, ${res.unchanged} already current.`,
       });
-      refresh();
+      changed();
     } catch (e) {
       setSync({ busy: false, msg: e instanceof Error ? e.message : "Sync failed" });
     }
@@ -235,6 +250,16 @@ export function RecurringPanel({ addSignal }: { addSignal?: number }) {
                     </td>
                     <td className="px-5 py-3 text-slate-600">
                       {s.client?.name ?? <span className="text-slate-400">All / none</span>}
+                      {/* Which concern — and, for a client registered in
+                          several states, which GSTIN — this one runs for. */}
+                      {s.tradeName?.name && (
+                        <span className="mt-0.5 block text-xs text-slate-500">{s.tradeName.name}</span>
+                      )}
+                      {s.gstRegistration && (
+                        <span className="mt-0.5 block font-mono text-[11px] text-slate-400">
+                          {s.gstRegistration.gstin}
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3 text-slate-600">{describeSchedule(s)}</td>
                     <td className="px-5 py-3 text-slate-600">{formatDate(nextDue(s))}</td>
@@ -285,7 +310,7 @@ export function RecurringPanel({ addSignal }: { addSignal?: number }) {
           onClose={() => setFormOpen(false)}
           onSaved={() => {
             setFormOpen(false);
-            refresh();
+            changed();
           }}
         />
       )}
@@ -297,7 +322,7 @@ export function RecurringPanel({ addSignal }: { addSignal?: number }) {
         message={`"${toDelete?.title}" will be removed. Already-generated tasks are kept.`}
         onConfirm={async () => {
           if (toDelete) await apiMutate(`/api/schedules/${toDelete.id}`, "DELETE");
-          refresh();
+          changed();
         }}
       />
     </div>
@@ -357,6 +382,16 @@ function ScheduleForm({
   });
   const activeCount = clients.filter((c) => c.status !== "Inactive").length;
 
+  // A client's concerns and GST registrations — an obligation runs for one
+  // concern, and a GST obligation can be set up once per registration.
+  const chosenClient = clients.find((c) => c.id === form.clientId);
+  const tradeNames = chosenClient?.tradeNames ?? [];
+  const gstRegs = (chosenClient?.gstRegistrations ?? []).filter((g) => g.active);
+  const [perGstin, setPerGstin] = useState(false);
+  const [gstRegIds, setGstRegIds] = useState<string[]>([]);
+  const canPerGstin =
+    !isEdit && (form.category ?? "") === "GST" && scope === "one" && gstRegs.length > 1;
+
   // The work-programme every generated task starts with — for a GST return,
   // the run from the client's papers arriving to the filing being entered.
   const [checklist, setChecklist] = useState<ChecklistItem[]>(
@@ -401,6 +436,12 @@ function ScheduleForm({
         notes: form.notes,
         // The steps every generated task starts with.
         checklist: checklist.length > 0 ? checklist : null,
+        tradeNameId: scope === "one" ? form.tradeNameId || null : null,
+        gstRegistrationId:
+          !canPerGstin || !perGstin ? form.gstRegistrationId || null : null,
+        // One obligation per selected GSTIN — each files separately.
+        gstRegistrationIds:
+          canPerGstin && perGstin && gstRegIds.length > 0 ? gstRegIds : undefined,
       };
       if (isEdit) await apiMutate(`/api/schedules/${initial!.id}`, "PUT", payload);
       else await apiMutate("/api/schedules", "POST", payload);
@@ -545,7 +586,21 @@ function ScheduleForm({
             </div>
           )}
           {isEdit || scope === "one" ? (
-            <Select value={form.clientId ?? ""} onChange={(e) => set("clientId", e.target.value)}>
+            <Select
+              value={form.clientId ?? ""}
+              onChange={(e) => {
+                // Another client's concerns and registrations are not this
+                // one's — drop the old choices rather than carry them over.
+                setForm((f) => ({
+                  ...f,
+                  clientId: e.target.value,
+                  tradeNameId: null,
+                  gstRegistrationId: null,
+                }));
+                setPerGstin(false);
+                setGstRegIds([]);
+              }}
+            >
               <option value="">— None / firm-wide —</option>
               {clients.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -607,6 +662,91 @@ function ScheduleForm({
             </div>
           )}
         </Field>
+
+        {/* Which concern the obligation runs for. */}
+        {scope === "one" && tradeNames.length > 0 && (
+          <Field label="Firm / trade name" hint="Carried onto every task this obligation generates">
+            <Select
+              value={form.tradeNameId ?? ""}
+              onChange={(e) => set("tradeNameId", e.target.value)}
+              data-testid="schedule-tradename"
+            >
+              <option value="">— {chosenClient?.name ?? "Client"} (legal name) —</option>
+              {tradeNames.map((tn) => (
+                <option key={tn.id} value={tn.id}>
+                  {tn.name}
+                  {tn.gstin ? ` · ${tn.gstin}` : ""}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+
+        {/* GST: one obligation per registration, because each GSTIN files its
+            own returns on its own dates. */}
+        {scope === "one" && (form.category ?? "") === "GST" && gstRegs.length > 0 && (
+          <Field
+            label={perGstin ? "GST registrations" : "GST registration"}
+            className={perGstin ? "sm:col-span-2" : undefined}
+            hint={
+              perGstin
+                ? "A separate obligation is set up for each — every registration files separately"
+                : "Which registration this obligation files for"
+            }
+          >
+            {perGstin ? (
+              <div className="space-y-1 rounded-lg border border-brand-200 bg-brand-50/40 p-2">
+                {gstRegs.map((g) => (
+                  <label
+                    key={g.id}
+                    className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-slate-700 hover:bg-white"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={gstRegIds.includes(g.id)}
+                      onChange={() =>
+                        setGstRegIds((ids) =>
+                          ids.includes(g.id) ? ids.filter((x) => x !== g.id) : [...ids, g.id],
+                        )
+                      }
+                      className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                    />
+                    {gstRegLabel(g)}
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <Select
+                value={form.gstRegistrationId ?? ""}
+                onChange={(e) => set("gstRegistrationId", e.target.value)}
+                data-testid="schedule-gstin"
+              >
+                <option value="">— Any / not registration-specific —</option>
+                {gstRegs.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {gstRegLabel(g)}
+                  </option>
+                ))}
+              </Select>
+            )}
+            {canPerGstin && (
+              <label className="mt-1.5 flex cursor-pointer items-center gap-2 text-xs text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={perGstin}
+                  onChange={(e) => {
+                    setPerGstin(e.target.checked);
+                    setGstRegIds(e.target.checked ? gstRegs.map((g) => g.id) : []);
+                  }}
+                  data-testid="schedule-per-gstin"
+                  className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                />
+                Set this up separately for each of this client&apos;s {gstRegs.length} GSTINs
+              </label>
+            )}
+          </Field>
+        )}
+
         <Field label="Default assignee">
           <Select value={form.assigneeId ?? ""} onChange={(e) => set("assigneeId", e.target.value)}>
             <option value="">— Unassigned —</option>

@@ -74,9 +74,11 @@ model TradeName {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  clientId String
-  client   Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  invoices Invoice[]
+  clientId  String
+  client    Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  invoices  Invoice[]
+  tasks     Task[]
+  schedules ComplianceSchedule[]
 
   @@index([clientId])
 }
@@ -101,6 +103,7 @@ model GstRegistration {
   client     Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tasks      Task[]
   itrFilings ItrFiling[]
+  schedules  ComplianceSchedule[]
 
   @@index([clientId])
 }
@@ -315,6 +318,10 @@ model Task {
 
   clientId   String?
   client     Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  // The client's firm / trade name this work is for, when they operate
+  // several concerns — shown beside the client's name on the task.
+  tradeNameId String?
+  tradeName   TradeName? @relation(fields: [tradeNameId], references: [id], onDelete: SetNull)
   // The client GST registration this task is filed under (GST tasks only).
   gstRegistrationId String?
   gstRegistration   GstRegistration? @relation(fields: [gstRegistrationId], references: [id], onDelete: SetNull)
@@ -516,6 +523,12 @@ model ComplianceSchedule {
 
   clientId   String?
   client     Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  // Which of the client's concerns / GST registrations this obligation runs
+  // for — a client with two GSTINs files each return separately.
+  tradeNameId String?
+  tradeName   TradeName? @relation(fields: [tradeNameId], references: [id], onDelete: SetNull)
+  gstRegistrationId String?
+  gstRegistration   GstRegistration? @relation(fields: [gstRegistrationId], references: [id], onDelete: SetNull)
   assigneeId String?
   assignee   Staff?  @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
 

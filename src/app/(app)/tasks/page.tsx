@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Search,
   Plus,
@@ -18,7 +18,15 @@ import {
 } from "lucide-react";
 import { useResource, useDebounced, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
-import type { Task, Client, ClientGroup, Staff, ChecklistItem, TaskQuery } from "@/lib/types";
+import type {
+  Task,
+  Client,
+  ClientGroup,
+  ComplianceSchedule,
+  Staff,
+  ChecklistItem,
+  TaskQuery,
+} from "@/lib/types";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -169,6 +177,16 @@ export default function TasksPage() {
   const { data: clients } = useResource<Client[]>("/api/clients?slim=1");
   const { data: staff } = useResource<Staff[]>("/api/staff");
   const { data: groups } = useResource<ClientGroup[]>("/api/client-groups");
+  const { data: schedules, refresh: refreshSchedules } =
+    useResource<ComplianceSchedule[]>("/api/schedules");
+  // The Statutory tab only earns its place once a government calendar has
+  // been synced — a firm that never syncs one never sees the tab.
+  const hasStatutory = (schedules ?? []).some((s) => !!s.source);
+  useEffect(() => {
+    // The tab can disappear under you — e.g. the last synced obligation is
+    // deleted while you are looking at it.
+    if (tab === "statutory" && schedules && !hasStatutory) setTab("tasks");
+  }, [tab, schedules, hasStatutory]);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
@@ -235,10 +253,10 @@ export default function TasksPage() {
           !seeAll
             ? "Your work — tasks where you are an assignee or the approver"
             : tab === "statutory"
-              ? "Deadlines generated from the Income Tax, GST and MCA/ROC calendars"
+              ? "Dates pulled in from the Income Tax, GST and MCA/ROC calendars"
               : tab === "recurring"
-                ? "Recurring obligations — the definitions your dated tasks are generated from"
-                : "Work raised by the firm — income-tax, TDS, GST, MCA/ROC, audit & registration engagements"
+                ? "Set up work that repeats — its tasks are then created for you and appear under Tasks"
+                : "Everything the firm has to do — raised by hand, or generated from a recurring obligation"
         }
         actions={headerAction}
       />
@@ -247,24 +265,38 @@ export default function TasksPage() {
         <TabButton active={tab === "tasks"} onClick={() => setTab("tasks")} icon={ClipboardList}>
           Tasks
         </TabButton>
-        <TabButton active={tab === "statutory"} onClick={() => setTab("statutory")} icon={Landmark}>
-          Statutory
-        </TabButton>
+        {hasStatutory && (
+          <TabButton active={tab === "statutory"} onClick={() => setTab("statutory")} icon={Landmark}>
+            Statutory
+          </TabButton>
+        )}
         <TabButton active={tab === "recurring"} onClick={() => setTab("recurring")} icon={Repeat}>
           Recurring
         </TabButton>
       </div>
 
       {tab === "recurring" ? (
-        <RecurringPanel addSignal={addRecurring} />
+        <RecurringPanel
+          addSignal={addRecurring}
+          // Setting up, generating or syncing on the Recurring tab creates
+          // tasks and obligations right there. This page's lists stay mounted
+          // behind it, so they have to be told — otherwise you switch back to
+          // Tasks and the work you just generated is nowhere to be seen.
+          onChanged={() => {
+            refresh();
+            refreshSchedules();
+          }}
+        />
       ) : (
         <>
           {tab === "statutory" && (
             <div className="mb-4 flex items-start gap-2 rounded-xl border border-fern-200 bg-fern-50/60 px-4 py-3 text-sm text-fern-800">
               <Landmark className="mt-0.5 h-4 w-4 shrink-0 text-fern-600" />
               <p>
-                These deadlines come from the statutory calendars, so they stay out of the firm&apos;s own
-                task list. Sync a calendar and generate its dates from the{" "}
+                These are the government&apos;s own due dates, synced from a statutory calendar — the
+                whole calendar for every client, so they are kept out of the working list. Your own
+                recurring obligations are not here; their tasks appear under <strong>Tasks</strong>.
+                Manage both from the{" "}
                 <button
                   onClick={() => setTab("recurring")}
                   className="font-medium underline underline-offset-2 hover:text-fern-900"
@@ -494,6 +526,12 @@ export default function TasksPage() {
                           </td>
                           <td className="px-5 py-3 text-slate-600">
                             {t.client?.name ?? <span className="text-slate-400">—</span>}
+                            {/* Which of the client's concerns the work is for. */}
+                            {t.tradeName?.name && (
+                              <span className="mt-0.5 block text-xs text-slate-500">
+                                {t.tradeName.name}
+                              </span>
+                            )}
                           </td>
                           <td className="px-5 py-3 text-slate-600">
                             {assigneeNames(t) || <span className="text-slate-400">Unassigned</span>}
@@ -943,6 +981,9 @@ function TaskForm({
       ? [selectedClient, ...searchedClients]
       : searchedClients;
   const clientGstRegs = (selectedClient?.gstRegistrations ?? []).filter((g) => g.active);
+  // The concerns this client runs under — offered whenever they have any, so
+  // the task says which firm the work is for.
+  const clientTradeNames = selectedClient?.tradeNames ?? [];
   const canMultiGstin = cat === "GST" && !multiClient && clientGstRegs.length > 1;
 
   async function submit() {
@@ -977,6 +1018,8 @@ function TaskForm({
         priority: form.priority,
         dueDate: form.dueDate || null,
         clientId: multiClient ? null : form.clientId || null,
+        // Only meaningful for a single client — trade names are per client.
+        tradeNameId: multiClient ? null : form.tradeNameId || null,
         // One identical task per selected client when multi-client is on.
         clientIds: !isEdit && multiClient && clientIds.length > 0 ? clientIds : undefined,
         assigneeIds,
@@ -1163,9 +1206,15 @@ function TaskForm({
               <Select
                 value={form.clientId ?? ""}
                 onChange={(e) => {
-                  // Switching client clears the GSTIN picks (they belong to the
-                  // previous client's registrations).
-                  setForm((f) => ({ ...f, clientId: e.target.value, gstRegistrationId: null, gstin: null }));
+                  // Switching client clears the GSTIN and trade-name picks
+                  // (they belong to the previous client).
+                  setForm((f) => ({
+                    ...f,
+                    clientId: e.target.value,
+                    tradeNameId: null,
+                    gstRegistrationId: null,
+                    gstin: null,
+                  }));
                   setMultiGstin(false);
                   setGstRegIds([]);
                 }}
@@ -1206,6 +1255,29 @@ function TaskForm({
             </label>
           )}
         </Field>
+
+        {/* Which of the client's concerns the work is for — only offered
+            when the client actually runs more than their legal name. */}
+        {!multiClient && clientTradeNames.length > 0 && (
+          <Field
+            label="Firm / trade name"
+            hint="Shown beside the client on the task, so it is clear which concern it is for"
+          >
+            <Select
+              value={form.tradeNameId ?? ""}
+              onChange={(e) => set("tradeNameId", e.target.value || null)}
+              data-testid="task-tradename"
+            >
+              <option value="">— {selectedClient?.name ?? "Client"} (legal name) —</option>
+              {clientTradeNames.map((tn) => (
+                <option key={tn.id} value={tn.id}>
+                  {tn.name}
+                  {tn.gstin ? ` · ${tn.gstin}` : ""}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <Field
           label="Assigned to"
           hint={assigneeIds.length > 1 ? `${assigneeIds.length} members · the first is the lead` : "One or more team members"}

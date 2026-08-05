@@ -133,6 +133,9 @@ export type Task = {
   approvedById: string | null;
   approvedByName: string | null;
   client?: Client | null;
+  // The client's concern this work is for, when they run several.
+  tradeNameId?: string | null;
+  tradeName?: TradeName | null;
   assignee?: Staff | null;
   assignees?: Staff[];
   approver?: Staff | null;
@@ -195,6 +198,10 @@ export type ComplianceSchedule = {
   notes: string | null;
   // Template steps copied onto each generated task.
   checklist?: ChecklistItem[] | null;
+  tradeNameId?: string | null;
+  tradeName?: TradeName | null;
+  gstRegistrationId?: string | null;
+  gstRegistration?: GstRegistration | null;
   source: string | null;
   sourceKey: string | null;
   createdAt: string;
