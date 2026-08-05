@@ -50,6 +50,20 @@ export async function createTasks(
   const fresh = pairs.filter((p) => !seen.has(`${p.schedule.id}|${p.occurrence.periodKey}`));
   if (fresh.length === 0) return 0;
 
+  // Tasks carry the GSTIN as text too (it is what the register displays), so
+  // resolve the registrations the obligations point at.
+  const regIds = [...new Set(fresh.map((p) => p.schedule.gstRegistrationId).filter(Boolean))];
+  const gstinById = new Map(
+    regIds.length
+      ? (
+          await prisma.gstRegistration.findMany({
+            where: { id: { in: regIds as string[] } },
+            select: { id: true, gstin: true },
+          })
+        ).map((r) => [r.id, r.gstin])
+      : [],
+  );
+
   const { count } = await prisma.task.createMany({
     data: fresh.map(({ schedule, occurrence }) => ({
       title: occurrence.title,
@@ -58,6 +72,11 @@ export async function createTasks(
       priority: schedule.priority,
       dueDate: occurrence.dueDate,
       clientId: schedule.clientId,
+      // The concern and the GST registration the obligation runs for travel
+      // onto every task, so a client with two GSTINs gets two distinct ones.
+      tradeNameId: schedule.tradeNameId,
+      gstRegistrationId: schedule.gstRegistrationId,
+      gstin: schedule.gstRegistrationId ? (gstinById.get(schedule.gstRegistrationId) ?? null) : null,
       assigneeId: schedule.assigneeId,
       scheduleId: schedule.id,
       periodKey: occurrence.periodKey,

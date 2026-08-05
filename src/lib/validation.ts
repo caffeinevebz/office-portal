@@ -136,6 +136,8 @@ export const taskCreateSchema = z.object({
   priority: oneOf([...TASK_PRIORITIES, "Auto"], "priority").default("Auto"),
   dueDate: optionalDate,
   clientId: optionalText,
+  // The client's firm / trade name this work is for.
+  tradeNameId: optionalText,
   // Create the same task for several clients in one go.
   clientIds: z.array(z.string().trim().min(1)).optional(),
   // GST tasks: the registration (GSTIN) this task is filed under, and the
@@ -304,6 +306,12 @@ export const scheduleCreateSchema = z.object({
   priority: oneOf(TASK_PRIORITIES, "priority").default("Medium"),
   active: z.boolean().default(true),
   clientId: optionalText,
+  // Which concern / GST registration the obligation runs for.
+  tradeNameId: optionalText,
+  gstRegistrationId: optionalText,
+  // One obligation per GSTIN of the chosen client — each registration files
+  // its own returns, so each needs its own recurring obligation.
+  gstRegistrationIds: z.array(z.string().trim().min(1)).optional(),
   // Create the same recurring obligation for several clients in one go —
   // one schedule per client, so each generates its own dated tasks.
   clientIds: z.array(z.string().trim().min(1)).optional(),

@@ -39,6 +39,8 @@ export const GET = route(async (req) => {
       include: {
         group: { select: { id: true, code: true, name: true } },
         gstRegistrations: { orderBy: { createdAt: "asc" } },
+        // Pickers offer the client's concerns alongside their legal name.
+        tradeNames: { select: { id: true, name: true, gstin: true }, orderBy: { name: "asc" } },
       },
     });
     return ok(clients);
