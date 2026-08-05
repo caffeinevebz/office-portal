@@ -656,6 +656,20 @@ function InvoiceForm({
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Offer the whole group's work, not just the billed client's. On an existing
+  // invoice it starts on if any mapped task belongs to somebody else, so the
+  // tasks already billed stay visible when the invoice is reopened.
+  const [groupScope, setGroupScope] = useState(() => {
+    if (!initial) return false;
+    const mapped = new Set(
+      (initial.lineItems ?? []).flatMap((l) => [
+        ...(l.tasks ?? []).map((t) => t.id),
+        ...(l.taskId ? [l.taskId] : []),
+      ]),
+    );
+    return tasks.some((t) => mapped.has(t.id) && t.clientId !== initial.clientId);
+  });
+  const [taskSearch, setTaskSearch] = useState("");
   const isEdit = !!initial;
   const set = (k: keyof FormState, v: string | number) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -685,7 +699,45 @@ function InvoiceForm({
 
   const selectedClient = clients.find((c) => c.id === form.clientId);
   const tradeNames = selectedClient?.tradeNames ?? [];
-  const clientTasks = form.clientId ? tasks.filter((t) => t.clientId === form.clientId) : [];
+
+  // One invoice often settles the work of a whole group — the family or
+  // business group is billed through one of its entities. So the task picker
+  // can widen from this client to every client in their group.
+  const groupId = selectedClient?.groupId ?? null;
+  const groupClients = groupId ? clients.filter((c) => c.groupId === groupId) : [];
+  const canBillGroup = groupClients.length > 1;
+  const billedClientIds =
+    canBillGroup && groupScope
+      ? groupClients.map((c) => c.id)
+      : form.clientId
+        ? [form.clientId]
+        : [];
+  const nameById = new Map(clients.map((c) => [c.id, c.name]));
+
+  // Which invoice, if any, already bills a task — billing across a group makes
+  // it far easier to bill the same engagement twice by mistake.
+  const billedOn = (t: Task) =>
+    [...(t.invoiceLines ?? []), ...(t.billedLines ?? [])]
+      .map((l) => l.invoice?.invoiceNumber)
+      .find((n) => !!n && n !== initial?.invoiceNumber) ?? null;
+
+  const q = taskSearch.trim().toLowerCase();
+  const clientTasks = tasks
+    .filter((t) => !!t.clientId && billedClientIds.includes(t.clientId))
+    .filter(
+      (t) =>
+        !q ||
+        t.title.toLowerCase().includes(q) ||
+        t.category.toLowerCase().includes(q) ||
+        (nameById.get(t.clientId ?? "") ?? "").toLowerCase().includes(q),
+    )
+    // Group a mixed list by client so it reads as one client's work at a time.
+    .sort((a, b) => {
+      const byClient = (nameById.get(a.clientId ?? "") ?? "").localeCompare(
+        nameById.get(b.clientId ?? "") ?? "",
+      );
+      return byClient !== 0 ? byClient : a.title.localeCompare(b.title);
+    });
 
   const validLines = lineItems.filter((l) => l.description.trim());
 
@@ -780,6 +832,11 @@ function InvoiceForm({
             onChange={(e) => {
               set("clientId", e.target.value);
               set("tradeNameId", ""); // reset bill-to when the client changes
+              // Another client's work is not this one's — drop the mappings
+              // rather than silently bill someone else's tasks.
+              setGroupScope(false);
+              setTaskSearch("");
+              setLineItems((ls) => ls.map((l) => ({ ...l, taskIds: [] })));
             }}
           >
             <option value="">— Select client —</option>
@@ -887,27 +944,86 @@ function InvoiceForm({
                     <p className="mt-1 text-[11px] text-slate-400">
                       Select a client to map this service to their tasks.
                     </p>
-                  ) : clientTasks.length === 0 ? (
-                    <p className="mt-1 text-[11px] text-slate-400">
-                      This client has no tasks to map.
-                    </p>
                   ) : (
-                    <div className="mt-1 max-h-28 space-y-0.5 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1.5">
-                      {clientTasks.map((t) => (
-                        <label
-                          key={t.id}
-                          className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-xs text-slate-700 hover:bg-slate-50"
-                        >
+                    <>
+                      {/* One bill for the whole family or business group. */}
+                      {canBillGroup && (
+                        <label className="mt-1 flex cursor-pointer items-center gap-2 text-[11px] text-slate-600">
                           <input
                             type="checkbox"
-                            checked={l.taskIds.includes(t.id)}
-                            onChange={() => toggleLineTask(i, t.id)}
+                            checked={groupScope}
+                            onChange={(e) => setGroupScope(e.target.checked)}
+                            data-testid="bill-whole-group"
                             className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                           />
-                          {t.title} · {t.category}
+                          Also offer the work of the{" "}
+                          {groupClients.length === 2
+                            ? "other client"
+                            : `other ${groupClients.length - 1} clients`}{" "}
+                          in{" "}
+                          <span className="font-medium">
+                            {selectedClient?.group?.name ?? "this group"}
+                          </span>
                         </label>
-                      ))}
-                    </div>
+                      )}
+                      {clientTasks.length === 0 && !q ? (
+                        <p className="mt-1 text-[11px] text-slate-400">
+                          {groupScope ? "This group has" : "This client has"} no tasks to map.
+                        </p>
+                      ) : (
+                        <>
+                          {/* A whole group's work is a long list to scroll. */}
+                          {(clientTasks.length > 8 || q) && (
+                            <input
+                              value={taskSearch}
+                              onChange={(e) => setTaskSearch(e.target.value)}
+                              placeholder="Search tasks by title, service or client…"
+                              data-testid="task-map-search"
+                              className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1 text-[11px] shadow-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-200 focus:outline-none"
+                            />
+                          )}
+                          <div className="mt-1 max-h-40 space-y-0.5 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1.5">
+                            {clientTasks.length === 0 && (
+                              <p className="px-1.5 py-1 text-[11px] text-slate-400">
+                                No task matches “{taskSearch}”.
+                              </p>
+                            )}
+                            {clientTasks.map((t) => {
+                              const already = billedOn(t);
+                              return (
+                                <label
+                                  key={t.id}
+                                  className="flex cursor-pointer items-start gap-2 rounded px-1.5 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={l.taskIds.includes(t.id)}
+                                    onChange={() => toggleLineTask(i, t.id)}
+                                    className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                                  />
+                                  <span>
+                                    {t.title} · {t.category}
+                                    {/* Whose work it is — essential once the
+                                        list spans several clients. */}
+                                    {billedClientIds.length > 1 && (
+                                      <span className="block text-[11px] text-slate-500">
+                                        {nameById.get(t.clientId ?? "") ?? "—"}
+                                        {t.tradeName?.name ? ` · ${t.tradeName.name}` : ""}
+                                      </span>
+                                    )}
+                                    {already && (
+                                      <span className="block text-[11px] text-amber-700">
+                                        Already billed on {already}
+                                      </span>
+                                    )}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
