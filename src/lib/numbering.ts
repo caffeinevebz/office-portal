@@ -54,11 +54,20 @@ export async function nextReceiptNumber(
   kind: InvoiceKind = "Fee",
 ): Promise<string> {
   const base = `${seriesPrefix(org, kind)}/${fyShort(paidDate)}/R`;
-  const rows = await prisma.invoice.findMany({
-    where: { receiptNumber: { startsWith: base } },
-    select: { receiptNumber: true },
-  });
-  const seq = maxSeq(rows.map((r) => r.receiptNumber), base) + 1;
+  // Receipts live on the payments now. Legacy numbers still sit on invoices
+  // that predate the backfill, so the series is read across both — otherwise
+  // a fresh deployment would hand out a number already in use.
+  const [payments, invoices] = await Promise.all([
+    prisma.payment.findMany({
+      where: { receiptNumber: { startsWith: base } },
+      select: { receiptNumber: true },
+    }),
+    prisma.invoice.findMany({
+      where: { receiptNumber: { startsWith: base } },
+      select: { receiptNumber: true },
+    }),
+  ]);
+  const seq = maxSeq([...payments, ...invoices].map((r) => r.receiptNumber), base) + 1;
   return `${base}${String(seq).padStart(3, "0")}`;
 }
 

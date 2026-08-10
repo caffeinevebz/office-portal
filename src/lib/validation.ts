@@ -241,6 +241,25 @@ export const invoicePaymentSchema = z.object({
     .optional(),
 });
 
+// One receipt of money against an invoice. A bill can be settled in
+// instalments, so the amount is required and the rest describes how it came in.
+const money = z.preprocess(
+  (v) => (v === "" || v == null ? null : v),
+  z.coerce.number().min(0).nullable(),
+);
+
+export const paymentSchema = z.object({
+  amount: z.coerce.number().positive("Enter the amount received"),
+  tdsDeducted: money.optional(),
+  paidDate: optionalDate,
+  paymentMode: optionalText,
+  chequeNumber: optionalText,
+  chequeDate: optionalDate,
+  chequeBank: optionalText,
+  transactionRef: optionalText,
+  note: optionalText,
+});
+
 // A point on a task that needs the client's clarification.
 export const taskQuerySchema = z.object({
   point: z.string().trim().min(1, "Describe what needs clarification").max(2000),

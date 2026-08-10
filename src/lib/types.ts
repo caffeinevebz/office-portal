@@ -252,15 +252,18 @@ export type Invoice = {
   kind: string;
   issueDate: string;
   dueDate: string | null;
+  /** Set once the bill is settled in full. */
   paidDate: string | null;
+  // Legacy single-payment columns, migrated into `payments` — do not read.
   receiptNumber: string | null;
-  // Payment record (captured when marked Paid):
   paymentMode: string | null;
   chequeNumber: string | null;
   chequeDate: string | null;
   chequeBank: string | null;
   transactionRef: string | null;
   tdsDeducted: number | null;
+  /** Money received against this bill; a client may settle in instalments. */
+  payments?: Payment[];
   clientId: string;
   client?: Client | null;
   tradeNameId: string | null;
@@ -270,6 +273,24 @@ export type Invoice = {
   lineItems?: InvoiceLineItem[];
   // Present on mutation responses when a receipt email was attempted.
   receiptEmail?: { status: string; to?: string; reason?: string };
+};
+
+/** One receipt of money against an invoice, with its own receipt number. */
+export type Payment = {
+  id: string;
+  invoiceId: string;
+  /** The portion of the bill this receipt settles (GST inclusive). */
+  amount: number;
+  tdsDeducted: number | null;
+  paidDate: string;
+  receiptNumber: string | null;
+  paymentMode: string | null;
+  chequeNumber: string | null;
+  chequeDate: string | null;
+  chequeBank: string | null;
+  transactionRef: string | null;
+  note: string | null;
+  createdAt: string;
 };
 
 export type InvoiceLineItem = {

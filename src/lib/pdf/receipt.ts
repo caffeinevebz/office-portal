@@ -1,6 +1,11 @@
 import "server-only";
 import { rupeesInWords } from "./words";
 import { taxBreakdown, letterheadFor, billedParty, type InvoiceForPdf } from "./invoice";
+import type { Payment } from "@prisma/client";
+
+/** The receipt a payment produces. A bill settled in instalments has one per
+ *  instalment, each acknowledging its own amount and the balance left. */
+export type PaymentForPdf = Payment;
 import {
   A4,
   MARGIN,
@@ -22,9 +27,9 @@ const fmtDate = (d: Date | null | undefined) =>
     ? d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
     : "—";
 
-/** Fallback receipt number for legacy invoices without a stored one.
- *  New invoices carry an assigned receiptNumber (PREFIX/FY/RNNN). */
-export function receiptNumber(inv: InvoiceForPdf): string {
+/** Fallback receipt number for a payment that somehow has none stored. */
+export function receiptNumber(inv: InvoiceForPdf, payment?: PaymentForPdf | null): string {
+  if (payment?.receiptNumber) return payment.receiptNumber;
   if (inv.receiptNumber) return inv.receiptNumber;
   const n = inv.invoiceNumber;
   // Insert an "R" before the trailing sequence, e.g. APSB/26-27/001 → …/R001.
@@ -34,51 +39,63 @@ export function receiptNumber(inv: InvoiceForPdf): string {
 }
 
 /** Human description of how the payment came in, from the recorded mode. */
-export function paymentNarration(inv: InvoiceForPdf, paidOn: Date): string[] {
-  const mode = inv.paymentMode;
+export function paymentNarration(p: PaymentForPdf, paidOn: Date): string[] {
+  const mode = p.paymentMode;
   if (!mode) return [];
   if (mode === "Cheque") {
     const bits = [
-      inv.chequeNumber ? `Cheque No. ${inv.chequeNumber}` : null,
-      inv.chequeDate ? `dated ${fmtDate(inv.chequeDate)}` : null,
-      inv.chequeBank ? `drawn on ${inv.chequeBank}` : null,
+      p.chequeNumber ? `Cheque No. ${p.chequeNumber}` : null,
+      p.chequeDate ? `dated ${fmtDate(p.chequeDate)}` : null,
+      p.chequeBank ? `drawn on ${p.chequeBank}` : null,
     ]
       .filter(Boolean)
       .join(" ");
     return bits ? [`Cheque Details`, bits] : [];
   }
-  if (mode !== "Cash" && inv.transactionRef) {
-    return ["Transaction", `${inv.transactionRef} dated ${fmtDate(paidOn)}`];
+  if (mode !== "Cash" && p.transactionRef) {
+    return ["Transaction", `${p.transactionRef} dated ${fmtDate(paidOn)}`];
   }
   return [];
 }
 
-export async function buildReceiptPdf(inv: InvoiceForPdf): Promise<Uint8Array> {
+export async function buildReceiptPdf(
+  inv: InvoiceForPdf,
+  payment?: PaymentForPdf | null,
+  /** What the client still owed after this payment — printed when non-zero. */
+  balanceAfter = 0,
+): Promise<Uint8Array> {
   const pdf = await createA4();
   const { page, reg, bold } = pdf;
   const right = A4.width - MARGIN;
   const lh = await letterheadFor(inv);
 
+  const partial = balanceAfter > 0.5;
   const title =
-    inv.kind === "Reimbursement" ? "REIMBURSEMENT RECEIPT" : "PAYMENT RECEIPT";
+    inv.kind === "Reimbursement"
+      ? "REIMBURSEMENT RECEIPT"
+      : partial
+        ? "PAYMENT RECEIPT (ON ACCOUNT)"
+        : "PAYMENT RECEIPT";
   let y = await firmHeader(pdf, title, lh);
   const tax = taxBreakdown(inv, lh.stateCode);
-  const paidOn = inv.paidDate ?? new Date();
+  const paidOn = payment?.paidDate ?? inv.paidDate ?? new Date();
 
-  // TDS the client withheld: the receipt acknowledges the net amount received
-  // and discloses the deduction against the gross invoice value.
-  const tds = inv.tdsDeducted ?? 0;
-  const net = Math.max(0, tax.grand - tds);
+  // What this receipt acknowledges: the instalment settled, less any TDS the
+  // client withheld out of it, which is the cash actually received.
+  const settled = payment ? payment.amount : tax.grand;
+  const tds = payment ? (payment.tdsDeducted ?? 0) : (inv.tdsDeducted ?? 0);
+  const net = Math.max(0, settled - tds);
 
   const party = billedParty(inv);
   // Facts rows: receipt basics + how the payment came in.
   const facts: [string, string][] = [
-    ["Receipt No.", receiptNumber(inv)],
+    ["Receipt No.", receiptNumber(inv, payment)],
     ["Receipt Date", fmtDate(paidOn)],
     ["Against Invoice", `${inv.invoiceNumber} dated ${fmtDate(inv.issueDate)}`],
   ];
-  if (inv.paymentMode) facts.push(["Mode of Payment", inv.paymentMode]);
-  const narration = paymentNarration(inv, paidOn);
+  const mode = payment?.paymentMode ?? inv.paymentMode;
+  if (mode) facts.push(["Mode of Payment", mode]);
+  const narration = payment ? paymentNarration(payment, paidOn) : [];
   if (narration.length === 2) facts.push([narration[0], narration[1]]);
 
   for (const [k, v] of facts) {
@@ -92,22 +109,25 @@ export async function buildReceiptPdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   y -= 28;
 
   // Narrative body
-  const via = inv.paymentMode
-    ? inv.paymentMode === "Cash"
-      ? " in cash"
-      : ` by ${inv.paymentMode}`
-    : "";
+  const via = mode ? (mode === "Cash" ? " in cash" : ` by ${mode}`) : "";
   const tdsNote =
-    tds > 0
-      ? ` after TDS of ${money(tds)} deducted at source (invoice amount ${money(tax.grand)})`
-      : "";
+    tds > 0 ? ` after TDS of ${money(tds)} deducted at source (against ${money(settled)})` : "";
+  // A part payment must say so on its face, and say what is still due.
+  const onAccount = partial ? " on account" : "";
   const paragraphs = [
     `Received with thanks from ${party.name}${
       party.address ? `, ${party.address}` : ""
-    }, the sum of ${money(net)} (${rupeesInWords(net)})${via} against invoice ${
+    }, the sum of ${money(net)} (${rupeesInWords(net)})${via}${onAccount} against invoice ${
       inv.invoiceNumber
     } towards ${inv.description?.trim() || "professional services rendered"}${tdsNote}.`,
   ];
+  if (partial) {
+    paragraphs.push(
+      `This is a part payment. Of the invoice value of ${money(tax.grand)}, ${money(
+        settled,
+      )} stands settled by this receipt and ${money(balanceAfter)} remains outstanding.`,
+    );
+  }
   for (const p of paragraphs) {
     for (const line of wrap(p, reg, 10.5, right - MARGIN)) {
       text(page, line, { x: MARGIN, y, size: 10.5, font: reg });
@@ -115,13 +135,23 @@ export async function buildReceiptPdf(inv: InvoiceForPdf): Promise<Uint8Array> {
     }
   }
 
-  // Settlement summary when TDS was withheld.
-  if (tds > 0) {
+  // Settlement summary whenever the receipt is not simply "the whole bill in
+  // cash" — TDS withheld, or a balance still to come.
+  if (tds > 0 || partial) {
     y -= 10;
     const rows: [string, string, boolean][] = [
       ["Invoice amount", money(tax.grand), false],
-      ["Less: TDS deducted at source", money(tds), false],
+      // Only worth a line of its own when TDS makes it differ from the cash.
+      ...(tds > 0
+        ? ([
+            ["Settled by this receipt", money(settled), false],
+            ["Less: TDS deducted at source", money(tds), false],
+          ] as [string, string, boolean][])
+        : []),
       ["Amount received", money(net), true],
+      ...(partial
+        ? ([["Balance outstanding", money(balanceAfter), false]] as [string, string, boolean][])
+        : []),
     ];
     for (const [label, value, strong] of rows) {
       text(page, label, { x: MARGIN, y, size: 9.5, font: strong ? bold : reg, color: strong ? INK : MUTED });
@@ -144,14 +174,16 @@ export async function buildReceiptPdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   });
   text(page, "AMOUNT RECEIVED", { x: MARGIN + 10, y: y + 4, size: 7, font: bold, color: FAINT });
   text(page, money(net), { x: MARGIN + 10, y: y - 13, size: 14, font: bold });
-  if (tds > 0) {
-    text(page, `TDS ${money(tds)} deducted at source by the client.`, {
-      x: MARGIN + 212,
-      y: y - 13,
-      size: 8,
-      font: reg,
-      color: MUTED,
-    });
+  const aside = [
+    tds > 0 ? `TDS ${money(tds)} deducted at source by the client.` : null,
+    partial ? `${money(balanceAfter)} still outstanding on invoice ${inv.invoiceNumber}.` : null,
+  ].filter(Boolean);
+  if (aside.length > 0) {
+    let ay = y - 13;
+    for (const line of aside) {
+      text(page, line!, { x: MARGIN + 212, y: ay, size: 8, font: reg, color: MUTED });
+      ay -= 11;
+    }
   }
 
   y -= 60;

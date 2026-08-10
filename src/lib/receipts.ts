@@ -1,6 +1,5 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { invoiceGross } from "@/lib/format";
 
 /**
  * Period selection for the receipt register. CA professional income is
@@ -97,58 +96,67 @@ export async function fetchReceipts(searchParams: URLSearchParams): Promise<{
   const defaultOrg = orgs.find((o) => o.isDefault) ?? orgs[0] ?? null;
   const selectedOrg = orgParam && orgParam !== "All" ? (orgs.find((o) => o.id === orgParam) ?? null) : null;
 
-  const invoices = await prisma.invoice.findMany({
+  // The register is a list of *receipts*, so it iterates the money received —
+  // a bill settled in instalments contributes one row per instalment, each on
+  // the date that instalment came in.
+  const payments = await prisma.payment.findMany({
     where: {
-      status: "Paid",
-      // Expense reimbursement bills are recoveries, not professional
-      // receipts/income — they never appear in the fee receipt register.
-      kind: { not: "Reimbursement" },
       paidDate: {
-        not: null,
         ...(gte ? { gte } : {}),
         ...(lt ? { lt } : {}),
       },
-      ...(selectedOrg
-        ? {
-            OR: [
-              { organizationId: selectedOrg.id },
-              // Null-org invoices belong to the default firm.
-              ...(selectedOrg.id === defaultOrg?.id ? [{ organizationId: null }] : []),
-            ],
-          }
-        : {}),
+      invoice: {
+        // Expense reimbursement bills are recoveries, not professional
+        // receipts/income — they never appear in the fee receipt register.
+        kind: { not: "Reimbursement" },
+        ...(selectedOrg
+          ? {
+              OR: [
+                { organizationId: selectedOrg.id },
+                // Null-org invoices belong to the default firm.
+                ...(selectedOrg.id === defaultOrg?.id ? [{ organizationId: null }] : []),
+              ],
+            }
+          : {}),
+      },
     },
     orderBy: { paidDate: "asc" },
     include: {
-      client: { select: { name: true } },
-      organization: { select: { id: true, name: true } },
+      invoice: {
+        include: {
+          client: { select: { name: true } },
+          organization: { select: { id: true, name: true } },
+        },
+      },
     },
   });
 
-  const receipts: ReceiptRow[] = invoices.map((inv) => {
-    const gross = Math.round(invoiceGross(inv.amount, inv.taxRate, inv.gstMode));
-    const tds = inv.tdsDeducted ?? 0;
+  const receipts: ReceiptRow[] = payments.map((p) => {
+    const inv = p.invoice;
+    const tds = p.tdsDeducted ?? 0;
     const detail =
-      inv.paymentMode === "Cheque"
+      p.paymentMode === "Cheque"
         ? [
-            inv.chequeNumber ? `Chq ${inv.chequeNumber}` : null,
-            inv.chequeDate ? fmtDate(inv.chequeDate) : null,
-            inv.chequeBank || null,
+            p.chequeNumber ? `Chq ${p.chequeNumber}` : null,
+            p.chequeDate ? fmtDate(p.chequeDate) : null,
+            p.chequeBank || null,
           ]
             .filter(Boolean)
             .join(" · ")
-        : (inv.transactionRef ?? "");
+        : (p.transactionRef ?? "");
     return {
-      id: inv.id,
-      receiptNumber: inv.receiptNumber,
-      paidDate: inv.paidDate!,
+      id: p.id,
+      receiptNumber: p.receiptNumber,
+      paidDate: p.paidDate,
       invoiceNumber: inv.invoiceNumber,
       clientName: inv.client.name,
-      paymentMode: inv.paymentMode,
+      paymentMode: p.paymentMode,
       detail,
-      gross,
+      // The amount this receipt settles, not the whole invoice — a part
+      // payment must not overstate the firm's income for the period.
+      gross: Math.round(p.amount),
       tds,
-      net: Math.max(0, gross - tds),
+      net: Math.max(0, Math.round(p.amount) - tds),
       orgId: inv.organization?.id ?? defaultOrg?.id ?? null,
       orgName: inv.organization?.name ?? defaultOrg?.name ?? "—",
     };

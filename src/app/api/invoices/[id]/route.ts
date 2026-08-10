@@ -1,51 +1,87 @@
 import { prisma } from "@/lib/prisma";
-import { ok, parse, route } from "@/lib/api";
+import { ok, fail, parse, route } from "@/lib/api";
 import { requirePermission } from "@/lib/auth/session";
 import { invoiceUpdateSchema, invoicePaymentSchema } from "@/lib/validation";
-import { nextReceiptNumber, orgForInvoice } from "@/lib/numbering";
 import { sendReceiptEmail } from "@/lib/receipt-email";
+import { recordPayment, settleInvoice, settlementOf } from "@/lib/payments";
 import type { Prisma } from "@prisma/client";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-async function applyUpdate(id: string, data: Prisma.InvoiceUncheckedUpdateInput) {
-  const patch: Prisma.InvoiceUncheckedUpdateInput = { ...data };
-  if (typeof data.status === "string") {
-    if (data.status === "Paid") {
-      const current = await prisma.invoice.findUnique({ where: { id } });
-      // Honour an explicit payment date from the record-payment form.
-      const paidDate =
-        (patch.paidDate instanceof Date ? patch.paidDate : null) ??
-        current?.paidDate ??
-        new Date();
-      if (current && (!current.paidDate || patch.paidDate)) patch.paidDate = paidDate;
-      // Assign a receipt number the first time it is marked Paid —
-      // reimbursement bills draw from their own EXP receipt series.
-      if (current && !current.receiptNumber) {
-        const org = await orgForInvoice(current.organizationId);
-        const kind = current.kind === "Reimbursement" ? "Reimbursement" : "Fee";
-        patch.receiptNumber = await nextReceiptNumber(org, paidDate, kind);
+const INVOICE_INCLUDE = {
+  client: true,
+  tradeName: true,
+  lineItems: {
+    include: {
+      task: { select: { id: true, title: true, category: true } },
+      tasks: { select: { id: true, title: true, category: true } },
+    },
+  },
+  payments: { orderBy: { paidDate: "asc" } },
+} as const;
+
+/**
+ * Apply an edit. Status is special: once money has been received it belongs to
+ * the payments, so marking a bill Paid records the balance rather than setting
+ * a field, and moving it off Paid is refused while receipts stand — undo the
+ * receipt instead, which is the honest record of what happened.
+ */
+async function applyUpdate(
+  id: string,
+  data: Record<string, unknown>,
+): Promise<
+  { invoice: Awaited<ReturnType<typeof readInvoice>>; paymentId?: string } | { error: string; status: number }
+> {
+  const { status, paidDate, paymentMode, chequeNumber, chequeDate, chequeBank, transactionRef, tdsDeducted, ...rest } =
+    data;
+
+  const current = await prisma.invoice.findUnique({
+    where: { id },
+    include: { payments: true },
+  });
+  if (!current) return { error: "Invoice not found", status: 404 };
+
+  if (Object.keys(rest).length) {
+    await prisma.invoice.update({ where: { id }, data: rest as Prisma.InvoiceUncheckedUpdateInput });
+  }
+
+  let paymentId: string | undefined;
+  if (typeof status === "string") {
+    const fresh = await prisma.invoice.findUnique({ where: { id }, include: { payments: true } });
+    const { outstanding } = settlementOf(fresh!, fresh!.payments);
+    if (status === "Paid") {
+      // Settle whatever is left — for an unpaid bill that is the whole of it,
+      // for a part-paid one only the balance.
+      if (outstanding > 0.5) {
+        const payment = await recordPayment(id, {
+          amount: outstanding,
+          tdsDeducted: (tdsDeducted as number | null) ?? null,
+          paidDate: (paidDate as Date | null) ?? null,
+          paymentMode: (paymentMode as string | null) ?? null,
+          chequeNumber: (chequeNumber as string | null) ?? null,
+          chequeDate: (chequeDate as Date | null) ?? null,
+          chequeBank: (chequeBank as string | null) ?? null,
+          transactionRef: (transactionRef as string | null) ?? null,
+        });
+        paymentId = payment?.id;
       }
+    } else if (fresh!.payments.length > 0) {
+      return {
+        error:
+          "Money has been received against this invoice. Remove the receipt first if it was recorded in error.",
+        status: 409,
+      };
     } else {
-      // Moving off Paid clears the payment record.
-      patch.paidDate = null;
-      patch.paymentMode = null;
-      patch.chequeNumber = null;
-      patch.chequeDate = null;
-      patch.chequeBank = null;
-      patch.transactionRef = null;
-      patch.tdsDeducted = null;
+      await prisma.invoice.update({ where: { id }, data: { status } });
     }
   }
-  return prisma.invoice.update({
-    where: { id },
-    data: patch,
-    include: {
-      client: true,
-      tradeName: true,
-      lineItems: { include: { task: { select: { id: true, title: true, category: true } }, tasks: { select: { id: true, title: true, category: true } } } },
-    },
-  });
+
+  await settleInvoice(id);
+  return { invoice: await readInvoice(id), paymentId };
+}
+
+function readInvoice(id: string) {
+  return prisma.invoice.findUnique({ where: { id }, include: INVOICE_INCLUDE });
 }
 
 export const PUT = route(async (req, ctx: Ctx) => {
@@ -80,12 +116,14 @@ export const PUT = route(async (req, ctx: Ctx) => {
     });
     data.amount = lineItems.reduce((s, l) => s + (l.amount || 0), 0);
   }
-  const invoice = await applyUpdate(id, data as Prisma.InvoiceUncheckedUpdateInput);
-  // A paid invoice's receipt goes to the client's inbox automatically
-  // (once per receipt; skipped when the client has no email).
-  const receiptEmail =
-    invoice.status === "Paid" && invoice.receiptNumber ? await sendReceiptEmail(id) : undefined;
-  return ok(receiptEmail ? { ...invoice, receiptEmail } : invoice);
+  const result = await applyUpdate(id, data as Record<string, unknown>);
+  if ("error" in result) return fail(result.error, result.status);
+  // The receipt for a payment just recorded goes to the client's inbox
+  // (skipped when the client has no email).
+  const receiptEmail = result.paymentId
+    ? await sendReceiptEmail(id, result.paymentId)
+    : undefined;
+  return ok(receiptEmail ? { ...result.invoice, receiptEmail } : result.invoice);
 });
 
 // Quick status change; marking Paid can carry the payment record — mode of
@@ -95,10 +133,12 @@ export const PATCH = route(async (req, ctx: Ctx) => {
   await requirePermission("manageInvoices");
   const { id } = await ctx.params;
   const data = await parse(req, invoicePaymentSchema);
-  const invoice = await applyUpdate(id, data as Prisma.InvoiceUncheckedUpdateInput);
-  const receiptEmail =
-    invoice.status === "Paid" && invoice.receiptNumber ? await sendReceiptEmail(id) : undefined;
-  return ok(receiptEmail ? { ...invoice, receiptEmail } : invoice);
+  const result = await applyUpdate(id, data as Record<string, unknown>);
+  if ("error" in result) return fail(result.error, result.status);
+  const receiptEmail = result.paymentId
+    ? await sendReceiptEmail(id, result.paymentId)
+    : undefined;
+  return ok(receiptEmail ? { ...result.invoice, receiptEmail } : result.invoice);
 });
 
 export const DELETE = route(async (_req, ctx: Ctx) => {
