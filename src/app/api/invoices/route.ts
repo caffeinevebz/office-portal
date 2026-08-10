@@ -4,10 +4,16 @@ import { requirePermission } from "@/lib/auth/session";
 import { invoiceCreateSchema } from "@/lib/validation";
 import { nextInvoiceNumber, nextReceiptNumber, orgForInvoice } from "@/lib/numbering";
 import { sendReceiptEmail } from "@/lib/receipt-email";
+import { backfillPayments, recordPayment } from "@/lib/payments";
+import { invoiceGross } from "@/lib/format";
 import type { Prisma } from "@prisma/client";
 
 export const GET = route(async (req) => {
   await requirePermission("viewInvoices");
+  // Invoices paid under the old one-payment-per-bill model become Payment
+  // rows on first read. Runs once per process and skips anything already
+  // migrated, so the list stays cheap.
+  await backfillPayments();
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status")?.trim();
   const clientId = searchParams.get("clientId")?.trim();
@@ -34,6 +40,9 @@ export const GET = route(async (req) => {
         orderBy: { createdAt: "asc" },
         include: { task: { select: { id: true, title: true, category: true } }, tasks: { select: { id: true, title: true, category: true } } },
       },
+      // What has actually been received — the rows drive the status badge and
+      // the balance shown against a part-paid bill.
+      payments: { orderBy: { paidDate: "asc" } },
     },
   });
   return ok(invoices);
@@ -44,8 +53,9 @@ export const POST = route(async (req) => {
   const { lineItems, ...data } = await parse(req, invoiceCreateSchema);
   const issueDate = data.issueDate ?? new Date();
   const org = await orgForInvoice(data.organizationId);
+  // Raising a bill already settled: the money is recorded as a payment below,
+  // which is what then sets the status — nothing here writes it by hand.
   const paid = data.status === "Paid";
-  const paidDate = paid ? new Date() : null;
   // The invoice amount is the sum of its line items (falls back to the single
   // amount when no line items are supplied).
   const amount =
@@ -60,7 +70,6 @@ export const POST = route(async (req) => {
   for (let attempt = 0; attempt < 5; attempt++) {
     const invoiceNumber =
       data.invoiceNumber?.trim() || (await nextInvoiceNumber(org, issueDate, kind));
-    const receiptNumber = paid ? await nextReceiptNumber(org, paidDate!, kind) : null;
     try {
       const invoice = await prisma.invoice.create({
         data: {
@@ -68,8 +77,9 @@ export const POST = route(async (req) => {
           amount,
           invoiceNumber,
           issueDate,
-          paidDate,
-          receiptNumber,
+          // Left unset: a bill created as Paid gets its payment recorded
+          // straight after, and that is what stamps the date.
+          status: paid ? "Sent" : data.status,
           lineItems:
             lineItems && lineItems.length
               ? {
@@ -90,9 +100,31 @@ export const POST = route(async (req) => {
           lineItems: { include: { task: { select: { id: true, title: true, category: true } }, tasks: { select: { id: true, title: true, category: true } } } },
         },
       });
-      // Created directly as Paid → the receipt goes straight to the client.
-      const receiptEmail = receiptNumber ? await sendReceiptEmail(invoice.id) : undefined;
-      return ok(receiptEmail ? { ...invoice, receiptEmail } : invoice, 201);
+      // Created directly as Paid → record the money and send the receipt.
+      if (paid) {
+        const payment = await recordPayment(invoice.id, {
+          amount: invoiceGross(invoice.amount, invoice.taxRate, invoice.gstMode),
+          tdsDeducted: data.tdsDeducted ?? null,
+          paidDate: data.paidDate ?? new Date(),
+          paymentMode: data.paymentMode ?? null,
+          chequeNumber: data.chequeNumber ?? null,
+          chequeDate: data.chequeDate ?? null,
+          chequeBank: data.chequeBank ?? null,
+          transactionRef: data.transactionRef ?? null,
+        });
+        const receiptEmail = payment ? await sendReceiptEmail(invoice.id, payment.id) : undefined;
+        const settled = await prisma.invoice.findUnique({
+          where: { id: invoice.id },
+          include: {
+            client: true,
+            tradeName: true,
+            lineItems: { include: { task: { select: { id: true, title: true, category: true } }, tasks: { select: { id: true, title: true, category: true } } } },
+            payments: { orderBy: { paidDate: "asc" } },
+          },
+        });
+        return ok(receiptEmail ? { ...settled, receiptEmail } : settled, 201);
+      }
+      return ok(invoice, 201);
     } catch (e) {
       const code = (e as { code?: string }).code;
       // P2002 = unique constraint; regenerate only for auto numbers.

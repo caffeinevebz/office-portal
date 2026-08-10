@@ -17,6 +17,7 @@ import { Field, Input, Select } from "@/components/ui/Field";
 import { Loading, EmptyState } from "@/components/ui/EmptyState";
 import {
   INVOICE_STATUSES,
+  INVOICE_STATUSES_SETTABLE,
   GST_MODES,
   GST_MODE_LABELS,
   PAYMENT_MODES,
@@ -78,6 +79,20 @@ function servicesSummary(i: Invoice): string {
   if (i.lineItems && i.lineItems.length > 0) return i.lineItems.map((l) => l.description).join(", ");
   return i.description ?? "";
 }
+// Where a bill stands: what it is worth, what has come in, what is still due.
+// A client rarely settles a professional-fee invoice in one go.
+function settlement(i: Invoice) {
+  const gross = withTax(i);
+  const received = (i.payments ?? []).reduce((s, p) => s + (p.amount || 0), 0);
+  return {
+    gross,
+    received,
+    outstanding: Math.max(0, gross - received),
+    partly: received > 0.5 && received < gross - 0.5,
+    anyReceived: received > 0.5,
+  };
+}
+
 // How many line items are mapped to a task.
 function billedTaskCount(i: Invoice): number {
   const ids = new Set<string>();
@@ -132,16 +147,16 @@ export default function InvoicesPage() {
     (i) => kindFilter === "All" || (i.kind ?? "Fee") === kindFilter,
   );
   const billed = all.reduce((s, i) => s + withTax(i), 0);
-  const collected = all
-    .filter((i) => i.status === "Paid")
-    .reduce((s, i) => s + withTax(i), 0);
+  // Collected counts the money actually received, so a part payment shows up
+  // the day it comes in rather than only when the bill is finally settled.
+  const collected = all.reduce((s, i) => s + settlement(i).received, 0);
   const outstanding = all
-    .filter((i) => i.status === "Sent" || i.status === "Overdue")
-    .reduce((s, i) => s + withTax(i), 0);
+    .filter((i) => i.status !== "Draft")
+    .reduce((s, i) => s + settlement(i).outstanding, 0);
 
   async function quickStatus(inv: Invoice, s: string) {
-    // Marking Paid captures the payment record first (mode, details, TDS).
-    if (s === "Paid" && inv.status !== "Paid") {
+    // Marking Paid captures the receipt first (amount, mode, details, TDS).
+    if (s === "Paid" && settlement(inv).outstanding > 0.5) {
       setPayFor(inv);
       return;
     }
@@ -369,6 +384,14 @@ export default function InvoicesPage() {
                       <span className="block text-[11px] text-slate-400">
                         {i.gstMode === "None" ? "No GST" : `incl. ${i.taxRate}% GST`}
                       </span>
+                      {/* Part-settled: say how much has come in and how much
+                          is still owed, which is the whole point of the row. */}
+                      {settlement(i).partly && (
+                        <span className="mt-0.5 block text-[11px] font-medium text-amber-700">
+                          {formatCurrency(settlement(i).received)} received ·{" "}
+                          {formatCurrency(settlement(i).outstanding)} due
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3">
                       {canManage ? (
@@ -380,7 +403,14 @@ export default function InvoicesPage() {
                             invoicePillClass(i.status),
                           )}
                         >
-                          {INVOICE_STATUSES.map((s) => (
+                          {/* Partly Paid and Paid follow from the receipts, so
+                              they are only listed when they already apply. */}
+                          {INVOICE_STATUSES.filter(
+                            (s) =>
+                              s === i.status ||
+                              s === "Paid" ||
+                              (INVOICE_STATUSES_SETTABLE as readonly string[]).includes(s),
+                          ).map((s) => (
                             <option key={s}>{s}</option>
                           ))}
                         </select>
@@ -407,24 +437,29 @@ export default function InvoicesPage() {
                         >
                           <FileDown className="h-4 w-4" />
                         </button>
-                        {i.status === "Paid" && (
+                        {settlement(i).anyReceived && (
                           <button
                             onClick={() => setViewing({ invoice: i, kind: "receipt" })}
                             data-testid={`open-receipt-${i.invoiceNumber}`}
                             className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
-                            title="Open the payment receipt PDF"
+                            title={
+                              (i.payments?.length ?? 0) > 1
+                                ? `Open the latest of ${i.payments!.length} receipts`
+                                : "Open the payment receipt PDF"
+                            }
                           >
                             <FileCheck2 className="h-4 w-4" />
                           </button>
                         )}
-                        {i.status === "Paid" && canManage && (
+                        {canManage && (i.status !== "Draft" || settlement(i).anyReceived) && (
                           <button
                             onClick={() => setPayFor(i)}
+                            data-testid={`payments-${i.invoiceNumber}`}
                             className="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
                             title={
-                              i.paymentMode
-                                ? `Payment: ${i.paymentMode}${i.tdsDeducted ? ` · TDS ${formatCurrency(i.tdsDeducted)}` : ""}`
-                                : "Record payment details"
+                              settlement(i).outstanding > 0.5
+                                ? `Record a payment · ${formatCurrency(settlement(i).outstanding)} outstanding`
+                                : "Payments received"
                             }
                           >
                             <IndianRupee className="h-4 w-4" />
@@ -1099,31 +1134,38 @@ function PaymentModal({
   onClose: () => void;
   onSaved: (saved: Invoice) => void;
 }) {
-  const gross = Math.round(withTax(invoice));
-  const [mode, setMode] = useState(invoice.paymentMode ?? "NEFT/IMPS/Transfer");
-  const [paidDate, setPaidDate] = useState(
-    toDateInput(invoice.paidDate) || toDateInput(new Date().toISOString()),
-  );
-  const [chequeNumber, setChequeNumber] = useState(invoice.chequeNumber ?? "");
-  const [chequeDate, setChequeDate] = useState(toDateInput(invoice.chequeDate));
-  const [chequeBank, setChequeBank] = useState(invoice.chequeBank ?? "");
-  const [transactionRef, setTransactionRef] = useState(invoice.transactionRef ?? "");
-  const [tdsOn, setTdsOn] = useState((invoice.tdsDeducted ?? 0) > 0);
-  const [tds, setTds] = useState(invoice.tdsDeducted ? String(invoice.tdsDeducted) : "");
+  const { gross, received, outstanding } = settlement(invoice);
+  const payments = invoice.payments ?? [];
+  const [mode, setMode] = useState("NEFT/IMPS/Transfer");
+  const [paidDate, setPaidDate] = useState(toDateInput(new Date().toISOString()));
+  // Part payment: the client settles what they can now, the rest later. The
+  // field starts at the full balance, which is what most receipts will be.
+  const [amount, setAmount] = useState(outstanding > 0 ? String(Math.round(outstanding)) : "");
+  const [chequeNumber, setChequeNumber] = useState("");
+  const [chequeDate, setChequeDate] = useState("");
+  const [chequeBank, setChequeBank] = useState("");
+  const [transactionRef, setTransactionRef] = useState("");
+  const [note, setNote] = useState("");
+  const [tdsOn, setTdsOn] = useState(false);
+  const [tds, setTds] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const isCheque = mode === "Cheque";
   const isElectronic = ELECTRONIC_MODES.has(mode);
+  const settling = Math.max(0, parseFloat(amount) || 0);
   const tdsAmount = tdsOn ? parseFloat(tds) || 0 : 0;
-  const net = Math.max(0, gross - tdsAmount);
+  const net = Math.max(0, settling - tdsAmount);
+  const balanceAfter = Math.max(0, outstanding - settling);
+  const overpaying = settling > outstanding + 1;
+  const settled = outstanding <= 0.5;
 
   async function submit() {
     setBusy(true);
     setErr(null);
     try {
-      const saved = (await apiMutate(`/api/invoices/${invoice.id}`, "PATCH", {
-        status: "Paid",
+      const res = (await apiMutate(`/api/invoices/${invoice.id}/payments`, "POST", {
+        amount: settling,
         paymentMode: mode,
         paidDate: paidDate || null,
         chequeNumber: isCheque ? chequeNumber || null : null,
@@ -1131,10 +1173,27 @@ function PaymentModal({
         chequeBank: isCheque ? chequeBank || null : null,
         transactionRef: isElectronic ? transactionRef || null : null,
         tdsDeducted: tdsAmount > 0 ? tdsAmount : null,
-      })) as Invoice;
-      onSaved(saved);
+        note: note || null,
+      })) as { invoice: Invoice };
+      onSaved(res.invoice);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to record the payment");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removePayment(paymentId: string) {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = (await apiMutate(
+        `/api/invoices/${invoice.id}/payments/${paymentId}`,
+        "DELETE",
+      )) as { invoice: Invoice };
+      onSaved(res.invoice);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to remove the payment");
     } finally {
       setBusy(false);
     }
@@ -1144,24 +1203,39 @@ function PaymentModal({
     <Modal
       open
       onClose={onClose}
-      title={`Record payment — ${invoice.invoiceNumber}`}
-      description={`${invoice.client?.name ?? ""} · ${formatCurrency(gross)} receivable. The details print on the receipt.`}
+      size="lg"
+      title={`Payments — ${invoice.invoiceNumber}`}
+      description={
+        settled
+          ? `${invoice.client?.name ?? ""} · ${formatCurrency(gross)} received in full.`
+          : `${invoice.client?.name ?? ""} · ${formatCurrency(outstanding)} of ${formatCurrency(gross)} still outstanding. Each payment gets its own receipt.`
+      }
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={busy}>
-            Cancel
+            Close
           </Button>
-          <Button
-            onClick={submit}
-            disabled={
-              busy ||
-              (isCheque && !(chequeNumber && chequeDate && chequeBank)) ||
-              (isElectronic && !transactionRef) ||
-              (tdsOn && !(tdsAmount > 0))
-            }
-          >
-            {busy ? "Saving…" : `Mark paid · ${formatCurrency(net)} received`}
-          </Button>
+          {!settled && (
+            <Button
+              onClick={submit}
+              data-testid="save-payment"
+              disabled={
+                busy ||
+                !(settling > 0) ||
+                overpaying ||
+                tdsAmount > settling ||
+                (isCheque && !(chequeNumber && chequeDate && chequeBank)) ||
+                (isElectronic && !transactionRef) ||
+                (tdsOn && !(tdsAmount > 0))
+              }
+            >
+              {busy
+                ? "Saving…"
+                : balanceAfter > 0.5
+                  ? `Record ${formatCurrency(net)} on account`
+                  : `Record ${formatCurrency(net)} · settles the bill`}
+            </Button>
+          )}
         </>
       }
     >
@@ -1170,7 +1244,129 @@ function PaymentModal({
           {err}
         </div>
       )}
+      {/* What has already come in, each with its own receipt. */}
+      {payments.length > 0 && (
+        <div className="mb-4 overflow-hidden rounded-xl border border-slate-200">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50/70 text-left text-[11px] font-medium text-slate-500">
+                <th className="px-3 py-2">Receipt</th>
+                <th className="px-3 py-2">Date</th>
+                <th className="px-3 py-2">Mode</th>
+                <th className="px-3 py-2 text-right">Settled</th>
+                <th className="px-3 py-2 text-right">Received</th>
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {payments.map((p) => (
+                <tr key={p.id} data-testid={`payment-row-${p.receiptNumber ?? p.id}`}>
+                  <td className="px-3 py-2 font-medium text-slate-800">
+                    {p.receiptNumber ?? "—"}
+                  </td>
+                  <td className="px-3 py-2 text-slate-600">{formatDate(p.paidDate)}</td>
+                  <td className="px-3 py-2 text-slate-600">
+                    {p.paymentMode ?? "—"}
+                    {p.note && (
+                      <span className="block text-[11px] text-slate-400">{p.note}</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right text-slate-700">
+                    {formatCurrency(p.amount)}
+                  </td>
+                  <td className="px-3 py-2 text-right text-slate-700">
+                    {formatCurrency(p.amount - (p.tdsDeducted ?? 0))}
+                    {(p.tdsDeducted ?? 0) > 0 && (
+                      <span className="block text-[11px] text-slate-400">
+                        TDS {formatCurrency(p.tdsDeducted!)}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <a
+                        href={`/api/invoices/${invoice.id}/receipt?payment=${p.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded p-1 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                        title="Open this receipt"
+                      >
+                        <FileCheck2 className="h-4 w-4" />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => removePayment(p.id)}
+                        disabled={busy}
+                        data-testid={`undo-payment-${p.receiptNumber ?? p.id}`}
+                        className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
+                        title="Remove this receipt — entered in error, or a cheque returned"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-slate-200 bg-slate-50/70 text-xs">
+                <td className="px-3 py-2 font-medium text-slate-600" colSpan={3}>
+                  {formatCurrency(received)} of {formatCurrency(gross)} received
+                </td>
+                <td className="px-3 py-2 text-right font-semibold text-slate-800" colSpan={3}>
+                  {outstanding > 0.5
+                    ? `${formatCurrency(outstanding)} outstanding`
+                    : "Settled in full"}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+
+      {settled ? (
+        <p className="rounded-lg bg-fern-50 px-3 py-2 text-sm text-fern-800 ring-1 ring-fern-200">
+          This invoice has been received in full. Remove a receipt above if one was
+          recorded in error.
+        </p>
+      ) : (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field
+          label="Amount received (₹)"
+          required
+          hint={`Up to ${formatCurrency(outstanding)} outstanding — enter less for a payment on account`}
+        >
+          <Input
+            type="number"
+            min={0}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            data-testid="payment-amount"
+          />
+        </Field>
+        <div className="flex items-end">
+          <div
+            className={cn(
+              "w-full rounded-lg px-4 py-2.5 text-right ring-1",
+              balanceAfter > 0.5
+                ? "bg-amber-50 ring-amber-200"
+                : "bg-fern-50 ring-fern-200",
+            )}
+          >
+            <p className="text-[11px] text-slate-500">
+              {balanceAfter > 0.5 ? "Balance after this payment" : "Settles the invoice"}
+            </p>
+            <p className="text-lg font-semibold text-slate-900" data-testid="balance-after">
+              {formatCurrency(balanceAfter)}
+            </p>
+          </div>
+        </div>
+        {overpaying && (
+          <p className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-200 sm:col-span-2">
+            That is more than the {formatCurrency(outstanding)} still outstanding on this
+            invoice.
+          </p>
+        )}
         <Field label="Mode of payment" required>
           <Select value={mode} onChange={(e) => setMode(e.target.value)}>
             {PAYMENT_MODES.map((m) => (
@@ -1230,7 +1426,11 @@ function PaymentModal({
           </label>
           {tdsOn && (
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="TDS amount (₹)" required hint="Deducted at source by the client">
+              <Field
+                label="TDS amount (₹)"
+                required
+                hint="Deducted at source out of this payment"
+              >
                 <Input
                   type="number"
                   min={0}
@@ -1241,14 +1441,23 @@ function PaymentModal({
               </Field>
               <div className="flex items-end">
                 <div className="w-full rounded-lg bg-white px-4 py-2.5 text-right ring-1 ring-slate-200">
-                  <p className="text-[11px] text-slate-500">Net received (gross − TDS)</p>
+                  <p className="text-[11px] text-slate-500">Cash received (settled − TDS)</p>
                   <p className="text-lg font-semibold text-slate-900">{formatCurrency(net)}</p>
                 </div>
               </div>
             </div>
           )}
         </div>
+
+        <Field
+          label="Note"
+          className="sm:col-span-2"
+          hint="Optional — e.g. “part payment on account, balance after filing”"
+        >
+          <Input value={note} onChange={(e) => setNote(e.target.value)} />
+        </Field>
       </div>
+      )}
     </Modal>
   );
 }

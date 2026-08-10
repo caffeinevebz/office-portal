@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { buildInvoicePdf } from "@/lib/pdf/invoice";
 import { buildReceiptPdf, receiptNumber } from "@/lib/pdf/receipt";
+import { invoiceGross } from "@/lib/format";
 
 /** The two client-facing documents an invoice can produce. */
 export const DOC_KINDS = ["invoice", "receipt"] as const;
@@ -26,6 +27,8 @@ export type BuiltDocument = {
 export async function buildDocument(
   kind: DocKind,
   id: string,
+  /** Which receipt to render; the latest when not given. */
+  paymentId?: string,
 ): Promise<{ doc: BuiltDocument } | { error: string; status: number }> {
   const invoice = await prisma.invoice.findUnique({
     where: { id },
@@ -34,18 +37,29 @@ export async function buildDocument(
       organization: true,
       tradeName: true,
       lineItems: { orderBy: { createdAt: "asc" } },
+      payments: { orderBy: { paidDate: "asc" } },
     },
   });
   if (!invoice) return { error: "Invoice not found", status: 404 };
 
   if (kind === "receipt") {
-    if (invoice.status !== "Paid") {
-      return { error: "A receipt can only be issued for a paid invoice", status: 400 };
+    // A receipt exists per payment received, so a part-paid bill has one too.
+    const payment = paymentId
+      ? invoice.payments.find((p) => p.id === paymentId)
+      : invoice.payments[invoice.payments.length - 1];
+    if (!payment) {
+      return { error: "No payment has been received against this invoice", status: 400 };
     }
-    const number = receiptNumber(invoice);
+    // The balance as at this receipt, not as at today.
+    const gross = invoiceGross(invoice.amount, invoice.taxRate, invoice.gstMode);
+    const settledSoFar = invoice.payments
+      .filter((p) => p.paidDate <= payment.paidDate)
+      .reduce((s, p) => s + p.amount, 0);
+    const balance = Math.max(0, gross - settledSoFar);
+    const number = receiptNumber(invoice, payment);
     return {
       doc: {
-        bytes: await buildReceiptPdf(invoice),
+        bytes: await buildReceiptPdf(invoice, payment, balance),
         filename: `${number.replace(/\//g, "-")}.pdf`,
         title: `Receipt ${number}`,
       },

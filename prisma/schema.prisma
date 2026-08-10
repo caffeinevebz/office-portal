@@ -578,7 +578,9 @@ model Invoice {
   amount        Float     @default(0) // pre-tax professional fee
   taxRate       Float     @default(18) // GST %
   gstMode       String    @default("Auto") // Auto (by client state), Intra, Inter, None
-  status        String    @default("Draft") // Draft, Sent, Paid, Overdue
+  // Draft, Sent, Partly Paid, Paid, Overdue. Once any money has been
+  // received the status is derived from the payments below, never set by hand.
+  status        String    @default("Draft")
   // Fee = professional fees (the default); Reimbursement = out-of-pocket
   // expenses billed to the client. Reimbursement bills run on their own
   // number series (PREFIX/EXP/FY/NNN) and stay OUT of the fee receipt
@@ -586,16 +588,20 @@ model Invoice {
   kind          String    @default("Fee")
   issueDate     DateTime  @default(now())
   dueDate       DateTime?
+  /// Date the bill was settled in full — derived from the payments, kept here
+  /// so the register can sort and index on it.
   paidDate      DateTime?
-  receiptNumber String?   @unique // assigned when marked Paid, e.g. APSB/26-27/R001
-  // Payment-receipt details (recorded when the invoice is marked Paid):
-  paymentMode    String? // Cash, Cheque, NEFT/IMPS/Transfer, UPI
-  chequeNumber   String? // Cheque: number
-  chequeDate     DateTime? // Cheque: date
-  chequeBank     String? // Cheque: drawee bank name
-  transactionRef String? // NEFT/IMPS/UPI: transaction number (paidDate is its date)
-  // TDS the client deducted at source from the fee; the receipt shows the
-  // gross fee, the TDS, and the net amount actually received.
+  // ── Legacy single-payment columns ──────────────────────────────────────
+  // Payments used to live on the invoice itself, one per bill. They are read
+  // once by the backfill in src/lib/payments.ts, which turns each into a
+  // Payment row, and are never written again. Kept so that backfill has a
+  // source; nothing else should read them.
+  receiptNumber String?   @unique
+  paymentMode    String?
+  chequeNumber   String?
+  chequeDate     DateTime?
+  chequeBank     String?
+  transactionRef String?
   tdsDeducted    Float?
   createdAt     DateTime  @default(now())
 
@@ -608,12 +614,47 @@ model Invoice {
   tradeName      TradeName?    @relation(fields: [tradeNameId], references: [id], onDelete: SetNull)
   // Service line items; `amount` above is kept in sync as their sum.
   lineItems      InvoiceLineItem[]
+  // Money actually received against this bill — a client may settle it in
+  // instalments, so this is the record of truth and `status`/`paidDate` above
+  // are derived from it.
+  payments       Payment[]
   // Reimbursement claims billed through this invoice.
   expenseClaims  ExpenseClaim[]
 
   // Invoice list filters + the receipt register (paid rows by payment date).
   @@index([status, paidDate])
   @@index([clientId])
+}
+
+/// One receipt of money against an invoice. Clients often settle a bill in
+/// instalments — a payment on account now, the balance later — so each
+/// receipt is its own row with its own receipt number and PDF, and the
+/// invoice's status and paid date are derived from the set of them.
+model Payment {
+  id            String    @id @default(cuid())
+  invoiceId     String
+  invoice       Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  /// The portion of the invoice (GST inclusive) this receipt settles. Cash in
+  /// hand is this less any TDS below, which the client remits on the firm's
+  /// behalf — so the bill is settled by the whole of it either way.
+  amount         Float     @default(0)
+  /// TDS the client withheld out of this instalment.
+  tdsDeducted    Float?
+  paidDate       DateTime  @default(now())
+  /// Own receipt number in the firm's series, e.g. APSB/26-27/R001.
+  receiptNumber  String?   @unique
+  paymentMode    String? // Cash, Cheque, NEFT/IMPS/Transfer, UPI
+  chequeNumber   String?
+  chequeDate     DateTime?
+  chequeBank     String?
+  transactionRef String? // NEFT/IMPS/UPI reference
+  /// Free note, e.g. "part payment on account".
+  note           String?
+  createdAt      DateTime  @default(now())
+
+  // The receipt register slices by payment date.
+  @@index([invoiceId])
+  @@index([paidDate])
 }
 
 /// One billed service on an invoice. An invoice can bill several services at

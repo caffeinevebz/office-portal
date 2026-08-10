@@ -60,7 +60,15 @@ export const GET = route(async () => {
       },
     }),
     prisma.invoice.findMany({
-      select: { amount: true, taxRate: true, gstMode: true, status: true, issueDate: true },
+      select: {
+        amount: true,
+        taxRate: true,
+        gstMode: true,
+        status: true,
+        issueDate: true,
+        // Money received — a bill may be settled in instalments.
+        payments: { select: { amount: true, paidDate: true } },
+      },
     }),
     // DSC summary: every active certificate, bucketed by how close expiry is.
     prisma.dsc.findMany({
@@ -79,13 +87,15 @@ export const GET = route(async () => {
     (t) => t.dueDate && t.dueDate >= today && t.dueDate <= in7,
   );
 
-  // Receivables = billed but not yet paid (Sent + Overdue).
+  // A bill can be settled in instalments, so both figures work off the money
+  // actually received rather than the invoice's status: receivables are what
+  // is still owed on every raised bill, collected is what has come in.
+  const receivedOn = (i: (typeof invoices)[number]) =>
+    (i.payments ?? []).reduce((s, p) => s + (p.amount || 0), 0);
   const outstanding = invoices
-    .filter((i) => i.status === "Sent" || i.status === "Overdue")
-    .reduce((sum, i) => sum + gross(i), 0);
-  const collected = invoices
-    .filter((i) => i.status === "Paid")
-    .reduce((sum, i) => sum + gross(i), 0);
+    .filter((i) => i.status !== "Draft")
+    .reduce((sum, i) => sum + Math.max(0, gross(i) - receivedOn(i)), 0);
+  const collected = invoices.reduce((sum, i) => sum + receivedOn(i), 0);
 
   const statusBreakdown = TASK_STATUSES.map((status) => ({
     status,
@@ -109,14 +119,17 @@ export const GET = route(async () => {
     });
   }
   const bucket = new Map(months.map((m) => [m.key, m]));
+  const monthKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}`;
   for (const inv of invoices) {
-    const d = new Date(inv.issueDate);
-    const key = `${d.getFullYear()}-${d.getMonth()}`;
-    const m = bucket.get(key);
-    if (!m) continue;
-    const total = gross(inv);
-    m.billed += total;
-    if (inv.status === "Paid") m.collected += total;
+    // Billed lands in the month the invoice was raised…
+    const raised = bucket.get(monthKey(new Date(inv.issueDate)));
+    if (raised) raised.billed += gross(inv);
+    // …collected in the month each payment actually came in, which is what
+    // the firm's receipts-basis accounts recognise.
+    for (const p of inv.payments ?? []) {
+      const m = bucket.get(monthKey(new Date(p.paidDate)));
+      if (m) m.collected += p.amount || 0;
+    }
   }
 
   const upcoming = openTasks
