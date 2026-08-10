@@ -9,6 +9,9 @@ import { rupeesInWords } from "./words";
 import {
   A4,
   MARGIN,
+  ACCENT,
+  SAFFRON,
+  FERN,
   INK,
   MUTED,
   FAINT,
@@ -21,6 +24,7 @@ import {
   watermark,
   firmHeader,
   signatureAndFooter,
+  stampPageNumbers,
 } from "./layout";
 
 export type InvoiceForPdf = Invoice & {
@@ -84,15 +88,37 @@ export async function letterheadFor(inv: InvoiceForPdf): Promise<Letterhead> {
   return toLetterhead(org ?? (await getDefaultOrg()));
 }
 
+// Vertical budget for the bottom of the last page. The payment details, the
+// scan-to-pay QR and the signature are pinned here, so content laid out from
+// the top must stop above it.
+const FOOTER_BAND_TOP = 168;
+/**
+ * Rows may run this far down — near the bottom of the sheet, because only the
+ * *last* page carries the footer band. If the totals then have nowhere to go,
+ * the tail check carries them over, so the band is never encroached on.
+ */
+const TABLE_FLOOR = 100;
+/** Height the totals block and the amount in words need beneath the table. */
+const TAIL_HEIGHT = 130;
+
 export async function buildInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   const pdf = await createA4();
-  const { page, reg, bold } = pdf;
+  const { reg, bold } = pdf;
+  // Reassigned as pages are added; `pdf.page` is kept in step so the shared
+  // header/footer helpers draw on the current sheet.
+  let page = pdf.page;
   const right = A4.width - MARGIN;
   const lh = await letterheadFor(inv);
 
-  if (inv.status === "Paid") watermark(page, "PAID", rgb(0.02, 0.59, 0.41));
-  else if (inv.status === "Draft") watermark(page, "DRAFT", rgb(0.42, 0.45, 0.5));
-  else if (inv.status === "Overdue") watermark(page, "OVERDUE", rgb(0.88, 0.11, 0.28));
+  const statusMark =
+    inv.status === "Paid"
+      ? { label: "PAID", color: rgb(0.02, 0.59, 0.41) }
+      : inv.status === "Draft"
+        ? { label: "DRAFT", color: rgb(0.42, 0.45, 0.5) }
+        : inv.status === "Overdue"
+          ? { label: "OVERDUE", color: rgb(0.88, 0.11, 0.28) }
+          : null;
+  if (statusMark) watermark(page, statusMark.label, statusMark.color);
 
   // A reimbursement bill recovers out-of-pocket expenses — it is not a fee
   // invoice, and its title says so.
@@ -147,17 +173,45 @@ export async function buildInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   y = Math.min(y, fy) - 18;
 
   // ---- Line items table ----
+  // The footer band (payment details, QR, signature) is pinned to the bottom
+  // of the last page, so the table must never grow into it: a long bill runs
+  // on to another page instead of printing rows on top of the bank details.
   const colSac = 380;
   const rowPadding = 9;
-  page.drawRectangle({
-    x: MARGIN, y: y - 6, width: right - MARGIN, height: 20, color: FILL,
-  });
-  text(page, "DESCRIPTION OF SERVICES", { x: MARGIN + 8, y, size: 8, font: bold, color: MUTED });
-  text(page, "SAC", { x: colSac, y, size: 8, font: bold, color: MUTED });
-  text(page, "AMOUNT", { x: right - 8, y, size: 8, font: bold, color: MUTED, align: "right" });
-  y -= 6;
-  hline(page, MARGIN, right, y);
-  y -= 16;
+
+  const drawTableHead = (yy: number) => {
+    page.drawRectangle({ x: MARGIN, y: yy - 6, width: right - MARGIN, height: 20, color: FILL });
+    text(page, "DESCRIPTION OF SERVICES", { x: MARGIN + 8, y: yy, size: 8, font: bold, color: MUTED });
+    text(page, "SAC", { x: colSac, y: yy, size: 8, font: bold, color: MUTED });
+    text(page, "AMOUNT", { x: right - 8, y: yy, size: 8, font: bold, color: MUTED, align: "right" });
+    hline(page, MARGIN, right, yy - 6);
+    return yy - 22;
+  };
+
+  /**
+   * Start a fresh sheet. `reopenTable` re-draws the column header, which is
+   * wanted when more rows follow but not when only the totals are carried.
+   */
+  const continueOnNewPage = (reopenTable = true) => {
+    page = pdf.doc.addPage([A4.width, A4.height]);
+    pdf.page = page;
+    if (statusMark) watermark(page, statusMark.label, statusMark.color);
+    // A slim continuation header — the reader needs to know whose bill this
+    // sheet belongs to without repeating the whole letterhead.
+    const third = A4.width / 3;
+    page.drawRectangle({ x: 0, y: A4.height - 6, width: third, height: 6, color: SAFFRON });
+    page.drawRectangle({ x: third, y: A4.height - 6, width: third, height: 6, color: ACCENT });
+    page.drawRectangle({ x: third * 2, y: A4.height - 6, width: third, height: 6, color: FERN });
+    let ny = A4.height - 56;
+    text(page, lh.name, { x: MARGIN, y: ny, size: 11, font: bold });
+    text(page, `${title} ${inv.invoiceNumber} (continued)`, {
+      x: right, y: ny, size: 9, font: reg, color: MUTED, align: "right",
+    });
+    ny -= 20;
+    return reopenTable ? drawTableHead(ny) : ny;
+  };
+
+  y = drawTableHead(y);
 
   // One row per service line; fall back to the single description/amount when
   // an invoice has no line items (older invoices).
@@ -168,6 +222,9 @@ export async function buildInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> {
 
   for (const item of items) {
     const descLines = wrap(item.description || "Professional services", reg, 9.5, colSac - MARGIN - 24);
+    // Keep a row whole: if it will not fit above the floor, move it over.
+    const rowHeight = descLines.length * 12 + 5;
+    if (y - rowHeight < TABLE_FLOOR) y = continueOnNewPage();
     const rowTop = y;
     for (const line of descLines) {
       text(page, line, { x: MARGIN + 8, y, size: 9.5, font: reg });
@@ -179,6 +236,15 @@ export async function buildInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   }
   y -= rowPadding - 5;
   hline(page, MARGIN, right, y);
+
+  // Totals, the amount in words and the footer band all live together. If the
+  // whole tail will not fit under the table, carry it to a fresh page rather
+  // than let any of it collide with the band.
+  if (y - TAIL_HEIGHT < FOOTER_BAND_TOP) {
+    // Only the totals follow, so no column header — just the rule above them.
+    y = continueOnNewPage(false);
+    hline(page, MARGIN, right, y);
+  }
 
   // ---- Totals ----
   const labelX = 360;
@@ -216,8 +282,22 @@ export async function buildInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> {
     y -= 12;
   }
 
-  // ---- Bank details + signature ----
-  const bankTop = 168;
+  // ---- Footer band: payment details | scan-to-pay QR | signature ----
+  // Three columns share this band. The left column is measured against the
+  // QR's edge rather than a fixed width, so a long bank name or payment note
+  // wraps inside its own column instead of running underneath the code.
+  const bankTop = FOOTER_BAND_TOP;
+  const QR_X = 318;
+  const QR_SIZE = 78;
+  const COL_GAP = 16;
+  // Nothing may descend into the footer rule at y = 58.
+  const BAND_FLOOR = 68;
+
+  // Resolved first: whether there is a QR decides how wide the left column is.
+  const upiQr = await firmUpiQr(lh);
+  const leftWidth = (upiQr ? QR_X - COL_GAP : right) - MARGIN;
+  const labelWidth = 70;
+
   const bank: [string, string][] = [];
   if (lh.bank.name) bank.push(["Bank", lh.bank.name]);
   if (lh.bank.account) bank.push(["Account No.", lh.bank.account]);
@@ -230,12 +310,16 @@ export async function buildInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   let by = bankTop - 14;
   for (const [k, v] of bank) {
     text(page, k, { x: MARGIN, y: by, size: 8.5, font: reg, color: MUTED });
-    text(page, v, { x: MARGIN + 70, y: by, size: 8.5, font: bold });
-    by -= 12;
+    // A long value (a branch address, say) runs on rather than overflowing.
+    for (const line of wrap(v, bold, 8.5, leftWidth - labelWidth)) {
+      text(page, line, { x: MARGIN + labelWidth, y: by, size: 8.5, font: bold });
+      by -= 12;
+    }
   }
   if (lh.invoiceNote) {
     by -= 6;
-    for (const line of wrap(lh.invoiceNote, reg, 8, 300)) {
+    for (const line of wrap(lh.invoiceNote, reg, 8, leftWidth)) {
+      if (by < BAND_FLOOR) break; // never print into the footer rule
       text(page, line, { x: MARGIN, y: by, size: 8, font: reg, color: FAINT });
       by -= 10;
     }
@@ -244,19 +328,17 @@ export async function buildInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   // Scan-to-pay UPI QR, centred between the bank details and the signature.
   // Rendered from the firm's UPI ID unless it uploaded a QR of its own, so the
   // code and the ID printed under it always point at the same account.
-  const upiQr = await firmUpiQr(lh);
   if (upiQr) {
     try {
       const qr =
         upiQr.mime === "image/png"
           ? await pdf.doc.embedPng(upiQr.bytes)
           : await pdf.doc.embedJpg(upiQr.bytes);
-      const size = 78;
-      const qx = 318;
-      text(page, "SCAN TO PAY (UPI)", { x: qx + size / 2, y: bankTop, size: 7.5, font: bold, color: FAINT, align: "center" });
-      page.drawImage(qr, { x: qx, y: bankTop - 14 - size, width: size, height: size });
+      const cx = QR_X + QR_SIZE / 2;
+      text(page, "SCAN TO PAY (UPI)", { x: cx, y: bankTop, size: 7.5, font: bold, color: FAINT, align: "center" });
+      page.drawImage(qr, { x: QR_X, y: bankTop - 14 - QR_SIZE, width: QR_SIZE, height: QR_SIZE });
       if (lh.bank.upi) {
-        text(page, lh.bank.upi, { x: qx + size / 2, y: bankTop - 14 - size - 10, size: 7.5, font: reg, color: MUTED, align: "center" });
+        text(page, lh.bank.upi, { x: cx, y: bankTop - 14 - QR_SIZE - 10, size: 7.5, font: reg, color: MUTED, align: "center" });
       }
     } catch {
       // Unreadable QR image — the printed bank/UPI details still stand.
@@ -264,5 +346,6 @@ export async function buildInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> {
   }
 
   await signatureAndFooter(pdf, bankTop, lh.name, lh);
+  stampPageNumbers(pdf);
   return pdf.doc.save();
 }

@@ -141,12 +141,13 @@ export async function buildReceiptPdf(
     y -= 10;
     const rows: [string, string, boolean][] = [
       ["Invoice amount", money(tax.grand), false],
-      // Only worth a line of its own when TDS makes it differ from the cash.
+      // Only worth its own line when it differs from both the invoice value
+      // above and the cash below — i.e. a part payment that also bore TDS.
+      ...(partial && tds > 0
+        ? ([["Settled by this receipt", money(settled), false]] as [string, string, boolean][])
+        : []),
       ...(tds > 0
-        ? ([
-            ["Settled by this receipt", money(settled), false],
-            ["Less: TDS deducted at source", money(tds), false],
-          ] as [string, string, boolean][])
+        ? ([["Less: TDS deducted at source", money(tds), false]] as [string, string, boolean][])
         : []),
       ["Amount received", money(net), true],
       ...(partial

@@ -143,8 +143,23 @@ export async function firmHeader(pdf: Pdf, title: string, lh: Letterhead): Promi
   }
 
   let y = A4.height - 44;
-  text(page, lh.name, { x: textX, y, size: 19, font: bold, color: INK });
-  text(page, title, { x: A4.width - MARGIN, y, size: 15, font: bold, color: ACCENT, align: "right" });
+  // The firm name and the document title share one line from opposite edges,
+  // and both vary: "ANIL P.S. BHANSALI & CO." against "PAYMENT RECEIPT (ON
+  // ACCOUNT)" would otherwise run into each other. Each is stepped down until
+  // the pair fits — the title first, since it is the more compressible.
+  const GAP = 18;
+  const available = A4.width - MARGIN - textX;
+  let titleSize = 15;
+  while (titleSize > 9 && bold.widthOfTextAtSize(title, titleSize) > available * 0.5) {
+    titleSize -= 0.5;
+  }
+  const titleWidth = bold.widthOfTextAtSize(title, titleSize);
+  let nameSize = 19;
+  while (nameSize > 11 && bold.widthOfTextAtSize(lh.name, nameSize) > available - titleWidth - GAP) {
+    nameSize -= 0.5;
+  }
+  text(page, lh.name, { x: textX, y, size: nameSize, font: bold, color: INK });
+  text(page, title, { x: A4.width - MARGIN, y, size: titleSize, font: bold, color: ACCENT, align: "right" });
 
   y -= 14;
   text(page, lh.tagline, { x: textX, y, size: 9.5, font: reg, color: ACCENT });
@@ -175,6 +190,25 @@ export async function firmHeader(pdf: Pdf, title: string, lh: Letterhead): Promi
 /** Signature block bottom-right + footer note, shared by both documents.
  *  When the letterhead carries the signatory's signature image it is drawn
  *  between the "For FIRM" line and the "Authorised Signatory" caption. */
+/**
+ * "Page 1 of 3" on every sheet, once the document knows how many there are.
+ * Only stamped on multi-page documents — a one-page invoice needs no counter.
+ */
+export function stampPageNumbers(pdf: Pdf) {
+  const pages = pdf.doc.getPages();
+  if (pages.length < 2) return;
+  pages.forEach((p, i) => {
+    text(p, `Page ${i + 1} of ${pages.length}`, {
+      x: A4.width - MARGIN,
+      y: 44,
+      size: 7.5,
+      font: pdf.reg,
+      color: FAINT,
+      align: "right",
+    });
+  });
+}
+
 export async function signatureAndFooter(
   pdf: Pdf,
   yTop: number,
