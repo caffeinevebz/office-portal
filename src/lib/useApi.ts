@@ -21,13 +21,20 @@ export function useDebounced<T>(value: T, ms = 300): T {
 // survives a write.
 const swrCache = new Map<string, unknown>();
 
-/** Fetch JSON from an API route with loading/error state and a refresh(). */
-export function useResource<T>(url: string) {
-  const [data, setDataState] = useState<T | null>(() => (swrCache.get(url) as T) ?? null);
-  const [loading, setLoading] = useState(!swrCache.has(url));
+/**
+ * Fetch JSON from an API route with loading/error state and a refresh().
+ * A null url fetches nothing — for data a page only wants under a condition
+ * (a permission, a tab), so the caller need not split the hook out.
+ */
+export function useResource<T>(url: string | null) {
+  const [data, setDataState] = useState<T | null>(() =>
+    url ? ((swrCache.get(url) as T) ?? null) : null,
+  );
+  const [loading, setLoading] = useState(url ? !swrCache.has(url) : false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    if (!url) return;
     try {
       setError(null);
       const res = await fetch(url, { cache: "no-store" });
@@ -43,6 +50,7 @@ export function useResource<T>(url: string) {
   }, [url]);
 
   useEffect(() => {
+    if (!url) return;
     const hit = swrCache.get(url) as T | undefined;
     if (hit !== undefined) {
       // Serve the cached copy instantly; revalidate quietly behind it.
@@ -61,6 +69,7 @@ export function useResource<T>(url: string) {
       setDataState((prev) => {
         const next =
           typeof updater === "function" ? (updater as (p: T | null) => T | null)(prev) : updater;
+        if (!url) return next;
         if (next === null) swrCache.delete(url);
         else swrCache.set(url, next);
         return next;
@@ -69,7 +78,9 @@ export function useResource<T>(url: string) {
     [url],
   );
 
-  return { data, loading, error, refresh, setData };
+  // A null url holds nothing and is never loading, whatever a previous url left
+  // behind — derived rather than stored, so switching it off needs no render.
+  return { data: url ? data : null, loading: url ? loading : false, error, refresh, setData };
 }
 
 /** Send a JSON mutation (POST/PUT/PATCH/DELETE). Throws on non-2xx. */

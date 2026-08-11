@@ -11,13 +11,18 @@ export function fail(message: string, status = 400) {
 }
 
 /**
- * Parse and validate a JSON request body against a Zod schema.
- * Returns the typed value, or throws a Response to short-circuit the handler.
+ * Parse and validate a JSON request body against a Zod schema, handing back
+ * the raw object alongside the typed value.
+ *
+ * A partial schema still applies its fields' defaults, so the parsed value
+ * cannot tell a field the caller omitted from one they sent. `sent` can: it
+ * answers from the body as it arrived. A PATCH-style handler needs that to
+ * avoid writing defaults over columns nobody asked it to touch.
  */
-export async function parse<T>(
+export async function parseFields<T>(
   req: Request,
   schema: z.ZodType<T>,
-): Promise<T> {
+): Promise<{ data: T; sent: (field: string) => boolean }> {
   let body: unknown;
   try {
     body = await req.json();
@@ -26,7 +31,18 @@ export async function parse<T>(
   }
   const result = schema.safeParse(body);
   if (!result.success) throw fail(zodMessage(result.error));
-  return result.data;
+  const keys = new Set(
+    body && typeof body === "object" ? Object.keys(body as Record<string, unknown>) : [],
+  );
+  return { data: result.data, sent: (field) => keys.has(field) };
+}
+
+/**
+ * Parse and validate a JSON request body against a Zod schema.
+ * Returns the typed value, or throws a Response to short-circuit the handler.
+ */
+export async function parse<T>(req: Request, schema: z.ZodType<T>): Promise<T> {
+  return (await parseFields(req, schema)).data;
 }
 
 /** Wrap a handler so thrown Responses and unexpected errors become clean JSON. */

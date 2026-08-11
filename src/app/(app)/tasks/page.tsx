@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   HelpCircle,
   Landmark,
+  AlertTriangle,
   X,
 } from "lucide-react";
 import { useResource, useDebounced, apiMutate } from "@/lib/useApi";
@@ -73,6 +74,18 @@ import { dueLabel, daysUntil, toDateInput, formatDate, cn } from "@/lib/format";
 
 // Categories whose tasks are completed by recording a return-filing entry.
 const RETURN_CATEGORIES = ["GST", "Income Tax", "TDS"];
+
+// An obligation — one client's return for one form and one period — that has
+// picked up more than one task.
+type DupTaskGroup = {
+  key: string;
+  label: string;
+  clientName: string;
+  tasks: { id: string; title: string; status: string; dueDate: string | null }[];
+};
+
+// A task the form is about to raise that the register already covers.
+type DuplicateWarning = { label: string | null; message: string; taskId: string };
 
 // Recent financial years for period pickers: next FY down to six years back.
 function fyOptions(): string[] {
@@ -188,6 +201,12 @@ export default function TasksPage() {
   const { data: groups } = useResource<ClientGroup[]>("/api/client-groups");
   const { data: schedules, refresh: refreshSchedules } =
     useResource<ComplianceSchedule[]>("/api/schedules");
+  // Duplicity check over the register: one obligation carrying two tasks. Only
+  // for those who see the whole register — a staff member's list is their own
+  // work, so a sweep across everyone's would tell them nothing they can act on.
+  const { data: dupTasks, refresh: refreshDups } = useResource<DupTaskGroup[]>(
+    seeAll ? "/api/tasks/duplicates" : null,
+  );
   // The Statutory tab only earns its place once a government calendar has
   // been synced — a firm that never syncs one never sees the tab.
   const hasStatutory = (schedules ?? []).some((s) => !!s.source);
@@ -294,6 +313,7 @@ export default function TasksPage() {
           onChanged={() => {
             refresh();
             refreshSchedules();
+            refreshDups();
           }}
         />
       ) : (
@@ -314,6 +334,35 @@ export default function TasksPage() {
                 </button>{" "}
                 tab.
               </p>
+            </div>
+          )}
+
+          {/* Duplicity check: obligations the register covers more than once */}
+          {tab === "tasks" && dupTasks && dupTasks.length > 0 && (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <p className="flex items-center gap-2 font-medium">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                {dupTasks.length} obligation{dupTasks.length === 1 ? " is" : "s are"} covered by more
+                than one task — close or delete the extras.
+              </p>
+              <ul className="mt-1.5 space-y-0.5 pl-6 text-xs">
+                {dupTasks.slice(0, 4).map((g) => (
+                  <li key={g.key}>
+                    <span className="font-medium">{g.clientName}</span> — “{g.label}”:{" "}
+                    {g.tasks.length} tasks ({g.tasks.map((t) => t.status).join(", ")})
+                  </li>
+                ))}
+                {dupTasks.length > 4 && <li>…and {dupTasks.length - 4} more.</li>}
+              </ul>
+              <button
+                onClick={() => {
+                  setQ(dupTasks[0].label);
+                  setView("Active");
+                }}
+                className="mt-1.5 ml-6 text-xs font-medium underline underline-offset-2 hover:text-amber-900"
+              >
+                Search the first one
+              </button>
             </div>
           )}
 
@@ -660,6 +709,7 @@ export default function TasksPage() {
           onSaved={() => {
             setFormOpen(false);
             refresh();
+            refreshDups();
           }}
         />
       )}
@@ -692,6 +742,7 @@ export default function TasksPage() {
         onConfirm={async () => {
           if (toDelete) await apiMutate(`/api/tasks/${toDelete.id}`, "DELETE");
           refresh();
+          refreshDups();
         }}
       />
     </div>
@@ -919,6 +970,9 @@ function TaskForm({
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Members of a batch that were left out because the register already covers
+  // them — reported once the rest have been created.
+  const [skipped, setSkipped] = useState<{ label: string; reason: string }[] | null>(null);
   const isEdit = !!initial;
   const FYS = fyOptions();
 
@@ -1038,6 +1092,74 @@ function TaskForm({
   const clientTradeNames = selectedClient?.tradeNames ?? [];
   const canMultiGstin = cat === "GST" && !multiClient && clientGstIds.length > 1;
 
+  // The GSTINs a multi-GSTIN create would raise a task for.
+  const gstTargets = clientGstIds
+    .filter((g) => gstRegIds.includes(g.key))
+    .map((g) => ({
+      tradeNameId: g.tradeNameId,
+      gstRegistrationId: g.gstRegistrationId,
+      gstin: g.gstin,
+    }));
+
+  // Duplicity check while the form is open. The body doubles as the trigger:
+  // it changes only when a field that decides the answer changes, so typing a
+  // description or picking an assignee costs nothing. Asking now is the point
+  // — a warning while the form is open is cheaper than a refusal after it.
+  const probeBody = JSON.stringify({
+    title: form.title || undefined,
+    category: cat,
+    clientId: multiClient ? undefined : form.clientId || undefined,
+    clientIds: multiClient && clientIds.length > 0 ? clientIds : undefined,
+    gstTargets: !isEdit && cat === "GST" && multiGstin && gstTargets.length > 0 ? gstTargets : undefined,
+    taskType: cat === "Income Tax" || cat === "Audit" ? form.taskType || undefined : undefined,
+    financialYear: form.financialYear || undefined,
+    periodMonth: form.periodMonth ?? undefined,
+    periodQuarter: form.periodQuarter || undefined,
+    tdsForm: cat === "TDS" ? form.tdsForm || undefined : undefined,
+    returnNature: cat === "TDS" ? form.returnNature || undefined : undefined,
+    gstWorkType: cat === "GST" ? gstWorkType : undefined,
+    gstReturnType: cat === "GST" && !gstNotice ? form.gstReturnType || undefined : undefined,
+    noticeForm: cat === "GST" && gstNotice ? form.noticeForm || undefined : undefined,
+    noticeRef: cat === "GST" && gstNotice ? form.noticeRef || undefined : undefined,
+    gstin: cat === "GST" && !multiGstin ? form.gstin || undefined : undefined,
+  });
+  const probe = useDebounced(probeBody, 400);
+  const [dupWarn, setDupWarn] = useState<DuplicateWarning[]>([]);
+  const [allowDuplicate, setAllowDuplicate] = useState(false);
+  const excludeId = initial?.id;
+
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/tasks/duplicate-check${excludeId ? `?excludeId=${excludeId}` : ""}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: probe,
+    })
+      .then((r) => (r.ok ? r.json() : { duplicates: [] }))
+      .then((j) => {
+        if (alive) setDupWarn(j.duplicates ?? []);
+      })
+      // A check that cannot run must never stop work — the server refuses a
+      // real duplicate on create regardless.
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [probe, excludeId]);
+
+  // A recurring obligation is a repeating setting, not one dated task — there
+  // is nothing there to be a duplicate of, so its answer is never shown.
+  const dupWarnings = recurring ? [] : dupWarn;
+
+  // How many tasks this form would raise, so a batch where only some are
+  // already covered still goes ahead for the rest.
+  const candidateCount = multiClient
+    ? clientIds.length || 1
+    : multiGstin
+      ? gstRegIds.length || 1
+      : 1;
+  const dupBlocks = !allowDuplicate && dupWarnings.length > 0 && dupWarnings.length >= candidateCount;
+
   async function submit() {
     setBusy(true);
     setErr(null);
@@ -1102,22 +1224,28 @@ function TaskForm({
         // One task per GSTIN. Each target carries whichever links the client's
         // record has, so the task shows the concern's name and its number.
         gstTargets:
-          !isEdit && cat === "GST" && multiGstin && gstRegIds.length > 0
-            ? clientGstIds
-                .filter((g) => gstRegIds.includes(g.key))
-                .map((g) => ({
-                  tradeNameId: g.tradeNameId,
-                  gstRegistrationId: g.gstRegistrationId,
-                  gstin: g.gstin,
-                }))
-            : undefined,
+          !isEdit && cat === "GST" && multiGstin && gstRegIds.length > 0 ? gstTargets : undefined,
         checklist: form.checklist ?? null,
         isReturnFiling,
         filingDate: isReturnFiling ? form.filingDate || null : null,
         ackNumber: isReturnFiling ? form.ackNumber || null : null,
+        // Raise it even though the register already covers the obligation.
+        allowDuplicate,
       };
       if (isEdit) await apiMutate(`/api/tasks/${initial!.id}`, "PUT", payload);
-      else await apiMutate("/api/tasks", "POST", payload);
+      else {
+        const res = (await apiMutate("/api/tasks", "POST", payload)) as {
+          tasks: Task[];
+          skipped: { label: string; reason: string }[];
+        };
+        // A batch where some members were already covered still created the
+        // rest — say which were left out rather than closing on it silently.
+        if (res?.skipped?.length) {
+          setSkipped(res.skipped);
+          setBusy(false);
+          return;
+        }
+      }
       onSaved();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to save");
@@ -1142,6 +1270,7 @@ function TaskForm({
             disabled={
               busy ||
               !form.title ||
+              dupBlocks ||
               (multiClient && clientIds.length === 0) ||
               (multiGstin && gstRegIds.length === 0)
             }
@@ -1164,6 +1293,60 @@ function TaskForm({
       {err && (
         <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700 ring-1 ring-rose-200">{err}</div>
       )}
+
+      {/* Some of a batch were already covered; the rest were created. */}
+      {skipped && (
+        <div className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
+          <p className="flex items-center gap-1.5 font-medium">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            {skipped.length} left out — already covered: {skipped.map((s) => s.label).join(", ")}.
+          </p>
+          <p className="mt-1">The rest were created.</p>
+          <button
+            onClick={onSaved}
+            className="mt-1.5 font-medium underline underline-offset-2 hover:text-amber-900"
+          >
+            Close
+          </button>
+        </div>
+      )}
+
+      {/* Duplicity check: this task's obligation is already on the register. */}
+      {!skipped && dupWarnings.length > 0 && (
+        <div className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
+          <p className="flex items-center gap-1.5 font-medium">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            {dupWarnings.length === 1
+              ? "This is already on the register"
+              : `${dupWarnings.length} of these are already on the register`}
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {dupWarnings.slice(0, 4).map((d, i) => (
+              <li key={d.taskId + i}>
+                {d.label ? <span className="font-medium">{d.label}: </span> : null}
+                {d.message}
+              </li>
+            ))}
+            {dupWarnings.length > 4 && <li>…and {dupWarnings.length - 4} more.</li>}
+          </ul>
+          {dupBlocks || allowDuplicate ? (
+            <label className="mt-1.5 flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={allowDuplicate}
+                onChange={(e) => setAllowDuplicate(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-amber-300 text-amber-600 focus:ring-amber-400"
+              />
+              <span>Create anyway — I mean to raise a second one</span>
+            </label>
+          ) : (
+            <p className="mt-1.5">
+              The rest will still be created; the ones listed above will be skipped.
+            </p>
+          )}
+        </div>
+      )}
+
       {!isEdit && !form.title && (multiClient ? clientIds.length > 0 : true) && (
         <div className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 ring-1 ring-amber-200">
           Enter a title to {multiClient ? `create this task for ${clientIds.length} client${clientIds.length === 1 ? "" : "s"}` : "create the task"}.

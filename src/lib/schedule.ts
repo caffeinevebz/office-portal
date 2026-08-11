@@ -66,6 +66,39 @@ export function periodLabel(frequency: string, dueDate: Date): string {
   }
 }
 
+/**
+ * The period fields a generated task should carry, from the same reading of
+ * the calendar `periodLabel` uses. Written onto the task so a generated task
+ * says which period it is for in the same words a hand-raised one does —
+ * which is what lets the duplicate guard see the two as one obligation, and
+ * what makes the register's financial-year filter reach generated work.
+ */
+export function periodFields(
+  frequency: string,
+  dueDate: Date,
+): { financialYear: string; periodMonth: number | null; periodQuarter: string | null } {
+  const prev = subMonths(dueDate, 1);
+  const pm = prev.getMonth() + 1;
+  const py = prev.getFullYear();
+  const fyStart = pm >= 4 ? py : py - 1;
+  const fy = (start: number) => `${start}-${String(start + 1).slice(2)}`;
+
+  switch (frequency) {
+    case "Monthly":
+      return { financialYear: fy(fyStart), periodMonth: pm, periodQuarter: null };
+    case "Quarterly": {
+      const q = pm >= 4 && pm <= 6 ? 1 : pm >= 7 && pm <= 9 ? 2 : pm >= 10 ? 3 : 4;
+      return { financialYear: fy(fyStart), periodMonth: null, periodQuarter: `Q${q}` };
+    }
+    case "Annually":
+      // Annual filings are for the financial year *before* the one they fall in.
+      return { financialYear: fy(fyStart - 1), periodMonth: null, periodQuarter: null };
+    default:
+      // Half-yearly and anything else: the year is all we can say.
+      return { financialYear: fy(fyStart), periodMonth: null, periodQuarter: null };
+  }
+}
+
 /** All occurrences whose due date falls between today and `months` ahead. */
 export function computeOccurrences(rule: ScheduleRule, months: number): Occurrence[] {
   const today = startOfDay(new Date());
