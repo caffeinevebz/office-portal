@@ -50,19 +50,28 @@ export async function createTasks(
   const fresh = pairs.filter((p) => !seen.has(`${p.schedule.id}|${p.occurrence.periodKey}`));
   if (fresh.length === 0) return 0;
 
-  // Tasks carry the GSTIN as text too (it is what the register displays), so
-  // resolve the registrations the obligations point at.
+  // Tasks carry the GSTIN as text too (it is what the register displays). It
+  // may hang off either link: a GST registration, or the trade name of the
+  // concern the obligation runs for — a proprietor's GSTINs are usually
+  // recorded the second way.
   const regIds = [...new Set(fresh.map((p) => p.schedule.gstRegistrationId).filter(Boolean))];
-  const gstinById = new Map(
+  const tradeIds = [...new Set(fresh.map((p) => p.schedule.tradeNameId).filter(Boolean))];
+  const [regRows, tradeRows] = await Promise.all([
     regIds.length
-      ? (
-          await prisma.gstRegistration.findMany({
-            where: { id: { in: regIds as string[] } },
-            select: { id: true, gstin: true },
-          })
-        ).map((r) => [r.id, r.gstin])
-      : [],
-  );
+      ? prisma.gstRegistration.findMany({
+          where: { id: { in: regIds as string[] } },
+          select: { id: true, gstin: true },
+        })
+      : Promise.resolve([]),
+    tradeIds.length
+      ? prisma.tradeName.findMany({
+          where: { id: { in: tradeIds as string[] } },
+          select: { id: true, gstin: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const gstinByReg = new Map(regRows.map((r) => [r.id, r.gstin]));
+  const gstinByTrade = new Map(tradeRows.map((t) => [t.id, t.gstin]));
 
   const { count } = await prisma.task.createMany({
     data: fresh.map(({ schedule, occurrence }) => ({
@@ -76,7 +85,10 @@ export async function createTasks(
       // onto every task, so a client with two GSTINs gets two distinct ones.
       tradeNameId: schedule.tradeNameId,
       gstRegistrationId: schedule.gstRegistrationId,
-      gstin: schedule.gstRegistrationId ? (gstinById.get(schedule.gstRegistrationId) ?? null) : null,
+      gstin:
+        (schedule.gstRegistrationId ? gstinByReg.get(schedule.gstRegistrationId) : null) ??
+        (schedule.tradeNameId ? gstinByTrade.get(schedule.tradeNameId) : null) ??
+        null,
       assigneeId: schedule.assigneeId,
       scheduleId: schedule.id,
       periodKey: occurrence.periodKey,

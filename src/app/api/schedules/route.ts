@@ -4,10 +4,22 @@ import { requireUser, requirePermission } from "@/lib/auth/session";
 import { scheduleCreateSchema } from "@/lib/validation";
 import { generateForMonth } from "@/lib/generate";
 
-// A short tag for the registration an obligation runs for — the place if the
-// firm named one, else the state, so titles stay readable.
-function gstScheduleLabel(reg: { gstin: string; label?: string | null; state?: string | null }) {
-  return reg.label?.trim() || reg.state?.trim() || reg.gstin;
+// A short tag for the GSTIN an obligation runs for, so the obligations of a
+// client with several registrations tell apart at a glance: the concern's
+// trade name if the firm recorded one, else the place, else the number.
+function gstTargetLabel(t: {
+  tradeName?: { name: string } | null;
+  reg?: { gstin: string; label?: string | null; state?: string | null } | null;
+  gstin?: string | null;
+}) {
+  return (
+    t.tradeName?.name.trim() ||
+    t.reg?.label?.trim() ||
+    t.reg?.state?.trim() ||
+    t.reg?.gstin ||
+    t.gstin ||
+    ""
+  );
 }
 
 const INCLUDE = {
@@ -29,7 +41,7 @@ export const GET = route(async () => {
 
 export const POST = route(async (req) => {
   await requirePermission("manageSchedules");
-  const { clientIds, allClients, gstRegistrationIds, ...data } = await parse(
+  const { clientIds, allClients, gstRegistrationIds, gstTargets, ...data } = await parse(
     req,
     scheduleCreateSchema,
   );
@@ -49,20 +61,52 @@ export const POST = route(async (req) => {
   }
   if (targets.length === 0) return ok([], 201);
 
-  // A client registered in several states files each GSTIN's returns
-  // separately, so a GST obligation fans out to one schedule per GSTIN —
-  // each then generates its own dated tasks carrying that registration.
-  const regs =
-    gstRegistrationIds && gstRegistrationIds.length > 0
-      ? await prisma.gstRegistration.findMany({
-          where: { id: { in: gstRegistrationIds }, clientId: data.clientId ?? undefined },
-        })
-      : [];
+  // A client with several GSTINs files each one's returns separately, so a GST
+  // obligation fans out to one schedule per GSTIN — each then generating its
+  // own dated tasks under that number. A client's GSTINs may be recorded as
+  // GST registrations or as trade names (a proprietor's separate concerns),
+  // so a target carries whichever links it has.
+  const wanted =
+    gstTargets && gstTargets.length > 0
+      ? gstTargets
+      : (gstRegistrationIds ?? []).map((id) => ({
+          gstRegistrationId: id,
+          tradeNameId: null,
+          gstin: null,
+        }));
+
+  // Resolve the names to title by, and refuse anything not on this client.
+  const [regRows, tradeRows] = await Promise.all([
+    prisma.gstRegistration.findMany({
+      where: {
+        id: { in: wanted.map((t) => t.gstRegistrationId).filter(Boolean) as string[] },
+        clientId: data.clientId ?? undefined,
+      },
+    }),
+    prisma.tradeName.findMany({
+      where: {
+        id: { in: wanted.map((t) => t.tradeNameId).filter(Boolean) as string[] },
+        clientId: data.clientId ?? undefined,
+      },
+    }),
+  ]);
+  const regById = new Map(regRows.map((r) => [r.id, r]));
+  const tradeById = new Map(tradeRows.map((t) => [t.id, t]));
+
+  const fanout = wanted
+    .map((t) => ({
+      reg: t.gstRegistrationId ? (regById.get(t.gstRegistrationId) ?? null) : null,
+      tradeName: t.tradeNameId ? (tradeById.get(t.tradeNameId) ?? null) : null,
+      gstin: t.gstin ?? null,
+    }))
+    // A target whose ids all belong to somebody else is not this client's.
+    .filter((t) => t.reg || t.tradeName);
 
   const schedules = [];
   for (const clientId of targets) {
-    const perGstin = regs.length > 0 ? regs : [null];
-    for (const reg of perGstin) {
+    const perGstin = fanout.length > 0 ? fanout : [null];
+    for (const target of perGstin) {
+      const label = target ? gstTargetLabel(target) : "";
       schedules.push(
         await prisma.complianceSchedule.create({
           // A Json column takes undefined to mean "leave it out", not null.
@@ -70,11 +114,12 @@ export const POST = route(async (req) => {
             ...data,
             checklist: data.checklist ?? undefined,
             clientId,
-            // The registration wins over any single value posted alongside.
-            gstRegistrationId: reg ? reg.id : (data.gstRegistrationId ?? null),
-            // Name the obligation by its registration so the two are telling
-            // apart at a glance in the list and in every generated task.
-            title: reg ? `${data.title} · ${gstScheduleLabel(reg)}` : data.title,
+            // A fan-out target wins over any single value posted alongside.
+            gstRegistrationId: target ? (target.reg?.id ?? null) : (data.gstRegistrationId ?? null),
+            tradeNameId: target ? (target.tradeName?.id ?? null) : (data.tradeNameId ?? null),
+            // Name the obligation by its GSTIN so they tell apart at a glance
+            // in the list and in every task generated from them.
+            title: label ? `${data.title} · ${label}` : data.title,
           },
           include: INCLUDE,
         }),

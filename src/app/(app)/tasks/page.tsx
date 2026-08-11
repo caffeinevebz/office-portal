@@ -54,6 +54,9 @@ import {
   TDS_RETURN_NATURE,
   tdsFormLabel,
   GST_RETURN_TYPES,
+  GST_WORK_TYPES,
+  GST_NOTICE_FORMS,
+  GST_NOTICE_FORM_LABELS,
   GST_RETURN_LABELS,
   GST_PERIODIC_RETURNS,
   GST_PERIODICITY,
@@ -64,7 +67,7 @@ import {
   financialYears,
   canApproveRole,
   priorityFromDueDate,
-  gstRegLabel,
+  gstIdentities,
 } from "@/lib/constants";
 import { dueLabel, daysUntil, toDateInput, formatDate, cn } from "@/lib/format";
 
@@ -88,6 +91,12 @@ function taskMeta(t: Task): string[] {
   if (t.tdsForm) bits.push(tdsFormLabel(t.tdsForm));
   if (t.returnNature) bits.push(t.returnNature);
   if (t.gstReturnType) bits.push(t.gstReturnType);
+  // A notice reply is named by the form it answers, and by its reference.
+  if (t.gstWorkType === "Notice reply") {
+    bits.push(t.noticeForm ? `Notice ${t.noticeForm}` : "Notice reply");
+    if (t.noticeRef) bits.push(t.noticeRef);
+    if (t.noticeDate) bits.push(`dated ${formatDate(t.noticeDate)}`);
+  }
   if (t.gstin) bits.push(`GSTIN ${t.gstin}`);
   if (t.gstPeriodicity) bits.push(t.gstPeriodicity);
   if (t.periodQuarter) bits.push(t.periodQuarter);
@@ -923,6 +932,7 @@ function TaskForm({
     const dc = defaultChecklist(next.category ?? "", {
       taskType: next.taskType,
       gstReturnType: next.gstReturnType,
+      gstWorkType: next.gstWorkType,
     });
     return dc.length > 0 ? dc : next.checklist;
   }
@@ -958,6 +968,40 @@ function TaskForm({
     });
   }
 
+  /**
+   * Returns and notice replies are different work: switching between them
+   * drops the fields that no longer apply and re-seeds the checklist, since
+   * the steps have nothing in common.
+   */
+  function setGstWorkType(v: string) {
+    setForm((f) => {
+      const notice = v === "Notice reply";
+      const next: FormState = {
+        ...f,
+        gstWorkType: v,
+        gstReturnType: notice ? null : f.gstReturnType,
+        gstPeriodicity: notice ? null : f.gstPeriodicity,
+        periodMonth: notice ? null : f.periodMonth,
+        periodQuarter: notice ? null : f.periodQuarter,
+        noticeForm: notice ? f.noticeForm : null,
+        noticeRef: notice ? f.noticeRef : null,
+        noticeDate: notice ? f.noticeDate : null,
+        // A reply is not a return, so it never asks for a filing entry.
+        isReturnFiling: !notice,
+        checklist: [],
+      };
+      return { ...next, checklist: seedChecklist(next) };
+    });
+  }
+
+  function setNoticeForm(v: string) {
+    setForm((f) => ({
+      ...f,
+      noticeForm: v || null,
+      title: f.title || (v ? `GST notice reply · ${v}` : ""),
+    }));
+  }
+
   function setTdsForm(v: string) {
     setForm((f) => ({
       ...f,
@@ -970,7 +1014,12 @@ function TaskForm({
   // Return-filing defaults on for GST / ITR / TDS categories until toggled.
   const isReturnFiling = form.isReturnFiling ?? RETURN_CATEGORIES.includes(form.category ?? "");
   const cat = form.category ?? "";
-  const gstPeriodic = form.gstReturnType ? GST_PERIODIC_RETURNS.has(form.gstReturnType) : false;
+  // A GST task is either a return or a reply to something the department
+  // sent; existing tasks predate the distinction, so they read as returns.
+  const gstWorkType = form.gstWorkType ?? "Return filing";
+  const gstNotice = gstWorkType === "Notice reply";
+  const gstPeriodic =
+    !gstNotice && form.gstReturnType ? GST_PERIODIC_RETURNS.has(form.gstReturnType) : false;
   // The selected client's GST registrations (GSTINs) — a GST task is filed
   // under one of them, and can be created for several at once.
   const selectedClient = clients.find((c) => c.id === form.clientId);
@@ -980,11 +1029,14 @@ function TaskForm({
     selectedClient && !searchedClients.some((c) => c.id === selectedClient.id)
       ? [selectedClient, ...searchedClients]
       : searchedClients;
-  const clientGstRegs = (selectedClient?.gstRegistrations ?? []).filter((g) => g.active);
+  // Every GSTIN the client files under, however it was recorded — as a GST
+  // registration, or as a trade name carrying its own number, which is how a
+  // proprietor's separate concerns are usually entered.
+  const clientGstIds = selectedClient ? gstIdentities(selectedClient) : [];
   // The concerns this client runs under — offered whenever they have any, so
   // the task says which firm the work is for.
   const clientTradeNames = selectedClient?.tradeNames ?? [];
-  const canMultiGstin = cat === "GST" && !multiClient && clientGstRegs.length > 1;
+  const canMultiGstin = cat === "GST" && !multiClient && clientGstIds.length > 1;
 
   async function submit() {
     setBusy(true);
@@ -1026,21 +1078,39 @@ function TaskForm({
         approverId: approverId || null,
         taskType: cat === "Income Tax" || cat === "Audit" ? form.taskType || null : null,
         financialYear: form.financialYear || null,
-        periodMonth: cat === "GST" && gstPeriodic && form.gstPeriodicity === "Monthly" ? form.periodMonth ?? null : null,
+        periodMonth:
+          cat === "GST" && gstPeriodic && form.gstPeriodicity === "Monthly"
+            ? (form.periodMonth ?? null)
+            : null,
         periodQuarter:
           cat === "TDS" || (cat === "GST" && gstPeriodic && form.gstPeriodicity === "Quarterly")
             ? form.periodQuarter || null
             : null,
         tdsForm: cat === "TDS" ? form.tdsForm || null : null,
         returnNature: cat === "TDS" ? form.returnNature || null : null,
-        gstReturnType: cat === "GST" ? form.gstReturnType || null : null,
+        gstWorkType: cat === "GST" ? gstWorkType : null,
+        gstReturnType: cat === "GST" && !gstNotice ? form.gstReturnType || null : null,
         gstPeriodicity: cat === "GST" && gstPeriodic ? form.gstPeriodicity || null : null,
+        // A notice reply carries the form it arrived on, its reference and date.
+        noticeForm: cat === "GST" && gstNotice ? form.noticeForm || null : null,
+        noticeRef: cat === "GST" && gstNotice ? form.noticeRef || null : null,
+        noticeDate: cat === "GST" && gstNotice ? form.noticeDate || null : null,
         // GST registration (GSTIN) the task is filed under. When "one per
         // GSTIN" is on, gstRegistrationIds drives multi-creation instead.
         gstin: cat === "GST" && !multiGstin ? form.gstin || null : null,
         gstRegistrationId: cat === "GST" && !multiGstin ? form.gstRegistrationId || null : null,
-        gstRegistrationIds:
-          !isEdit && cat === "GST" && multiGstin && gstRegIds.length > 0 ? gstRegIds : undefined,
+        // One task per GSTIN. Each target carries whichever links the client's
+        // record has, so the task shows the concern's name and its number.
+        gstTargets:
+          !isEdit && cat === "GST" && multiGstin && gstRegIds.length > 0
+            ? clientGstIds
+                .filter((g) => gstRegIds.includes(g.key))
+                .map((g) => ({
+                  tradeNameId: g.tradeNameId,
+                  gstRegistrationId: g.gstRegistrationId,
+                  gstin: g.gstin,
+                }))
+            : undefined,
         checklist: form.checklist ?? null,
         isReturnFiling,
         filingDate: isReturnFiling ? form.filingDate || null : null,
@@ -1470,26 +1540,99 @@ function TaskForm({
 
             {cat === "GST" && (
               <>
-                <Field label="GST return">
-                  <Select value={form.gstReturnType ?? ""} onChange={(e) => setGstReturn(e.target.value)}>
-                    <option value="">— Select return —</option>
-                    {GST_RETURN_TYPES.map((g) => (
-                      <option key={g} value={g}>
-                        {GST_RETURN_LABELS[g] ?? g}
-                      </option>
+                {/* Returns and notices are different work and share no
+                    fields, so the kind is chosen before anything else. */}
+                <Field
+                  label="Kind of GST work"
+                  hint={
+                    gstNotice
+                      ? "Answering the department — its own checklist"
+                      : "A periodic return — GSTR-1, 3B, 2B, 9 or 9C"
+                  }
+                  className="sm:col-span-2"
+                >
+                  <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                    {GST_WORK_TYPES.map((w) => (
+                      <button
+                        key={w}
+                        type="button"
+                        onClick={() => setGstWorkType(w)}
+                        data-testid={`gst-work-${w.replace(/\s+/g, "-").toLowerCase()}`}
+                        className={cn(
+                          "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                          gstWorkType === w
+                            ? "bg-white text-brand-700 shadow-sm"
+                            : "text-slate-500 hover:text-slate-700",
+                        )}
+                      >
+                        {w}
+                      </button>
                     ))}
-                  </Select>
+                  </div>
                 </Field>
+
+                {gstNotice ? (
+                  <>
+                    <Field label="Notice / form" hint="What the department sent">
+                      <Select
+                        value={form.noticeForm ?? ""}
+                        onChange={(e) => setNoticeForm(e.target.value)}
+                        data-testid="notice-form"
+                      >
+                        <option value="">— Select form —</option>
+                        {GST_NOTICE_FORMS.map((f) => (
+                          <option key={f} value={f}>
+                            {GST_NOTICE_FORM_LABELS[f] ?? f}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Notice reference no.">
+                      <Input
+                        value={form.noticeRef ?? ""}
+                        onChange={(e) => set("noticeRef", e.target.value)}
+                        placeholder="e.g. ZA2707250012345"
+                        data-testid="notice-ref"
+                      />
+                    </Field>
+                    <Field label="Notice date">
+                      <Input
+                        type="date"
+                        value={toDateInput(form.noticeDate)}
+                        onChange={(e) => set("noticeDate", e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Reply due by" hint="The task's due date">
+                      <Input
+                        type="date"
+                        value={toDateInput(form.dueDate)}
+                        onChange={(e) => set("dueDate", e.target.value)}
+                      />
+                    </Field>
+                  </>
+                ) : (
+                  <Field label="GST return">
+                    <Select value={form.gstReturnType ?? ""} onChange={(e) => setGstReturn(e.target.value)}>
+                      <option value="">— Select return —</option>
+                      {GST_RETURN_TYPES.map((g) => (
+                        <option key={g} value={g}>
+                          {GST_RETURN_LABELS[g] ?? g}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                )}
 
                 {/* GSTIN picker — a client with several registrations files
                     each GSTIN separately, so the task is pinned to one GSTIN
                     (or created once per GSTIN). */}
                 {form.clientId ? (
-                  clientGstRegs.length === 0 ? (
+                  clientGstIds.length === 0 ? (
                     <Field label="GSTIN" className="sm:col-span-2">
                       <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 ring-1 ring-amber-200">
-                        This client has no GST registrations yet. Add the GSTIN(s) on the client to
-                        file separate GST tasks per registration.
+                        This client has no GSTIN on record yet. Add it on the client — either as a
+                        GST registration, or on the firm / trade name it belongs to — to file
+                        separate GST tasks per GSTIN.
                       </p>
                     </Field>
                   ) : multiGstin ? (
@@ -1506,7 +1649,7 @@ function TaskForm({
                           <div className="flex gap-2 text-xs">
                             <button
                               type="button"
-                              onClick={() => setGstRegIds(clientGstRegs.map((g) => g.id))}
+                              onClick={() => setGstRegIds(clientGstIds.map((g) => g.key))}
                               className="text-brand-600 hover:underline"
                             >
                               Select all
@@ -1521,18 +1664,24 @@ function TaskForm({
                           </div>
                         </div>
                         <div className="space-y-1 rounded-md border border-slate-200 bg-white p-2">
-                          {clientGstRegs.map((g) => (
+                          {clientGstIds.map((g) => (
                             <label
-                              key={g.id}
+                              key={g.key}
                               className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-slate-700 hover:bg-slate-50"
                             >
                               <input
                                 type="checkbox"
-                                checked={gstRegIds.includes(g.id)}
-                                onChange={() => toggleGstReg(g.id)}
+                                checked={gstRegIds.includes(g.key)}
+                                onChange={() => toggleGstReg(g.key)}
+                                data-testid={`task-gstin-${g.gstin}`}
                                 className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                               />
-                              {gstRegLabel(g)}
+                              <span>
+                                {g.label}
+                                <span className="ml-1.5 font-mono text-xs text-slate-500">
+                                  {g.gstin}
+                                </span>
+                              </span>
                             </label>
                           ))}
                         </div>
@@ -1541,20 +1690,23 @@ function TaskForm({
                   ) : (
                     <Field label="GSTIN" hint="Which registration this return is filed under">
                       <Select
-                        value={form.gstRegistrationId ?? ""}
+                        value={form.gstin ?? ""}
                         onChange={(e) => {
-                          const reg = clientGstRegs.find((g) => g.id === e.target.value);
+                          const g = clientGstIds.find((i) => i.key === e.target.value);
                           setForm((f) => ({
                             ...f,
-                            gstRegistrationId: reg?.id ?? null,
-                            gstin: reg?.gstin ?? null,
+                            gstRegistrationId: g?.gstRegistrationId ?? null,
+                            // Pin the concern too, so the task names it.
+                            tradeNameId: g?.tradeNameId ?? f.tradeNameId ?? null,
+                            gstin: g?.gstin ?? null,
                           }));
                         }}
+                        data-testid="task-gstin-single"
                       >
                         <option value="">— Select GSTIN —</option>
-                        {clientGstRegs.map((g) => (
-                          <option key={g.id} value={g.id}>
-                            {gstRegLabel(g)}
+                        {clientGstIds.map((g) => (
+                          <option key={g.key} value={g.key}>
+                            {g.label} · {g.gstin}
                           </option>
                         ))}
                       </Select>
@@ -1568,9 +1720,8 @@ function TaskForm({
                       checked={multiGstin}
                       onChange={(e) => {
                         setMultiGstin(e.target.checked);
-                        setGstRegIds(
-                          e.target.checked && form.gstRegistrationId ? [form.gstRegistrationId] : [],
-                        );
+                        // Seed from whatever single GSTIN is already chosen.
+                        setGstRegIds(e.target.checked && form.gstin ? [form.gstin] : []);
                       }}
                       className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                     />
