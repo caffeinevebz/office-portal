@@ -146,6 +146,17 @@ export const taskCreateSchema = z.object({
   gstRegistrationId: optionalText,
   gstin: optionalText,
   gstRegistrationIds: z.array(z.string().trim().min(1)).optional(),
+  // One obligation per GSTIN. A target carries whichever links the client's
+  // record has — a GST registration, a trade name, or both for the same GSTIN.
+  gstTargets: z
+    .array(
+      z.object({
+        tradeNameId: optionalText,
+        gstRegistrationId: optionalText,
+        gstin: optionalText,
+      }),
+    )
+    .optional(),
   // Assign to one or more team members; the first is the lead assignee.
   assigneeIds: z.array(z.string().trim().min(1)).optional(),
   // Partner/Admin who gives final approval (the task hierarchy).
@@ -161,8 +172,14 @@ export const taskCreateSchema = z.object({
   periodQuarter: optionalText,
   tdsForm: optionalText,
   returnNature: optionalText,
+  // "Return filing" (default) or "Notice reply" — the two run different forms.
+  gstWorkType: optionalText,
   gstReturnType: optionalText,
   gstPeriodicity: optionalText,
+  // Notice replies: the form it arrived on, its reference and its date.
+  noticeForm: optionalText,
+  noticeRef: optionalText,
+  noticeDate: optionalDate,
   // Json column: null/absent → omit (Prisma treats undefined as no-op).
   checklist: z
     .array(z.object({ label: z.string().trim().min(1), done: z.boolean() }))
@@ -331,6 +348,17 @@ export const scheduleCreateSchema = z.object({
   // One obligation per GSTIN of the chosen client — each registration files
   // its own returns, so each needs its own recurring obligation.
   gstRegistrationIds: z.array(z.string().trim().min(1)).optional(),
+  // One obligation per GSTIN. A target carries whichever links the client's
+  // record has — a GST registration, a trade name, or both for the same GSTIN.
+  gstTargets: z
+    .array(
+      z.object({
+        tradeNameId: optionalText,
+        gstRegistrationId: optionalText,
+        gstin: optionalText,
+      }),
+    )
+    .optional(),
   // Create the same recurring obligation for several clients in one go —
   // one schedule per client, so each generates its own dated tasks.
   clientIds: z.array(z.string().trim().min(1)).optional(),

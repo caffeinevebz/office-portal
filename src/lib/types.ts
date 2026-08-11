@@ -118,8 +118,13 @@ export type Task = {
   periodQuarter: string | null;
   tdsForm: string | null;
   returnNature: string | null;
+  /** "Return filing" or "Notice reply" — GST work splits in two. */
+  gstWorkType?: string | null;
   gstReturnType: string | null;
   gstPeriodicity: string | null;
+  noticeForm?: string | null;
+  noticeRef?: string | null;
+  noticeDate?: string | null;
   gstin: string | null;
   gstRegistrationId: string | null;
   gstRegistration?: GstRegistration | null;

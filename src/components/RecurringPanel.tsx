@@ -32,6 +32,7 @@ import {
   CATEGORY_TONE,
   defaultChecklist,
   gstRegLabel,
+  gstIdentities,
 } from "@/lib/constants";
 import { STATUTORY_LAWS } from "@/lib/it-calendar";
 import { describeSchedule, computeOccurrences } from "@/lib/schedule";
@@ -255,9 +256,10 @@ export function RecurringPanel({
                       {s.tradeName?.name && (
                         <span className="mt-0.5 block text-xs text-slate-500">{s.tradeName.name}</span>
                       )}
-                      {s.gstRegistration && (
+                      {/* The GSTIN, from whichever link carries it. */}
+                      {(s.gstRegistration?.gstin ?? s.tradeName?.gstin) && (
                         <span className="mt-0.5 block font-mono text-[11px] text-slate-400">
-                          {s.gstRegistration.gstin}
+                          {s.gstRegistration?.gstin ?? s.tradeName?.gstin}
                         </span>
                       )}
                     </td>
@@ -386,11 +388,15 @@ function ScheduleForm({
   // concern, and a GST obligation can be set up once per registration.
   const chosenClient = clients.find((c) => c.id === form.clientId);
   const tradeNames = chosenClient?.tradeNames ?? [];
+  // Every GSTIN the client files under, however it was recorded — as a GST
+  // registration (one per state) or as a trade name carrying its own GSTIN,
+  // which is how a proprietor's separate concerns are usually entered.
+  const identities = chosenClient ? gstIdentities(chosenClient) : [];
   const gstRegs = (chosenClient?.gstRegistrations ?? []).filter((g) => g.active);
   const [perGstin, setPerGstin] = useState(false);
-  const [gstRegIds, setGstRegIds] = useState<string[]>([]);
+  const [gstKeys, setGstKeys] = useState<string[]>([]);
   const canPerGstin =
-    !isEdit && (form.category ?? "") === "GST" && scope === "one" && gstRegs.length > 1;
+    !isEdit && (form.category ?? "") === "GST" && scope === "one" && identities.length > 1;
 
   // The work-programme every generated task starts with — for a GST return,
   // the run from the client's papers arriving to the filing being entered.
@@ -439,9 +445,19 @@ function ScheduleForm({
         tradeNameId: scope === "one" ? form.tradeNameId || null : null,
         gstRegistrationId:
           !canPerGstin || !perGstin ? form.gstRegistrationId || null : null,
-        // One obligation per selected GSTIN — each files separately.
-        gstRegistrationIds:
-          canPerGstin && perGstin && gstRegIds.length > 0 ? gstRegIds : undefined,
+        // One obligation per selected GSTIN — each files separately. Each
+        // target carries whichever links it has, so the generated tasks show
+        // the concern's name as well as the number.
+        gstTargets:
+          canPerGstin && perGstin && gstKeys.length > 0
+            ? identities
+                .filter((i) => gstKeys.includes(i.key))
+                .map((i) => ({
+                  tradeNameId: i.tradeNameId,
+                  gstRegistrationId: i.gstRegistrationId,
+                  gstin: i.gstin,
+                }))
+            : undefined,
       };
       if (isEdit) await apiMutate(`/api/schedules/${initial!.id}`, "PUT", payload);
       else await apiMutate("/api/schedules", "POST", payload);
@@ -598,7 +614,7 @@ function ScheduleForm({
                   gstRegistrationId: null,
                 }));
                 setPerGstin(false);
-                setGstRegIds([]);
+                setGstKeys([]);
               }}
             >
               <option value="">— None / firm-wide —</option>
@@ -682,36 +698,40 @@ function ScheduleForm({
           </Field>
         )}
 
-        {/* GST: one obligation per registration, because each GSTIN files its
-            own returns on its own dates. */}
-        {scope === "one" && (form.category ?? "") === "GST" && gstRegs.length > 0 && (
+        {/* GST: one obligation per GSTIN, because each registration files its
+            own returns on its own dates — whether the client's GSTINs are
+            recorded as registrations or as trade names. */}
+        {scope === "one" && (form.category ?? "") === "GST" && identities.length > 0 && (
           <Field
-            label={perGstin ? "GST registrations" : "GST registration"}
+            label={perGstin ? "GSTINs" : "GSTIN"}
             className={perGstin ? "sm:col-span-2" : undefined}
             hint={
               perGstin
-                ? "A separate obligation is set up for each — every registration files separately"
+                ? "A separate obligation is set up for each — every GSTIN files separately"
                 : "Which registration this obligation files for"
             }
           >
             {perGstin ? (
               <div className="space-y-1 rounded-lg border border-brand-200 bg-brand-50/40 p-2">
-                {gstRegs.map((g) => (
+                {identities.map((g) => (
                   <label
-                    key={g.id}
+                    key={g.key}
                     className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm text-slate-700 hover:bg-white"
                   >
                     <input
                       type="checkbox"
-                      checked={gstRegIds.includes(g.id)}
+                      checked={gstKeys.includes(g.key)}
                       onChange={() =>
-                        setGstRegIds((ids) =>
-                          ids.includes(g.id) ? ids.filter((x) => x !== g.id) : [...ids, g.id],
+                        setGstKeys((ks) =>
+                          ks.includes(g.key) ? ks.filter((x) => x !== g.key) : [...ks, g.key],
                         )
                       }
                       className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                     />
-                    {gstRegLabel(g)}
+                    <span>
+                      {g.label}
+                      <span className="ml-1.5 font-mono text-xs text-slate-500">{g.gstin}</span>
+                    </span>
                   </label>
                 ))}
               </div>
@@ -736,12 +756,12 @@ function ScheduleForm({
                   checked={perGstin}
                   onChange={(e) => {
                     setPerGstin(e.target.checked);
-                    setGstRegIds(e.target.checked ? gstRegs.map((g) => g.id) : []);
+                    setGstKeys(e.target.checked ? identities.map((g) => g.key) : []);
                   }}
                   data-testid="schedule-per-gstin"
                   className="h-3.5 w-3.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                 />
-                Set this up separately for each of this client&apos;s {gstRegs.length} GSTINs
+                Set this up separately for each of this client&apos;s {identities.length} GSTINs
               </label>
             )}
           </Field>

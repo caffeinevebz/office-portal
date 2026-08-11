@@ -306,8 +306,17 @@ model Task {
   periodQuarter String? // Q1-Q4, for TDS / quarterly GST returns
   tdsForm       String? // new-act TDS statement number, e.g. "138" (= old 24Q)
   returnNature  String? // TDS return: Original / Revised
+  /// What kind of GST work this is: "Return filing" (the default) or
+  /// "Notice reply". The two share almost nothing — a reply has no return
+  /// type or period, and runs a completely different checklist.
+  gstWorkType   String?
   gstReturnType String? // GSTR-1, GSTR-3B, GSTR-2B, GSTR-9, GSTR-9C
   gstPeriodicity String? // Monthly / Quarterly (for periodic GST returns)
+  /// Notice replies: the form it arrived on (ASMT-10, DRC-01, REG-03 …), its
+  /// reference number, and the date it bears.
+  noticeForm    String?
+  noticeRef     String?
+  noticeDate    DateTime?
   // The GSTIN this GST task is for — a client with several registrations
   // files each return separately, so each GSTIN gets its own task.
   gstin         String? // denormalised GSTIN string (shown on the task)

@@ -91,6 +91,39 @@ export function tdsFormLabel(newNo?: string | null): string {
 export const TDS_RETURN_NATURE = ["Original", "Revised"] as const;
 
 // ── GST ─────────────────────────────────────────────────────────────────────
+// GST work splits in two: the periodic returns, and everything the department
+// sends that has to be answered. They share nothing — a notice reply has no
+// return type, no period, and a completely different run of steps — so the
+// work type is picked first and the rest of the form follows from it.
+export const GST_WORK_TYPES = ["Return filing", "Notice reply"] as const;
+
+/** The GST forms a notice or order arrives on, with what each one is. */
+export const GST_NOTICE_FORMS = [
+  "ASMT-10",
+  "DRC-01A",
+  "DRC-01",
+  "DRC-07",
+  "REG-03",
+  "REG-17",
+  "ADT-01",
+  "CMP-05",
+  "RVN-01",
+  "Other",
+] as const;
+
+export const GST_NOTICE_FORM_LABELS: Record<string, string> = {
+  "ASMT-10": "ASMT-10 · scrutiny of returns",
+  "DRC-01A": "DRC-01A · intimation of tax ascertained",
+  "DRC-01": "DRC-01 · show cause notice",
+  "DRC-07": "DRC-07 · summary of order",
+  "REG-03": "REG-03 · query on registration",
+  "REG-17": "REG-17 · show cause for cancellation",
+  "ADT-01": "ADT-01 · notice for departmental audit",
+  "CMP-05": "CMP-05 · show cause, composition levy",
+  "RVN-01": "RVN-01 · notice in revision proceedings",
+  Other: "Other notice / communication",
+};
+
 export const GST_RETURN_TYPES = ["GSTR-1", "GSTR-3B", "GSTR-2B", "GSTR-9", "GSTR-9C"] as const;
 export const GST_RETURN_LABELS: Record<string, string> = {
   "GSTR-1": "GSTR-1 · outward supplies",
@@ -166,6 +199,66 @@ export function gstinStateName(gstin: string | null | undefined): string | null 
  * A short label for a GST registration for pickers and the task list:
  * the explicit label, else the derived state, else just the GSTIN.
  */
+/**
+ * The GST identities a client files under. A client with several GSTINs may
+ * hold them either way round, and firms use both: as **GST registrations**
+ * (one per state, on the client), or as **trade names** — a proprietor's
+ * separate concerns, each with its own GSTIN. GST work has to fan out over
+ * whichever the client actually has, so both are collapsed into one list here
+ * and an identity that appears in both forms is merged into a single entry.
+ */
+export type GstIdentity = {
+  /** Stable key for pickers: the GSTIN, which is what makes it distinct. */
+  key: string;
+  gstin: string;
+  /** How to name it — the concern, or the place the registration is in. */
+  label: string;
+  tradeNameId: string | null;
+  gstRegistrationId: string | null;
+};
+
+export function gstIdentities(client: {
+  tradeNames?: { id: string; name: string; gstin?: string | null }[] | null;
+  gstRegistrations?:
+    | { id: string; gstin: string; label?: string | null; state?: string | null; active?: boolean }[]
+    | null;
+}): GstIdentity[] {
+  const byGstin = new Map<string, GstIdentity>();
+
+  for (const reg of client.gstRegistrations ?? []) {
+    if (reg.active === false || !reg.gstin) continue;
+    byGstin.set(reg.gstin, {
+      key: reg.gstin,
+      gstin: reg.gstin,
+      label: reg.label?.trim() || reg.state?.trim() || gstinStateName(reg.gstin) || reg.gstin,
+      tradeNameId: null,
+      gstRegistrationId: reg.id,
+    });
+  }
+
+  for (const tn of client.tradeNames ?? []) {
+    const gstin = tn.gstin?.trim();
+    if (!gstin) continue;
+    const existing = byGstin.get(gstin);
+    if (existing) {
+      // The same registration recorded both ways — one identity, both links,
+      // and the concern's name is the more useful of the two labels.
+      existing.tradeNameId = tn.id;
+      existing.label = tn.name;
+    } else {
+      byGstin.set(gstin, {
+        key: gstin,
+        gstin,
+        label: tn.name,
+        tradeNameId: tn.id,
+        gstRegistrationId: null,
+      });
+    }
+  }
+
+  return [...byGstin.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
 export function gstRegLabel(reg: {
   gstin: string;
   label?: string | null;
@@ -289,7 +382,7 @@ export type ChecklistItem = { label: string; done: boolean };
 /** The default checklist seeded for a new task, by category / kind. */
 export function defaultChecklist(
   category: string,
-  opts: { taskType?: string | null; gstReturnType?: string | null } = {},
+  opts: { taskType?: string | null; gstReturnType?: string | null; gstWorkType?: string | null } = {},
 ): ChecklistItem[] {
   const mk = (labels: string[]): ChecklistItem[] => labels.map((label) => ({ label, done: false }));
   if (category === "TDS") {
@@ -305,6 +398,24 @@ export function defaultChecklist(
     ]);
   }
   if (category === "GST") {
+    if (opts.gstWorkType === "Notice reply") {
+      // Answering the department is nothing like filing a return: the run
+      // goes from the notice landing to the reply being filed and
+      // acknowledged, with the client's approval in the middle.
+      return mk([
+        "Notice received & saved",
+        "Notice studied; issue and period identified",
+        "Reply due date diarised",
+        "Records / explanations called for from client",
+        "Documents received & verified",
+        "Reconciliation / working prepared",
+        "Draft reply prepared",
+        "Draft discussed with client and approved",
+        "Reply filed on the GST portal with annexures",
+        "Acknowledgement / ARN saved",
+        "Client informed of the filing",
+      ]);
+    }
     // The whole run of a GST return, from the client's papers arriving to the
     // filing being entered in the register.
     return mk([

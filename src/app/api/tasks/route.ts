@@ -5,6 +5,7 @@ import { roleHasPermission } from "@/lib/auth/effective";
 import { taskCreateSchema } from "@/lib/validation";
 import {
   LEGACY_CATEGORY_MAP,
+  defaultChecklist,
   canApproveRole,
   effectivePriority,
   priorityFromDueDate,
@@ -136,6 +137,7 @@ export const POST = route(async (req) => {
     assigneeId: rawAssigneeId,
     priority: rawPriority,
     gstRegistrationIds,
+    gstTargets,
     ...data
   } = await parse(req, taskCreateSchema);
   // Assignees: the first is the lead (kept on assigneeId for reminders); all
@@ -149,12 +151,34 @@ export const POST = route(async (req) => {
   const priorityManual = rawPriority !== "Auto" && canApproveRole(user.role);
   const priority = priorityManual ? rawPriority : priorityFromDueDate(data.dueDate);
 
-  const isReturnFiling = data.isReturnFiling ?? RETURN_CATEGORIES.includes(data.category);
+  // A GST notice reply is not a return, so it never asks for a filing entry —
+  // whatever the category's default would otherwise be.
+  const gstNotice = data.category === "GST" && data.gstWorkType === "Notice reply";
+  const isReturnFiling = gstNotice
+    ? false
+    : (data.isReturnFiling ?? RETURN_CATEGORIES.includes(data.category));
   // A return task with a filing date recorded is complete on creation.
   const filed = isReturnFiling && !!data.filingDate;
   const status = filed ? "Completed" : data.status;
+  // Seed the work programme when the caller did not supply one. Tasks
+  // generated from a recurring obligation already get theirs server-side, so
+  // a hand-raised task should not depend on the form having filled it in —
+  // and a GST notice reply runs a different programme from a GST return.
+  const checklist =
+    data.checklist && data.checklist.length > 0
+      ? data.checklist
+      : (() => {
+          const seeded = defaultChecklist(data.category, {
+            taskType: data.taskType,
+            gstReturnType: data.gstReturnType,
+            gstWorkType: data.gstWorkType,
+          });
+          return seeded.length > 0 ? seeded : undefined;
+        })();
+
   const base = {
     ...data,
+    checklist,
     priority,
     priorityManual,
     assigneeId: leadAssigneeId,
@@ -164,17 +188,51 @@ export const POST = route(async (req) => {
     completedAt: status === "Completed" ? (data.filingDate ?? new Date()) : null,
   };
 
-  // Multi-GSTIN creation: one identical GST task per selected registration of
-  // the same client — because each GSTIN files its returns separately.
-  if (gstRegistrationIds && gstRegistrationIds.length > 0) {
-    const regs = await prisma.gstRegistration.findMany({
-      where: { id: { in: gstRegistrationIds }, clientId: data.clientId ?? undefined },
-    });
+  // Multi-GSTIN creation: one identical GST task per selected GSTIN of the
+  // same client — because each registration files its returns separately. The
+  // client's GSTINs may be recorded as GST registrations or as trade names (a
+  // proprietor's separate concerns), so a target carries whichever links it
+  // has and the task ends up showing both the concern and the number.
+  const wanted =
+    gstTargets && gstTargets.length > 0
+      ? gstTargets
+      : (gstRegistrationIds ?? []).map((id) => ({
+          gstRegistrationId: id,
+          tradeNameId: null,
+          gstin: null,
+        }));
+  if (wanted.length > 0) {
+    const [regRows, tradeRows] = await Promise.all([
+      prisma.gstRegistration.findMany({
+        where: {
+          id: { in: wanted.map((t) => t.gstRegistrationId).filter(Boolean) as string[] },
+          clientId: data.clientId ?? undefined,
+        },
+      }),
+      prisma.tradeName.findMany({
+        where: {
+          id: { in: wanted.map((t) => t.tradeNameId).filter(Boolean) as string[] },
+          clientId: data.clientId ?? undefined,
+        },
+      }),
+    ]);
+    const regById = new Map(regRows.map((r) => [r.id, r]));
+    const tradeById = new Map(tradeRows.map((t) => [t.id, t]));
+
     const tasks = [];
-    for (const reg of regs) {
+    for (const t of wanted) {
+      const reg = t.gstRegistrationId ? regById.get(t.gstRegistrationId) : null;
+      const trade = t.tradeNameId ? tradeById.get(t.tradeNameId) : null;
+      // Nothing on this client matched — not this client's GSTIN.
+      if (!reg && !trade) continue;
       tasks.push(
         await prisma.task.create({
-          data: { ...base, gstRegistrationId: reg.id, gstin: reg.gstin },
+          data: {
+            ...base,
+            gstRegistrationId: reg?.id ?? null,
+            tradeNameId: trade?.id ?? base.tradeNameId ?? null,
+            gstin: reg?.gstin ?? trade?.gstin ?? t.gstin ?? null,
+          },
           include: TASK_INCLUDE,
         }),
       );
