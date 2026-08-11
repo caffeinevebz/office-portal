@@ -1,7 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { computeOccurrences, occurrencesBetween, type Occurrence } from "@/lib/schedule";
+import { computeOccurrences, occurrencesBetween, periodFields, type Occurrence } from "@/lib/schedule";
 import { defaultChecklist } from "@/lib/constants";
+import { complianceKey, IDENTITY_SELECT } from "@/lib/task-duplicates";
 import type { ChecklistItem } from "@/lib/types";
 import type { ComplianceSchedule } from "@prisma/client";
 
@@ -73,32 +74,91 @@ export async function createTasks(
   const gstinByReg = new Map(regRows.map((r) => [r.id, r.gstin]));
   const gstinByTrade = new Map(tradeRows.map((t) => [t.id, t.gstin]));
 
-  const { count } = await prisma.task.createMany({
-    data: fresh.map(({ schedule, occurrence }) => ({
-      title: occurrence.title,
-      category: schedule.category,
-      status: "Pending",
-      priority: schedule.priority,
-      dueDate: occurrence.dueDate,
-      clientId: schedule.clientId,
-      // The concern and the GST registration the obligation runs for travel
-      // onto every task, so a client with two GSTINs gets two distinct ones.
-      tradeNameId: schedule.tradeNameId,
-      gstRegistrationId: schedule.gstRegistrationId,
-      gstin:
-        (schedule.gstRegistrationId ? gstinByReg.get(schedule.gstRegistrationId) : null) ??
-        (schedule.tradeNameId ? gstinByTrade.get(schedule.tradeNameId) : null) ??
-        null,
-      assigneeId: schedule.assigneeId,
-      scheduleId: schedule.id,
-      periodKey: occurrence.periodKey,
-      isReturnFiling: RETURN_CATEGORIES.includes(schedule.category),
-      checklist: checklistFor(schedule) ?? undefined,
-      description: schedule.notes,
-    })),
-    skipDuplicates: true,
-  });
+  const rows = fresh.map(({ schedule, occurrence }) => ({
+    title: occurrence.title,
+    category: schedule.category,
+    status: "Pending",
+    priority: schedule.priority,
+    dueDate: occurrence.dueDate,
+    clientId: schedule.clientId,
+    // The concern and the GST registration the obligation runs for travel
+    // onto every task, so a client with two GSTINs gets two distinct ones.
+    tradeNameId: schedule.tradeNameId,
+    gstRegistrationId: schedule.gstRegistrationId,
+    gstin:
+      (schedule.gstRegistrationId ? gstinByReg.get(schedule.gstRegistrationId) : null) ??
+      (schedule.tradeNameId ? gstinByTrade.get(schedule.tradeNameId) : null) ??
+      null,
+    // Which period this occurrence is for, in the same words a hand-raised
+    // task uses. Without these a generated task names no period at all.
+    ...periodFields(schedule.frequency, occurrence.dueDate),
+    assigneeId: schedule.assigneeId,
+    scheduleId: schedule.id,
+    periodKey: occurrence.periodKey,
+    isReturnFiling: RETURN_CATEGORIES.includes(schedule.category),
+    checklist: checklistFor(schedule) ?? undefined,
+    description: schedule.notes,
+  }));
+
+  const wanted = await withoutDuplicates(rows);
+  if (wanted.length === 0) return 0;
+
+  const { count } = await prisma.task.createMany({ data: wanted, skipDuplicates: true });
   return count;
+}
+
+/** Everything `complianceKey` needs, as generation builds it. */
+type GeneratedRow = {
+  title: string;
+  category: string;
+  clientId: string | null;
+  financialYear: string;
+  periodMonth: number | null;
+  periodQuarter: string | null;
+  gstin: string | null;
+};
+
+/**
+ * Drop occurrences whose obligation the register already covers.
+ *
+ * Filtering on (schedule, period) above only stops an obligation duplicating
+ * *itself*. It cannot see a Form 140 for Q1 someone raised by hand, nor a
+ * second recurring obligation set up for the same return — and those are
+ * exactly the duplicates a firm ends up working twice. Tasks that name no
+ * obligation are left alone; ordinary work is allowed to repeat.
+ */
+async function withoutDuplicates<T extends GeneratedRow>(rows: T[]): Promise<T[]> {
+  const keyed = rows.map((row) => ({
+    row,
+    key: complianceKey({
+      ...row,
+      taskType: null,
+      tdsForm: null,
+      returnNature: null,
+      gstWorkType: null,
+      gstReturnType: null,
+      noticeForm: null,
+      noticeRef: null,
+    }),
+  }));
+  if (!keyed.some((k) => k.key)) return rows;
+
+  const clientIds = [...new Set(rows.map((r) => r.clientId).filter(Boolean))] as string[];
+  const existing = await prisma.task.findMany({
+    where: { clientId: { in: clientIds } },
+    select: IDENTITY_SELECT,
+  });
+  const taken = new Set(existing.map(complianceKey).filter(Boolean) as string[]);
+
+  return keyed
+    .filter(({ key }) => {
+      if (!key) return true; // no obligation named — never judged
+      if (taken.has(key)) return false;
+      // Two obligations in the same batch can collide with each other too.
+      taken.add(key);
+      return true;
+    })
+    .map(({ row }) => row);
 }
 
 /** Generate every occurrence falling due in `when`'s month. */

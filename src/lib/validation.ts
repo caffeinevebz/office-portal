@@ -185,6 +185,10 @@ export const taskCreateSchema = z.object({
     .array(z.object({ label: z.string().trim().min(1), done: z.boolean() }))
     .nullish()
     .transform((v) => v ?? undefined),
+  // Raise the task even though one already covers the same obligation. The
+  // duplicity check catches a slip; it must not overrule someone who knows
+  // the register better than it does.
+  allowDuplicate: z.boolean().optional(),
 });
 export const taskUpdateSchema = taskCreateSchema.partial();
 

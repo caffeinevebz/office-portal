@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { ok, parse, route } from "@/lib/api";
+import { ok, fail, parse, route } from "@/lib/api";
 import { requireUser, requirePermission } from "@/lib/auth/session";
 import { roleHasPermission } from "@/lib/auth/effective";
 import { taskCreateSchema } from "@/lib/validation";
@@ -11,6 +11,7 @@ import {
   priorityFromDueDate,
 } from "@/lib/constants";
 import { notifyTaskAssignment, notifyTaskApprover } from "@/lib/notifications";
+import { findTaskDuplicate, duplicateTaskMessage } from "@/lib/task-duplicates";
 import { ensureCurrentMonthTasks } from "@/lib/generate";
 import type { Prisma } from "@prisma/client";
 
@@ -138,6 +139,7 @@ export const POST = route(async (req) => {
     priority: rawPriority,
     gstRegistrationIds,
     gstTargets,
+    allowDuplicate,
     ...data
   } = await parse(req, taskCreateSchema);
   // Assignees: the first is the lead (kept on assigneeId for reminders); all
@@ -220,43 +222,93 @@ export const POST = route(async (req) => {
     const tradeById = new Map(tradeRows.map((t) => [t.id, t]));
 
     const tasks = [];
+    const skipped: Skipped[] = [];
     for (const t of wanted) {
       const reg = t.gstRegistrationId ? regById.get(t.gstRegistrationId) : null;
       const trade = t.tradeNameId ? tradeById.get(t.tradeNameId) : null;
       // Nothing on this client matched — not this client's GSTIN.
       if (!reg && !trade) continue;
+      const gstin = reg?.gstin ?? trade?.gstin ?? t.gstin ?? null;
+      // Each GSTIN is judged on its own: one registration already having the
+      // return must not stop the others being raised.
+      const dup = allowDuplicate ? null : await findTaskDuplicate({ ...base, gstin });
+      if (dup) {
+        skipped.push({ label: gstin ?? trade?.name ?? "GSTIN", reason: duplicateTaskMessage(dup) });
+        continue;
+      }
       tasks.push(
         await prisma.task.create({
           data: {
             ...base,
             gstRegistrationId: reg?.id ?? null,
             tradeNameId: trade?.id ?? base.tradeNameId ?? null,
-            gstin: reg?.gstin ?? trade?.gstin ?? t.gstin ?? null,
+            gstin,
           },
           include: TASK_INCLUDE,
         }),
       );
     }
+    if (tasks.length === 0 && skipped.length > 0) return duplicateRefusal(skipped);
     await notifyCreation(tasks.length, user, data, ids, tasks[0]?.client?.name ?? null);
-    return ok(tasks, 201);
+    return ok({ tasks, skipped }, 201);
   }
 
   // Multi-client creation: one identical task per selected client.
   if (clientIds && clientIds.length > 0) {
     const tasks = [];
+    const skipped: Skipped[] = [];
+    const names = new Map(
+      (
+        await prisma.client.findMany({
+          where: { id: { in: clientIds } },
+          select: { id: true, name: true },
+        })
+      ).map((c) => [c.id, c.name]),
+    );
     for (const clientId of clientIds) {
+      // One client already holding the return is no reason to withhold it
+      // from the rest — skip that client and carry on.
+      const dup = allowDuplicate ? null : await findTaskDuplicate({ ...base, clientId });
+      if (dup) {
+        skipped.push({
+          label: names.get(clientId) ?? "Client",
+          reason: duplicateTaskMessage(dup),
+        });
+        continue;
+      }
       tasks.push(
         await prisma.task.create({ data: { ...base, clientId }, include: TASK_INCLUDE }),
       );
     }
+    if (tasks.length === 0 && skipped.length > 0) return duplicateRefusal(skipped);
     await notifyCreation(tasks.length, user, data, ids, tasks[0]?.client?.name ?? null);
-    return ok(tasks, 201);
+    return ok({ tasks, skipped }, 201);
+  }
+
+  // A single task: refuse outright, naming what already covers it. The caller
+  // may insist with allowDuplicate — the guard is there to catch a slip, not
+  // to overrule someone who knows the register better than it does.
+  if (!allowDuplicate) {
+    const dup = await findTaskDuplicate(base);
+    if (dup) return fail(duplicateTaskMessage(dup), 409);
   }
 
   const task = await prisma.task.create({ data: base, include: TASK_INCLUDE });
   await notifyCreation(1, user, data, ids, task.client?.name ?? null);
-  return ok(task, 201);
+  return ok({ tasks: [task], skipped: [] }, 201);
 });
+
+/** One member of a batch that already had its obligation covered. */
+type Skipped = { label: string; reason: string };
+
+/** Every member of the batch was a duplicate — nothing was created. */
+function duplicateRefusal(skipped: Skipped[]) {
+  const heading =
+    skipped.length === 1
+      ? skipped[0].reason
+      : `All ${skipped.length} are already covered: ${skipped.map((s) => s.label).join(", ")}.`;
+  return fail(`${heading} Tick “create anyway” if you meant to raise another.`, 409);
+}
 
 // Ping the assignees (and the approver) about their new task.
 async function notifyCreation(

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { ok, fail, parse, route } from "@/lib/api";
+import { ok, fail, parse, parseFields, route } from "@/lib/api";
 import { requirePermission } from "@/lib/auth/session";
 import { taskUpdateSchema, taskFilingSchema } from "@/lib/validation";
 import {
@@ -12,6 +12,7 @@ import {
   type ChecklistItem,
 } from "@/lib/constants";
 import { notifyTaskAssignment, notifyTaskApprover } from "@/lib/notifications";
+import { findTaskDuplicate, duplicateTaskMessage, complianceKey } from "@/lib/task-duplicates";
 import type { Prisma, Task } from "@prisma/client";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -55,14 +56,22 @@ async function applyUpdate(id: string, data: Prisma.TaskUncheckedUpdateInput) {
 export const PUT = route(async (req, ctx: Ctx) => {
   const user = await requirePermission("manageTasks");
   const { id } = await ctx.params;
+  const { data: parsed, sent } = await parseFields(req, taskUpdateSchema);
   const {
     clientIds: _ignored,
     gstRegistrationIds: _ignoredGst,
     assigneeIds,
     assigneeId: rawAssigneeId,
     priority: rawPriority,
-    ...rest
-  } = await parse(req, taskUpdateSchema);
+    allowDuplicate,
+    ...all
+  } = parsed;
+  // Only what the caller actually sent. The schema's defaults fill in category,
+  // status and priority whether or not they were in the body, and writing those
+  // back would quietly reset columns a partial edit never mentioned.
+  const rest = Object.fromEntries(
+    Object.entries(all).filter(([k]) => sent(k)),
+  ) as typeof all;
   const data = rest as Prisma.TaskUncheckedUpdateInput;
   // Snapshot the current assignment to notify only newly-added members.
   const current = await prisma.task.findUnique({
@@ -74,9 +83,38 @@ export const PUT = route(async (req, ctx: Ctx) => {
       assigneeId: true,
       assignees: { select: { id: true } },
       client: { select: { name: true } },
+      clientId: true,
+      category: true,
+      taskType: true,
+      financialYear: true,
+      periodMonth: true,
+      periodQuarter: true,
+      tdsForm: true,
+      returnNature: true,
+      gstWorkType: true,
+      gstReturnType: true,
+      gstin: true,
+      noticeForm: true,
+      noticeRef: true,
     },
   });
   if (!current) return fail("Task not found", 404);
+
+  // Re-pointing a task at a period or a form another task already covers makes
+  // a duplicate just as surely as raising a second one, so the edit is weighed
+  // against the merged result — the patch on top of what is already stored.
+  //
+  // Only a *move* is weighed. An edit that leaves the obligation where it was
+  // cannot create a duplicate, and checking it anyway would freeze the two
+  // tasks someone deliberately raised with an override: each would forever
+  // find the other and refuse every subsequent edit.
+  if (!allowDuplicate) {
+    const { assignees: _a, client: _c, ...identity } = current;
+    const merged = { ...identity, ...rest };
+    const moved = complianceKey(merged) !== complianceKey(identity);
+    const dup = moved ? await findTaskDuplicate(merged, id) : null;
+    if (dup) return fail(duplicateTaskMessage(dup), 409);
+  }
 
   // Rebuild the assignee set when the form provides it.
   let newIds: string[] = [];
