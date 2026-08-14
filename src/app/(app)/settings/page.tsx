@@ -494,6 +494,18 @@ type EmailSettingsView = {
   effectiveFrom: string;
   envKeyPresent: boolean;
   live: boolean;
+  // Inbox sync (IMAP) — reading the same mailbox the firm sends from.
+  imapEnabled: boolean;
+  imapHost: string;
+  imapPort: number | null;
+  imapSecure: boolean;
+  imapUser: string;
+  imapFolder: string;
+  hasImapPassword: boolean;
+  effectiveImapHost: string;
+  effectiveMailbox: string;
+  imapSyncedAt: string | null;
+  imapStatus: string | null;
 };
 
 type EmailForm = {
@@ -503,6 +515,12 @@ type EmailForm = {
   replyTo: string;
   appPassword: string;
   resendApiKey: string;
+  imapEnabled: boolean;
+  imapHost: string;
+  imapPort: string;
+  imapUser: string;
+  imapFolder: string;
+  imapPassword: string;
 };
 
 function EmailSettingsCard() {
@@ -524,6 +542,12 @@ function EmailSettingsCard() {
       replyTo: data.replyTo,
       appPassword: "",
       resendApiKey: "",
+      imapEnabled: data.imapEnabled,
+      imapHost: data.imapHost,
+      imapPort: data.imapPort ? String(data.imapPort) : "",
+      imapUser: data.imapUser,
+      imapFolder: data.imapFolder,
+      imapPassword: "",
     });
     setTestTo(user?.email ?? "");
   }
@@ -543,6 +567,12 @@ function EmailSettingsCard() {
         replyTo: form.replyTo,
         appPassword: clearSecret && form.provider === "google" ? "clear" : form.appPassword || undefined,
         resendApiKey: clearSecret && form.provider === "resend" ? "clear" : form.resendApiKey || undefined,
+        imapEnabled: form.imapEnabled,
+        imapHost: form.imapHost,
+        imapPort: form.imapPort ? Number(form.imapPort) : null,
+        imapUser: form.imapUser,
+        imapFolder: form.imapFolder,
+        imapPassword: form.imapPassword || undefined,
       })) as EmailSettingsView;
       setData(saved);
       setForm({
@@ -552,6 +582,12 @@ function EmailSettingsCard() {
         replyTo: saved.replyTo,
         appPassword: "",
         resendApiKey: "",
+        imapEnabled: saved.imapEnabled,
+        imapHost: saved.imapHost,
+        imapPort: saved.imapPort ? String(saved.imapPort) : "",
+        imapUser: saved.imapUser,
+        imapFolder: saved.imapFolder,
+        imapPassword: "",
       });
       setMsg({
         kind: "ok",
@@ -730,6 +766,94 @@ function EmailSettingsCard() {
                   autoComplete="new-password"
                 />
               </Field>
+            )}
+          </div>
+
+          {/* Reading the same mailbox, so the firm's mail can be answered and
+              filed here. On Google the app password above serves both. */}
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={form?.imapEnabled ?? false}
+                onChange={(e) => set("imapEnabled", e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-400"
+              />
+              <span>
+                <span className="text-sm font-medium text-slate-800">
+                  Also read this mailbox (inbox sync)
+                </span>
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  Brings the firm&apos;s mail into the <strong>Mail</strong> page, filed against the
+                  client each message concerns. On Google the App Password above works for reading
+                  too, so there is usually nothing more to fill in.
+                </span>
+              </span>
+            </label>
+
+            {form?.imapEnabled && (
+              <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field
+                  label="IMAP host"
+                  hint={
+                    data?.effectiveImapHost
+                      ? `Blank uses ${data.effectiveImapHost}`
+                      : "Your mail domain is not one we recognise — give the host, e.g. imap.yourfirm.in"
+                  }
+                >
+                  <Input
+                    value={form.imapHost}
+                    onChange={(e) => set("imapHost", e.target.value)}
+                    placeholder={data?.effectiveImapHost || "imap.yourfirm.in"}
+                  />
+                </Field>
+                <Field label="Port" hint="Blank uses 993 (TLS)">
+                  <Input
+                    value={form.imapPort}
+                    onChange={(e) => set("imapPort", e.target.value.replace(/\D/g, ""))}
+                    placeholder="993"
+                  />
+                </Field>
+                <Field label="Mailbox address" hint={`Blank uses ${data?.effectiveMailbox || "the From address"}`}>
+                  <Input
+                    value={form.imapUser}
+                    onChange={(e) => set("imapUser", e.target.value)}
+                    placeholder={data?.effectiveMailbox || "office@yourfirm.in"}
+                  />
+                </Field>
+                <Field
+                  label="Mailbox password"
+                  hint={
+                    data?.hasImapPassword
+                      ? "Saved. Leave blank to keep it."
+                      : "Blank uses the App Password above"
+                  }
+                >
+                  <Input
+                    type="password"
+                    value={form.imapPassword}
+                    onChange={(e) => set("imapPassword", e.target.value)}
+                    placeholder={data?.hasImapPassword ? "•••••••• (unchanged)" : "same as above"}
+                    autoComplete="new-password"
+                  />
+                </Field>
+                <Field label="Folder" hint="Blank reads INBOX">
+                  <Input
+                    value={form.imapFolder}
+                    onChange={(e) => set("imapFolder", e.target.value)}
+                    placeholder="INBOX"
+                  />
+                </Field>
+              </div>
+            )}
+
+            {data?.imapStatus && (
+              <p className="mt-2 text-xs text-slate-400">
+                Last sync: {data.imapStatus}
+                {data.imapSyncedAt
+                  ? ` (${new Date(data.imapSyncedAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })})`
+                  : ""}
+              </p>
             )}
           </div>
 

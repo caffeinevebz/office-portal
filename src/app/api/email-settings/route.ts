@@ -3,6 +3,7 @@ import { ok, parse, route } from "@/lib/api";
 import { requirePermission } from "@/lib/auth/session";
 import { emailSettingsSchema } from "@/lib/validation";
 import { getEmailConfig, providerStatus } from "@/lib/notify";
+import { hostForAddress } from "@/lib/mail/config";
 
 // Secrets are write-only: reads return whether one is set, never the value.
 function view(row: {
@@ -12,7 +13,19 @@ function view(row: {
   replyTo: string | null;
   appPassword: string | null;
   resendApiKey: string | null;
+  smtpHost?: string | null;
+  smtpPort?: number | null;
+  imapEnabled?: boolean;
+  imapHost?: string | null;
+  imapPort?: number | null;
+  imapSecure?: boolean;
+  imapUser?: string | null;
+  imapPassword?: string | null;
+  imapFolder?: string | null;
+  imapSyncedAt?: Date | null;
+  imapStatus?: string | null;
 } | null) {
+  const mailbox = row?.imapUser?.trim() || row?.fromEmail?.trim() || "";
   return {
     provider: row?.provider === "resend" ? "resend" : "google",
     fromName: row?.fromName ?? "",
@@ -20,6 +33,21 @@ function view(row: {
     replyTo: row?.replyTo ?? "",
     hasAppPassword: Boolean(row?.appPassword?.trim()),
     hasApiKey: Boolean(row?.resendApiKey?.trim()),
+    smtpHost: row?.smtpHost ?? "",
+    smtpPort: row?.smtpPort ?? null,
+    imapEnabled: row?.imapEnabled ?? false,
+    imapHost: row?.imapHost ?? "",
+    imapPort: row?.imapPort ?? null,
+    imapSecure: row?.imapSecure ?? true,
+    imapUser: row?.imapUser ?? "",
+    imapFolder: row?.imapFolder ?? "",
+    hasImapPassword: Boolean(row?.imapPassword?.trim()),
+    // What the sync will actually use once the blanks are filled from the
+    // outbound side, so the page can show it rather than make them guess.
+    effectiveImapHost: row?.imapHost?.trim() || hostForAddress(mailbox) || "",
+    effectiveMailbox: mailbox,
+    imapSyncedAt: row?.imapSyncedAt ?? null,
+    imapStatus: row?.imapStatus ?? null,
   };
 }
 
@@ -58,6 +86,19 @@ export const PUT = route(async (req) => {
       ? { resendApiKey: null }
       : data.resendApiKey
         ? { resendApiKey: data.resendApiKey }
+        : {}),
+    ...(data.smtpHost === undefined ? {} : { smtpHost: data.smtpHost }),
+    ...(data.smtpPort === undefined ? {} : { smtpPort: data.smtpPort ?? null }),
+    ...(data.imapEnabled === undefined ? {} : { imapEnabled: data.imapEnabled }),
+    ...(data.imapHost === undefined ? {} : { imapHost: data.imapHost }),
+    ...(data.imapPort === undefined ? {} : { imapPort: data.imapPort ?? null }),
+    ...(data.imapSecure === undefined ? {} : { imapSecure: data.imapSecure }),
+    ...(data.imapUser === undefined ? {} : { imapUser: data.imapUser }),
+    ...(data.imapFolder === undefined ? {} : { imapFolder: data.imapFolder }),
+    ...(data.imapPassword === "clear"
+      ? { imapPassword: null }
+      : data.imapPassword
+        ? { imapPassword: data.imapPassword.replace(/\s+/g, "") }
         : {}),
   };
   const row = await prisma.emailSettings.upsert({
