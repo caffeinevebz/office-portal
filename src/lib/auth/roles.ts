@@ -21,6 +21,8 @@ export type Permission =
   | "deleteDsc"
   | "manageInward"
   | "deleteInward"
+  | "viewMail"
+  | "manageMail"
   | "manageOrgs"
   | "manageItr"
   | "deleteItr"
@@ -33,6 +35,7 @@ export const PERMISSION_CATEGORIES = [
   "Billing",
   "Documents & registers",
   "Reminders",
+  "Mailbox",
   "Firm administration",
 ] as const;
 
@@ -68,6 +71,11 @@ export const PERMISSION_META: Record<
   manageInward: { label: "Maintain inward/outward register", category: "Documents & registers" },
   deleteInward: { label: "Delete inward/outward entries", category: "Documents & registers" },
   manageReminders: { label: "Configure & send reminders", category: "Reminders" },
+  viewMail: { label: "Read the firm's mailbox", category: "Mailbox" },
+  manageMail: {
+    label: "Reply, compose & file mail against clients",
+    category: "Mailbox",
+  },
   manageOrgs: { label: "Firm settings & billing organizations", category: "Firm administration" },
   manageTeam: { label: "Manage the team & send invitations", category: "Firm administration" },
   manageRoles: { label: "Manage roles & access levels", category: "Firm administration" },
@@ -111,6 +119,10 @@ export const DEFAULT_MATRIX: Record<Permission, string[]> = {
   manageInward: ["Partner", "Admin", "Manager", "Accountant", "Article Assistant"],
   deleteInward: ["Partner", "Admin", "Manager"],
   manageReminders: ["Partner", "Admin", "Manager"],
+  // The firm's mailbox carries every client's affairs at once, so it starts
+  // with the same people billing does, widened per role in Access Control.
+  viewMail: ["Partner", "Admin", "Manager"],
+  manageMail: ["Partner", "Admin", "Manager"],
   manageOrgs: ["Partner", "Admin"],
   manageTeam: ["Partner", "Admin"],
   manageRoles: ["Partner", "Admin"],

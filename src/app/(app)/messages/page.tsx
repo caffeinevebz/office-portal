@@ -25,6 +25,54 @@ function timeLabel(iso: string): string {
         d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 }
 
+/**
+ * How far a message of yours has got, in the ticks everyone already reads:
+ * one for sent, two once it has reached them, two in blue once they have
+ * read it. Drawn as one SVG rather than two overlaid icons so the second
+ * tick tucks into the first the way it does elsewhere.
+ */
+function DeliveryTicks({
+  state,
+  deliveredAt,
+  readAt,
+  // The blue has to carry against whatever sits behind it: a lighter sky on
+  // the brand-600 bubble, a stronger one on the white conversation list.
+  readClass = "text-sky-300",
+}: {
+  state: "sent" | "delivered" | "read";
+  deliveredAt: string | null;
+  readAt: string | null;
+  readClass?: string;
+}) {
+  const double = state !== "sent";
+  const title =
+    state === "read"
+      ? `Read${readAt ? ` ${timeLabel(readAt)}` : ""}`
+      : state === "delivered"
+        ? `Delivered${deliveredAt ? ` ${timeLabel(deliveredAt)}` : ""}`
+        : "Sent";
+  return (
+    <svg
+      viewBox="0 0 18 12"
+      className={cn(
+        "h-3 w-[18px] shrink-0",
+        state === "read" ? readClass : "text-current opacity-80",
+      )}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      role="img"
+      aria-label={title}
+    >
+      <title>{title}</title>
+      {double && <path d="M1 6.8 4.2 10 10.8 2.4" />}
+      <path d={double ? "M7.2 6.8 10.4 10 17 2.4" : "M3 6.8 6.2 10 12.8 2.4"} />
+    </svg>
+  );
+}
+
 function dayLabel(iso: string): string {
   const d = new Date(iso);
   const today = new Date();
@@ -81,10 +129,10 @@ export default function MessagesPage() {
       if (!res.ok) return;
       const data = (await res.json()) as ChatMessage[];
       setMessages((prev) => {
-        // Only re-render when something actually changed — a new message, or
-        // an edit to one already on screen.
+        // Only re-render when something actually changed — a new message, an
+        // edit to one already on screen, or a tick advancing.
         const sig = (list: ChatMessage[]) =>
-          list.map((m) => `${m.id}:${m.editedAt ?? ""}`).join("|");
+          list.map((m) => `${m.id}:${m.editedAt ?? ""}:${m.delivery ?? ""}`).join("|");
         return sig(prev) === sig(data) ? prev : data;
       });
     } catch {
@@ -227,7 +275,17 @@ export default function MessagesPage() {
                             </span>
                           )}
                         </span>
-                        <span className="mt-0.5 flex items-center gap-2">
+                        <span className="mt-0.5 flex items-center gap-1.5">
+                          {c.lastFromSelf && c.lastDelivery && (
+                            <span className="shrink-0 text-slate-400">
+                              <DeliveryTicks
+                                state={c.lastDelivery}
+                                deliveredAt={null}
+                                readAt={null}
+                                readClass="text-sky-500"
+                              />
+                            </span>
+                          )}
                           <span
                             className={cn(
                               "truncate text-xs",
@@ -235,7 +293,9 @@ export default function MessagesPage() {
                             )}
                           >
                             {c.lastMessage
-                              ? `${c.lastFromSelf && c.kind === "dm" ? "You: " : ""}${c.lastMessage}`
+                              ? // The tick already says it was yours, so the
+                                // "You:" only appears where there is none.
+                                `${c.lastFromSelf && c.kind === "dm" && !c.lastDelivery ? "You: " : ""}${c.lastMessage}`
                               : c.kind === "team"
                                 ? "Everyone in the firm"
                                 : (c.role ?? "No messages yet")}
@@ -361,6 +421,13 @@ export default function MessagesPage() {
                             >
                               {m.editedAt && <span title={`Edited ${timeLabel(m.editedAt)}`}>edited</span>}
                               {timeLabel(m.createdAt)}
+                              {mine && m.delivery && (
+                                <DeliveryTicks
+                                  state={m.delivery}
+                                  deliveredAt={m.deliveredAt}
+                                  readAt={m.readAt}
+                                />
+                              )}
                               {mine && editingId !== m.id && (
                                 <button
                                   onClick={() => {

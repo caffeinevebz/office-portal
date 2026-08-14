@@ -9,6 +9,7 @@ import {
   ClipboardList,
   ReceiptIndianRupee,
   MessagesSquare,
+  Mail,
   UsersRound,
   CalendarDays,
   FolderClosed,
@@ -40,6 +41,7 @@ const NAV: { href: string; label: string; icon: typeof Users; perm?: Permission 
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/tasks", label: "Tasks", icon: ClipboardList },
   { href: "/messages", label: "Messages", icon: MessagesSquare },
+  { href: "/mail", label: "Mail", icon: Mail, perm: "viewMail" },
   { href: "/itr", label: "Filing Register", icon: Landmark },
   // The receipt register lives inside Invoices (one billing module).
   { href: "/invoices", label: "Invoices", icon: ReceiptIndianRupee, perm: "viewInvoices" },

@@ -168,7 +168,13 @@ export type ChatMessage = {
   id: string;
   body: string;
   createdAt: string;
+  // Set once the recipient's app has fetched the message, and once they have
+  // opened the conversation — the two ticks and the blue ticks.
+  deliveredAt: string | null;
   readAt: string | null;
+  // How far this message has got. Only ever set on your own messages, since
+  // that is the only place a tick is shown; null on everyone else's.
+  delivery: "sent" | "delivered" | "read" | null;
   // Set once the sender has edited the message.
   editedAt: string | null;
   senderId: string;
@@ -186,7 +192,55 @@ export type Conversation = {
   lastMessage: string | null;
   lastAt: string | null;
   lastFromSelf: boolean;
+  // How far your own last message got, for the tick beside the preview.
+  lastDelivery: "sent" | "delivered" | "read" | null;
   unread: number;
+};
+
+// A message in the firm's official mailbox — fetched from it, or sent from here.
+export type MailListItem = {
+  id: string;
+  subject: string | null;
+  fromName: string | null;
+  fromEmail: string | null;
+  toEmails: string[] | null;
+  sentAt: string | null;
+  snippet: string | null;
+  direction: "Incoming" | "Sent";
+  readAt: string | null;
+  // "auto" (the address was known) or "manual" (someone filed it).
+  matchedBy: string | null;
+  client: { id: string; name: string } | null;
+  task: { id: string; title: string } | null;
+  attachmentCount: number;
+};
+
+export type MailAttachmentInfo = {
+  id: string;
+  filename: string;
+  contentType: string | null;
+  size: number;
+};
+
+export type MailFull = Omit<MailListItem, "attachmentCount"> & {
+  folder: string;
+  ccEmails: string[] | null;
+  textBody: string | null;
+  htmlBody: string | null;
+  // Set when the body was too big to keep whole; the snippet still stands.
+  truncated: boolean;
+  messageId: string | null;
+  attachments: MailAttachmentInfo[];
+};
+
+/** Where inbox sync stands, for the banner on the Mail page. */
+export type MailSyncState = {
+  enabled: boolean;
+  configured: boolean;
+  mailbox: { user: string; host: string; folder: string } | null;
+  missing: string | null;
+  syncedAt: string | null;
+  status: string | null;
 };
 
 export type ChecklistItem = { label: string; done: boolean };

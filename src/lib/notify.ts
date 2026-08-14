@@ -24,6 +24,10 @@ export type EmailConfig = {
   provider: "google" | "resend";
   apiKey: string | null; // resend
   appPassword: string | null; // google
+  // SMTP endpoint for the "google" provider. Google's own is the default,
+  // which is what it always was; a firm on its own mail host sets these.
+  smtpHost: string;
+  smtpPort: number;
   fromEmail: string;
   fromName: string | null;
   replyTo: string | null;
@@ -48,6 +52,8 @@ export async function getEmailConfig(): Promise<EmailConfig> {
     provider,
     apiKey,
     appPassword,
+    smtpHost: row?.smtpHost?.trim() || "smtp.gmail.com",
+    smtpPort: row?.smtpPort ?? 465,
     fromEmail,
     fromName: row?.fromName?.trim() || org?.name?.trim() || null,
     replyTo: row?.replyTo?.trim() || null,
@@ -76,9 +82,10 @@ async function sendViaGoogle(
   try {
     const { default: nodemailer } = await import("nodemailer");
     const transport = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
+      host: cfg.smtpHost,
+      port: cfg.smtpPort,
+      // 465 is implicit TLS; anything else negotiates STARTTLS.
+      secure: cfg.smtpPort === 465,
       auth: { user: cfg.fromEmail, pass: cfg.appPassword! },
       // Fail fast instead of hanging an API request when SMTP is unreachable.
       connectionTimeout: 10_000,

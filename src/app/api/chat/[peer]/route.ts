@@ -49,5 +49,7 @@ export const POST = route(async (req, ctx: Ctx) => {
     },
     include: { sender },
   });
-  return ok(message, 201);
+  // A message just posted has reached nobody yet — it goes on screen with a
+  // single tick, which the next poll advances.
+  return ok({ ...message, delivery: "sent" as const }, 201);
 });

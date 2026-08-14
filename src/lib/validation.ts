@@ -543,6 +543,39 @@ export const emailSettingsSchema = z.object({
   // Blank/omitted = keep the stored secret; the literal "clear" removes it.
   appPassword: z.string().trim().optional(),
   resendApiKey: z.string().trim().optional(),
+  // Inbox sync. Blank host/user fall back to the outbound side, so the usual
+  // Google setup needs nothing here beyond the tick.
+  smtpHost: optionalText,
+  smtpPort: z.coerce.number().int().min(1).max(65535).nullish(),
+  imapEnabled: z.boolean().optional(),
+  imapHost: optionalText,
+  imapPort: z.coerce.number().int().min(1).max(65535).nullish(),
+  imapSecure: z.boolean().optional(),
+  imapUser: optionalText,
+  imapPassword: z.string().trim().optional(),
+  imapFolder: optionalText,
+});
+
+const addressArray = z
+  .array(z.string().trim().email("Every recipient needs a valid email"))
+  .min(1, "At least one recipient is required");
+
+/** Writing a message from inside the portal. */
+export const mailSendSchema = z.object({
+  to: addressArray,
+  cc: z.array(z.string().trim().email("Every copied address must be valid")).optional(),
+  subject: z.string().trim().min(1, "Subject is required"),
+  body: z.string().trim().min(1, "Write something to send"),
+  // The message being answered, when this is a reply.
+  replyToId: optionalText,
+  // File the sent copy against this client (else the address decides).
+  clientId: optionalText,
+});
+
+/** Filing a message against a client / an engagement. */
+export const mailFileSchema = z.object({
+  clientId: z.string().trim().nullish(),
+  taskId: z.string().trim().nullish(),
 });
 
 export const invitationCreateSchema = z.object({

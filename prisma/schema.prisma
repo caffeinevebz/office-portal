@@ -46,6 +46,8 @@ model Client {
   tradeNames TradeName[]
   gstRegistrations GstRegistration[]
   expenseClaims ExpenseClaim[]
+  mail          MailMessage[]
+  mailAliases   MailAlias[]
 }
 
 /// A physical/logical grouping of clients (e.g. a family or business group).
@@ -164,6 +166,10 @@ model Staff {
   // Last time this member opened the firm-wide Team chat channel; drives
   // the channel's unread count (direct messages track readAt per message).
   teamChatReadAt DateTime?
+  // Last time this member's app checked in. A message is "delivered" once the
+  // recipient's device has fetched since it was sent — with no push channel,
+  // this poll is the only honest evidence a message reached them.
+  chatSeenAt     DateTime?
 
   tasks          Task[] @relation("TaskLeadAssignee")
   assignedTasks  Task[] @relation("TaskAssignees")
@@ -182,6 +188,9 @@ model ChatMessage {
   id        String   @id @default(cuid())
   body      String
   createdAt DateTime @default(now())
+  // Set when the direct-message recipient's app has fetched it — the message
+  // has reached their device, whether or not they have looked at it.
+  deliveredAt DateTime?
   // Set when the direct-message recipient has read it (Team posts use each
   // member's Staff.teamChatReadAt marker instead).
   readAt    DateTime?
@@ -363,6 +372,8 @@ model Task {
   filingRecord ItrFiling?
   // Reimbursement claims raised against this engagement.
   expenseClaims ExpenseClaim[]
+  // Mail filed against this engagement.
+  mail          MailMessage[]
 
   @@unique([scheduleId, periodKey])
   // The task list is always filtered/sorted along these paths.
@@ -384,7 +395,119 @@ model EmailSettings {
   // required). resend: an API key; falls back to the RESEND_API_KEY env var.
   appPassword  String?
   resendApiKey String?
+  // Where the mail goes out through. Blank means Google's SMTP, which is what
+  // it has always been — a firm on its own mail host points it there instead,
+  // the same way the inbox side below points at their own IMAP.
+  smtpHost     String?
+  smtpPort     Int?
+
+  // Inbox sync (IMAP), so the firm's mail can be read and answered here and
+  // filed against the client it concerns. The defaults suit Google, whose app
+  // password serves IMAP as well as SMTP — a firm on its own mail host points
+  // these wherever it likes. Blank user/password fall back to the outbound
+  // fromEmail and appPassword, so the common case needs only the tick.
+  imapEnabled  Boolean   @default(false)
+  imapHost     String?
+  imapPort     Int?
+  imapSecure   Boolean   @default(true)
+  imapUser     String?
+  imapPassword String?
+  imapFolder   String?
+  // Outcome of the last sync, shown on the settings page.
+  imapSyncedAt DateTime?
+  imapStatus   String?
+
   updatedAt    DateTime @updatedAt
+}
+
+/// A message in the firm's official mailbox: fetched from IMAP, or written
+/// and sent from inside the portal. One table holds both so a conversation
+/// reads in order regardless of which way each message went.
+model MailMessage {
+  id String @id @default(cuid())
+
+  // Where it sits in the mailbox. A folder's UIDs are only meaningful within
+  // one UIDVALIDITY — the server changing that number means every UID it ever
+  // issued is void, so it is part of the identity rather than a stored fact.
+  folder      String  @default("INBOX")
+  uid         Int? // null for mail the portal sent
+  uidValidity String?
+
+  // RFC 5322 threading headers, kept verbatim so replies thread in the
+  // recipient's mail client as well as here.
+  messageId  String?
+  inReplyTo  String?
+  references String?
+
+  subject   String?
+  fromName  String?
+  fromEmail String?
+  toEmails  Json? // string[]
+  ccEmails  Json? // string[]
+  sentAt    DateTime?
+  fetchedAt DateTime  @default(now())
+
+  textBody String?
+  htmlBody String?
+  snippet  String? // first line or so, for the list
+  // Set when the body was too large to keep whole; the snippet still stands.
+  truncated Boolean @default(false)
+
+  /// "Incoming" (fetched from the mailbox) or "Sent" (written here).
+  direction String  @default("Incoming")
+  /// The mailbox's own \Seen flag as of the last sync.
+  seen      Boolean @default(false)
+  /// Set when someone opened it in the portal.
+  readAt    DateTime?
+
+  // The client this mail concerns, and how it came to be filed against them:
+  // "auto" (matched on the address) or "manual" (someone filed it).
+  clientId  String?
+  client    Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  matchedBy String?
+  // The engagement it belongs to, when someone attaches it to one.
+  taskId String?
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  attachments MailAttachment[]
+
+  // One row per message per folder generation. Sent mail carries no UID, and
+  // Postgres lets nulls repeat in a unique index, so it never collides here.
+  @@unique([folder, uidValidity, uid])
+  @@index([sentAt])
+  @@index([clientId, sentAt])
+  @@index([fromEmail])
+  @@index([messageId])
+}
+
+/// A file that arrived on (or went out with) a message.
+model MailAttachment {
+  id          String  @id @default(cuid())
+  filename    String
+  contentType String?
+  size        Int     @default(0)
+  /// Held inline. Anything past the size cap keeps its details and no bytes —
+  /// the portal says so rather than pretending the file is here.
+  content     Bytes?
+
+  mailId String
+  mail   MailMessage @relation(fields: [mailId], references: [id], onDelete: Cascade)
+
+  @@index([mailId])
+}
+
+/// An address known to belong to a client. Learnt when someone files a message
+/// against a client by hand, so the next one from that address files itself —
+/// a client writes from their accountant's address, their own, their office's.
+model MailAlias {
+  id        String   @id @default(cuid())
+  address   String   @unique
+  createdAt DateTime @default(now())
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
 }
 
 /// A pending forgot-password reset link.
