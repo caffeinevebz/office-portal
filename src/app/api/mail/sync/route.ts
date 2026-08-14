@@ -23,8 +23,10 @@ export const POST = route(async (req) => {
   await requirePermission("manageMail");
   const test = new URL(req.url).searchParams.get("test") === "1";
   if (test) {
-    const result = await testConnection();
-    return ok(result, result.ok ? 200 : 400);
+    // A test that comes back "no" is a successful test, not a failed request —
+    // and answering 200 keeps its explanation, which an error status would
+    // reduce to the status code on the way to the caller.
+    return ok(await testConnection());
   }
   return ok(await syncInbox());
 });

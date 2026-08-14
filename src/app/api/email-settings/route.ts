@@ -44,7 +44,13 @@ function view(row: {
     hasImapPassword: Boolean(row?.imapPassword?.trim()),
     // What the sync will actually use once the blanks are filled from the
     // outbound side, so the page can show it rather than make them guess.
-    effectiveImapHost: row?.imapHost?.trim() || hostForAddress(mailbox) || "",
+    // What the sync will actually use. The provider settles it before the
+    // domain does: a Workspace firm's address is at their own domain but
+    // Google holds the mail.
+    effectiveImapHost:
+      row?.imapHost?.trim() ||
+      hostForAddress(mailbox, row?.provider === "resend" ? "resend" : "google") ||
+      "",
     effectiveMailbox: mailbox,
     imapSyncedAt: row?.imapSyncedAt ?? null,
     imapStatus: row?.imapStatus ?? null,
