@@ -263,9 +263,21 @@ account is read as well:
 Press **Fetch mail** on the Mail page to bring in what has arrived. It is
 incremental and repeat-safe: the mailbox numbers each message, so only what is
 above the last one held is fetched, and running it twice fetches nothing the
-second time. A first run takes the most recent 200 rather than a decade of
-history. If the server ever reissues its numbering (`UIDVALIDITY`), the folder
-simply starts again — nothing already held is lost or duplicated.
+second time. If the server ever reissues its numbering (`UIDVALIDITY`), the
+folder simply starts again — nothing already held is lost or duplicated.
+
+**One press does a bounded amount of work.** Reading real mail is slow —
+bodies and attachments to download, parse and store, one message at a time —
+and this runs inside a web request the host will cut off. So a run takes a
+batch and stops, keeping everything it stored, and says *"More is waiting —
+press Fetch mail again to carry on."* Pressing again resumes exactly where it
+left off.
+
+**An existing mailbox is brought in from the newest backwards.** The first
+press takes the most recent messages, so there is something to look at
+straight away; each press after that fetches any *new* mail first, then works
+a batch further back through the history. A mailbox that predates the portal
+fills in over a few presses rather than being stuck out of reach.
 
 ### Filing
 

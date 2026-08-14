@@ -22,15 +22,35 @@ import { matchClient, normaliseAddress } from "@/lib/mail/match";
 const MAX_BODY = 200_000;
 /** Attachments past this keep their details and no bytes. */
 const MAX_ATTACHMENT = 8 * 1024 * 1024;
-/** Never pull the whole history on a first run. */
-const FIRST_RUN_LIMIT = 200;
+/**
+ * How much one run takes on.
+ *
+ * This runs inside a web request with a budget the host enforces, and a real
+ * mailbox is nothing like a test one — bodies and attachments to download,
+ * parse and store, one message at a time. Taking the whole backlog in a single
+ * run is what gets the function killed, and a killed function returns the
+ * platform's own error page rather than anything the portal can explain.
+ *
+ * So a run takes a bounded bite and says how it got on. Nothing is lost by
+ * stopping early: every message already stored stays stored, and the next run
+ * resumes above the highest UID held. Pressing Fetch again simply continues.
+ */
+const FIRST_RUN_LIMIT = 40;
+const RUN_LIMIT = 40;
+/**
+ * Stop fetching at this point and return what we have. Comfortably inside the
+ * 60s the route asks for, leaving room to finish the message in hand and to
+ * write the outcome away.
+ */
+const TIME_BUDGET_MS = 35_000;
 
 export type SyncResult = {
   fetched: number;
   matched: number;
-  skipped: number;
   folder: string;
   status: string;
+  /** More is waiting: run it again to carry on. */
+  more: boolean;
 };
 
 /** Trim a header to a storable length, dropping control characters. */
@@ -188,15 +208,19 @@ function isConnectTimeout(e: unknown): boolean {
  * re-fetched, and the unique key on (folder, uidValidity, uid) makes a second
  * run of the same batch a no-op even if two of these overlap.
  */
-export async function syncInbox(limit = 100): Promise<SyncResult> {
+export async function syncInbox(limit = RUN_LIMIT): Promise<SyncResult> {
+  const startedAt = Date.now();
   const { enabled, config, missing } = await getImapSettings();
   if (!enabled) {
-    return { fetched: 0, matched: 0, skipped: 0, folder: "", status: "Inbox sync is switched off." };
+    return {
+      fetched: 0, matched: 0, more: false,
+      folder: "", status: "Inbox sync is switched off.",
+    };
   }
   if (!config) {
     const status = missing ?? "Inbox sync is not configured.";
     await recordSyncOutcome(status, null);
-    return { fetched: 0, matched: 0, skipped: 0, folder: "", status };
+    return { fetched: 0, matched: 0, more: false, folder: "", status };
   }
 
   let client: ImapFlow | null = null;
@@ -205,65 +229,105 @@ export async function syncInbox(limit = 100): Promise<SyncResult> {
     const box = await client.mailboxOpen(config.folder, { readOnly: true });
     const uidValidity = String(box.uidValidity);
 
-    // Where we got to last time, within this folder generation. A server that
-    // has reissued uidValidity gets treated as a folder we have never read.
-    const high = await prisma.mailMessage.findFirst({
+    // Two marks bound what this folder generation has already yielded: the
+    // highest UID held, and the lowest. A server that has reissued
+    // uidValidity has neither, and is read as a folder never seen before.
+    const held = await prisma.mailMessage.aggregate({
       where: { folder: config.folder, uidValidity },
-      orderBy: { uid: "desc" },
-      select: { uid: true },
+      _max: { uid: true },
+      _min: { uid: true },
     });
-    const firstRun = !high;
-    const from = (high?.uid ?? 0) + 1;
-    // A first run takes the tail of the mailbox rather than all of it — a
-    // decade of mail is not what anyone wants to wait for.
-    const range = firstRun
-      ? `${Math.max(1, (box.uidNext ?? 1) - FIRST_RUN_LIMIT)}:*`
-      : `${from}:*`;
+    const high = held._max.uid;
+    const low = held._min.uid;
 
     let fetched = 0;
     let matched = 0;
-    let skipped = 0;
+    let more = false;
+    let ranOut = false;
 
-    for await (const msg of client.fetch(
-      range,
-      { uid: true, source: true, flags: true, internalDate: true },
-      { uid: true },
-    )) {
-      // `from:*` always yields at least the last message, even when it is one
-      // we already hold — the range is inclusive of the high-water mark.
-      if (!firstRun && msg.uid < from) continue;
-      if (fetched >= limit) {
-        skipped++;
-        continue;
+    const spent = () => Date.now() - startedAt > TIME_BUDGET_MS;
+
+    /**
+     * Read a range, storing what is new, and stop the moment the allowance or
+     * the clock runs out. Breaking matters: the fetch downloads every
+     * message's full source as it goes, so reading on to the end would spend
+     * exactly the time this is meant to save.
+     *
+     * Returns true if it stopped early with more of that range left.
+     */
+    const drain = async (range: string, floor: number): Promise<boolean> => {
+      for await (const msg of client!.fetch(
+        range,
+        { uid: true, source: true, flags: true, internalDate: true },
+        { uid: true },
+      )) {
+        // "n:*" always yields the last message even when it is one we hold —
+        // the range is inclusive of the mark it starts from.
+        if (msg.uid < floor) continue;
+        if (fetched >= limit || spent()) {
+          ranOut = spent();
+          return true;
+        }
+        if (!msg.source) continue;
+        const parsed: ParsedMail = await simpleParser(msg.source);
+        const stored = await storeMessage({
+          parsed,
+          uid: msg.uid,
+          uidValidity,
+          folder: config.folder,
+          seen: msg.flags?.has("\\Seen") ?? false,
+          receivedAt: asDate(msg.internalDate),
+        });
+        if (stored) {
+          fetched++;
+          if (stored.clientId) matched++;
+        }
       }
-      if (!msg.source) continue; // nothing to parse
-      const parsed: ParsedMail = await simpleParser(msg.source);
-      const stored = await storeMessage({
-        parsed,
-        uid: msg.uid,
-        uidValidity,
-        folder: config.folder,
-        seen: msg.flags?.has("\\Seen") ?? false,
-        receivedAt: asDate(msg.internalDate),
-      });
-      if (stored) {
-        fetched++;
-        if (stored.clientId) matched++;
+      return false;
+    };
+
+    if (high === null) {
+      // Nothing held: take the newest batch. Older mail is brought in
+      // afterwards, a batch per run, rather than making the firm wait for a
+      // decade of history before seeing anything at all.
+      const start = Math.max(1, (box.uidNext ?? 1) - FIRST_RUN_LIMIT);
+      more = await drain(`${start}:*`, start);
+      if (!more && start > 1) more = true;
+    } else {
+      // New mail first — it is what anyone pressing Fetch actually wants.
+      more = await drain(`${high + 1}:*`, high + 1);
+
+      // Then work backwards through what came before, so a mailbox that
+      // predates the portal is gradually brought in instead of being
+      // permanently out of reach below the first run's window.
+      if (!more && !spent() && fetched < limit && (low ?? 1) > 1) {
+        const end = (low ?? 1) - 1;
+        const start = Math.max(1, end - limit + 1);
+        await drain(`${start}:${end}`, start);
+        if (start > 1) more = true;
       }
     }
 
+    const carryOn = !more
+      ? ""
+      : ranOut
+        ? " Stopped there to stay inside the time the server allows — press Fetch mail again to carry on."
+        : " More is waiting — press Fetch mail again to carry on.";
     const status =
       fetched === 0
-        ? "Up to date — nothing new."
+        ? more
+          ? "Nothing new stored this time." + carryOn
+          : "Up to date — nothing new."
         : `${fetched} new message${fetched === 1 ? "" : "s"}` +
           (matched ? `, ${matched} filed against a client` : "") +
-          (skipped ? `. ${skipped} more waiting — run it again.` : ".");
+          "." +
+          carryOn;
     await recordSyncOutcome(status);
-    return { fetched, matched, skipped, folder: config.folder, status };
+    return { fetched, matched, more, folder: config.folder, status };
   } catch (e) {
     const status = describeConnectionError(e, config);
     await recordSyncOutcome(status, null);
-    return { fetched: 0, matched: 0, skipped: 0, folder: config.folder, status };
+    return { fetched: 0, matched: 0, more: false, folder: config.folder, status };
   } finally {
     await client?.logout().catch(() => {});
   }
