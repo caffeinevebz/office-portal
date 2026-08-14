@@ -143,7 +143,19 @@ export function describeConnectionError(error: unknown, config: ImapConfig): str
     return `“${host}” refused the connection on port ${config.port}. Check the port — secure IMAP is 993.`;
   }
   if (/ETIMEDOUT|timed? ?out/i.test(raw)) {
-    return `“${host}” did not answer on port ${config.port}. Check the host and port, and that the mail provider allows IMAP.`;
+    // Nothing answered. With a host that is certainly right, the cause is
+    // almost never the host — so the two things actually worth doing are
+    // named, in the order they are worth trying.
+    const google = host === GOOGLE_IMAP_HOST;
+    return (
+      `“${host}” did not answer on port ${config.port}. ` +
+      (google
+        ? "Two things do this: IMAP is switched off on the Google account — turn it on in " +
+          "Gmail → Settings → Forwarding and POP/IMAP (on Workspace an administrator may have to " +
+          "allow it for the organisation) — or the machine running this portal is not permitted " +
+          "to open port 993."
+        : `Check the host and port, that the provider allows IMAP, and that this deployment is permitted to open port ${config.port}.`)
+    );
   }
   if (/certificate|self.signed|SSL|TLS|wrong version number/i.test(raw)) {
     return `The secure connection to “${host}” failed. If the server uses port 143, untick the secure option; port 993 must stay ticked.`;

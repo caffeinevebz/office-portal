@@ -3,6 +3,13 @@ import { requirePermission } from "@/lib/auth/session";
 import { syncInbox, testConnection } from "@/lib/mail/sync";
 import { getImapSettings } from "@/lib/mail/config";
 
+// Reading a mailbox is slower than a database call: a connect, a greeting, a
+// login, then a fetch. The default function budget on a managed host is short
+// enough to cut that off mid-flight and return a blank gateway timeout, which
+// hides whatever the mailbox actually said. Hosts clamp this to their plan
+// limit, so asking for more is safe.
+export const maxDuration = 60;
+
 /** Where inbox sync stands: configured, switched on, and how the last run went. */
 export const GET = route(async () => {
   await requirePermission("viewMail");

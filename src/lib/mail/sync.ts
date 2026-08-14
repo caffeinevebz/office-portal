@@ -76,6 +76,16 @@ export function sanitiseHtml(html: string): string {
     .replace(/<\s*img\b[^>]*>/gi, "");
 }
 
+/**
+ * How long to wait for the mailbox to answer at all.
+ *
+ * The IMAP client waits 90 seconds by default, which is no use here: this runs
+ * inside a web request, and a hosting platform will kill the function long
+ * before then — turning a diagnosable failure into a blank gateway timeout.
+ * A mailbox that has not answered in eight seconds is not going to.
+ */
+const CONNECT_TIMEOUT = 8_000;
+
 /** Open the mailbox. Callers must always close what this returns. */
 async function connect(config: ImapConfig): Promise<ImapFlow> {
   const client = new ImapFlow({
@@ -84,12 +94,47 @@ async function connect(config: ImapConfig): Promise<ImapFlow> {
     secure: config.secure,
     auth: { user: config.user, pass: config.password },
     logger: false,
-    // A hung mailbox must not hold a request open indefinitely.
-    socketTimeout: 60_000,
-    greetingTimeout: 20_000,
+    // Reaching it, and it saying hello, are both bounded — see above.
+    connectionTimeout: CONNECT_TIMEOUT,
+    greetingTimeout: 8_000,
+    // Once talking, a fetch of a large mailbox may legitimately take longer.
+    socketTimeout: 45_000,
   });
   await client.connect();
   return client;
+}
+
+/**
+ * When nothing answered, find out whether this machine can reach the port at
+ * all — and whether it can reach anything.
+ *
+ * A connect timeout has two quite different causes and the same appearance:
+ * the settings are wrong, or the host running the portal is not allowed out on
+ * that port. Managed hosting often permits HTTPS and nothing else. Trying the
+ * port directly, and then 443 on the same host, tells the two apart — which
+ * turns a list of things to check into a fact.
+ */
+async function probeEgress(
+  host: string,
+  port: number,
+): Promise<"port-open" | "port-blocked" | "no-network"> {
+  const { connect: tcp } = await import("node:net");
+  const reachable = (p: number) =>
+    new Promise<boolean>((resolve) => {
+      const socket = tcp({ host, port: p });
+      const done = (ok: boolean) => {
+        socket.destroy();
+        resolve(ok);
+      };
+      socket.setTimeout(5_000, () => done(false));
+      socket.once("connect", () => done(true));
+      socket.once("error", () => done(false));
+    });
+
+  if (await reachable(port)) return "port-open";
+  // 443 is the one port everything allows; if even that fails the machine has
+  // no way out and the mailbox settings are beside the point.
+  return (await reachable(443)) ? "port-blocked" : "no-network";
 }
 
 /** Check the credentials answer, without fetching anything. */
@@ -105,10 +150,35 @@ export async function testConnection(): Promise<{ ok: boolean; message: string }
       message: `Connected to ${config.user} — ${box.exists} message${box.exists === 1 ? "" : "s"} in ${config.folder}.`,
     };
   } catch (e) {
+    // Nothing answered — say which of the two reasons it was.
+    if (isConnectTimeout(e)) {
+      const egress = await probeEgress(config.host, config.port);
+      if (egress === "port-blocked") {
+        return {
+          ok: false,
+          message:
+            `Your settings look right — “${config.host}” is a real host — but this deployment is not ` +
+            `allowed to open outbound connections on port ${config.port}. That is a restriction of the ` +
+            `hosting, not of your mailbox, and nothing you change here will get past it.`,
+        };
+      }
+      if (egress === "no-network") {
+        return {
+          ok: false,
+          message: `This deployment cannot reach the internet at all just now, so the mailbox cannot be checked. Try again shortly.`,
+        };
+      }
+    }
     return { ok: false, message: describeConnectionError(e, config) };
   } finally {
     await client?.logout().catch(() => {});
   }
+}
+
+/** The client reports "nothing answered" on `code`, not in the message. */
+function isConnectTimeout(e: unknown): boolean {
+  const err = (e ?? {}) as { code?: string; message?: string };
+  return err.code === "CONNECT_TIMEOUT" || /ETIMEDOUT|CONNECT_TIMEOUT/i.test(err.code ?? "");
 }
 
 /**
