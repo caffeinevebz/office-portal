@@ -168,7 +168,13 @@ export type ChatMessage = {
   id: string;
   body: string;
   createdAt: string;
+  // Set once the recipient's app has fetched the message, and once they have
+  // opened the conversation — the two ticks and the blue ticks.
+  deliveredAt: string | null;
   readAt: string | null;
+  // How far this message has got. Only ever set on your own messages, since
+  // that is the only place a tick is shown; null on everyone else's.
+  delivery: "sent" | "delivered" | "read" | null;
   // Set once the sender has edited the message.
   editedAt: string | null;
   senderId: string;
@@ -186,6 +192,8 @@ export type Conversation = {
   lastMessage: string | null;
   lastAt: string | null;
   lastFromSelf: boolean;
+  // How far your own last message got, for the tick beside the preview.
+  lastDelivery: "sent" | "delivered" | "read" | null;
   unread: number;
 };
 

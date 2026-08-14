@@ -164,6 +164,10 @@ model Staff {
   // Last time this member opened the firm-wide Team chat channel; drives
   // the channel's unread count (direct messages track readAt per message).
   teamChatReadAt DateTime?
+  // Last time this member's app checked in. A message is "delivered" once the
+  // recipient's device has fetched since it was sent — with no push channel,
+  // this poll is the only honest evidence a message reached them.
+  chatSeenAt     DateTime?
 
   tasks          Task[] @relation("TaskLeadAssignee")
   assignedTasks  Task[] @relation("TaskAssignees")
@@ -182,6 +186,9 @@ model ChatMessage {
   id        String   @id @default(cuid())
   body      String
   createdAt DateTime @default(now())
+  // Set when the direct-message recipient's app has fetched it — the message
+  // has reached their device, whether or not they have looked at it.
+  deliveredAt DateTime?
   // Set when the direct-message recipient has read it (Team posts use each
   // member's Staff.teamChatReadAt marker instead).
   readAt    DateTime?

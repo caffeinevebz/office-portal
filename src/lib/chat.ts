@@ -13,7 +13,7 @@ export function parsePeer(raw: string): ChatPeer {
 
 const sender = { select: { id: true, name: true, role: true } } as const;
 
-/** Messages in a conversation, oldest first. */
+/** Messages in a conversation, oldest first, each with how far it has got. */
 export async function conversationMessages(userId: string, peer: ChatPeer, limit = 200) {
   const where =
     peer.kind === "team"
@@ -30,7 +30,117 @@ export async function conversationMessages(userId: string, peer: ChatPeer, limit
     take: limit,
     include: { sender },
   });
-  return rows.reverse();
+  rows.reverse();
+
+  // Ticks are only ever shown on your own messages, so only those are worked
+  // out — the team aggregate costs a query and there is no point paying it
+  // for messages that will never display a tick.
+  const team = peer.kind === "team" ? await teamDelivery(rows, userId) : null;
+  return rows.map((m) => ({
+    ...m,
+    delivery: m.senderId !== userId ? null : (team?.get(m.id) ?? dmDelivery(m)),
+    // When the state was reached, for the tooltip. A team post's aggregate has
+    // no single moment behind it, so it carries none.
+    deliveredAt: team ? null : m.deliveredAt,
+  }));
+}
+
+/** A direct message's state, straight off its own two stamps. */
+const dmDelivery = (m: { deliveredAt: Date | null; readAt: Date | null }): DeliveryState =>
+  m.readAt ? "read" : m.deliveredAt ? "delivered" : "sent";
+
+type Stamped = {
+  id: string;
+  senderId: string;
+  recipientId: string | null;
+  createdAt: Date;
+  deliveredAt: Date | null;
+  readAt: Date | null;
+};
+
+/**
+ * How far one message of yours has got. For a single message off a write path;
+ * `conversationMessages` works a whole thread out in one pass instead.
+ */
+export async function deliveryOf(m: Stamped, userId: string): Promise<DeliveryState | null> {
+  if (m.senderId !== userId) return null;
+  if (m.recipientId !== null) return dmDelivery(m);
+  return (await teamDelivery([m], userId)).get(m.id) ?? "sent";
+}
+
+/**
+ * How far a sent message has got, WhatsApp's three states.
+ *
+ * There is no push channel here — the app polls — so "delivered" can only
+ * mean one thing honestly: the recipient's app has checked in since the
+ * message was sent, so it is on their device. "Read" means they opened the
+ * conversation. Anything stronger would be a tick the app cannot stand behind.
+ */
+export type DeliveryState = "sent" | "delivered" | "read";
+
+/**
+ * Record that this member's app has checked in, and mark everything already
+ * waiting for them as delivered. Called from the app-wide alerts poll, which
+ * runs wherever they are in the portal — not just on the Messages page.
+ */
+export async function markSeen(userId: string): Promise<void> {
+  const now = new Date();
+  await Promise.all([
+    prisma.staff.update({ where: { id: userId }, data: { chatSeenAt: now } }),
+    // Only the ones not already stamped, so the common case writes nothing.
+    prisma.chatMessage.updateMany({
+      where: { recipientId: userId, deliveredAt: null },
+      data: { deliveredAt: now },
+    }),
+  ]);
+}
+
+/**
+ * The earliest of a set of markers — or null if even one member has none,
+ * because a member who has never checked in holds the whole group back.
+ */
+function floorOf(values: (Date | null)[]): Date | null {
+  if (values.length === 0 || values.some((v) => !v)) return null;
+  return values.reduce((min, v) => (v! < min! ? v : min))!;
+}
+
+/**
+ * The delivery state of a Team post, aggregated over everyone else — a group
+ * message is only delivered when it has reached all of them, and only read
+ * when all of them have opened the channel, which is what a group's ticks
+ * mean elsewhere.
+ */
+async function teamDelivery(
+  posts: { id: string; createdAt: Date; senderId: string }[],
+  userId: string,
+): Promise<Map<string, DeliveryState>> {
+  const out = new Map<string, DeliveryState>();
+  const mine = posts.filter((p) => p.senderId === userId);
+  if (mine.length === 0) return out;
+
+  const others = await prisma.staff.findMany({
+    where: { active: true, id: { not: userId } },
+    select: { chatSeenAt: true, teamChatReadAt: true },
+  });
+  // A channel with nobody else in it has no one to deliver to.
+  if (others.length === 0) {
+    for (const p of mine) out.set(p.id, "sent");
+    return out;
+  }
+  // The laggards decide: the earliest check-in and the earliest open.
+  const seenFloor = floorOf(others.map((o) => o.chatSeenAt));
+  const readFloor = floorOf(others.map((o) => o.teamChatReadAt));
+  for (const p of mine) {
+    out.set(
+      p.id,
+      readFloor && readFloor > p.createdAt
+        ? "read"
+        : seenFloor && seenFloor > p.createdAt
+          ? "delivered"
+          : "sent",
+    );
+  }
+  return out;
 }
 
 /** Mark a conversation read for this member. */
@@ -42,9 +152,19 @@ export async function markConversationRead(userId: string, peer: ChatPeer) {
     });
     return;
   }
+  const now = new Date();
+  const thread = { senderId: peer.staffId, recipientId: userId } as const;
+  // Reading a message that was never stamped delivered — the thread was opened
+  // straight from a notification, say — settles both, so the record never
+  // claims a message was read before it arrived. Each is filtered on null so
+  // neither overwrites a moment already recorded.
   await prisma.chatMessage.updateMany({
-    where: { senderId: peer.staffId, recipientId: userId, readAt: null },
-    data: { readAt: new Date() },
+    where: { ...thread, deliveredAt: null },
+    data: { deliveredAt: now },
+  });
+  await prisma.chatMessage.updateMany({
+    where: { ...thread, readAt: null },
+    data: { readAt: now },
   });
 }
 
@@ -56,6 +176,8 @@ export type Conversation = {
   lastMessage: string | null;
   lastAt: string | null;
   lastFromSelf: boolean;
+  // How far your own last message got, for the tick beside the preview.
+  lastDelivery: DeliveryState | null;
   unread: number;
 };
 
@@ -78,7 +200,15 @@ export async function conversationList(userId: string): Promise<Conversation[]> 
         OR: [{ senderId: userId }, { recipientId: userId }],
       },
       orderBy: { createdAt: "desc" },
-      select: { body: true, createdAt: true, readAt: true, senderId: true, recipientId: true },
+      select: {
+        id: true,
+        body: true,
+        createdAt: true,
+        deliveredAt: true,
+        readAt: true,
+        senderId: true,
+        recipientId: true,
+      },
     }),
     prisma.chatMessage.findMany({
       where: { recipientId: null },
@@ -98,7 +228,10 @@ export async function conversationList(userId: string): Promise<Conversation[]> 
   });
   const lastTeam = teamPosts[0];
 
-  const threads = new Map<string, { body: string; at: Date; fromSelf: boolean; unread: number }>();
+  const threads = new Map<
+    string,
+    { body: string; at: Date; fromSelf: boolean; delivery: DeliveryState | null; unread: number }
+  >();
   for (const m of dms) {
     const other = m.senderId === userId ? m.recipientId! : m.senderId;
     const t = threads.get(other);
@@ -108,6 +241,8 @@ export async function conversationList(userId: string): Promise<Conversation[]> 
         body: m.body,
         at: m.createdAt,
         fromSelf: m.senderId === userId,
+        // Newest first, so this is the thread's last message.
+        delivery: m.senderId === userId ? dmDelivery(m) : null,
         unread: incomingUnread,
       });
     } else {
@@ -124,6 +259,7 @@ export async function conversationList(userId: string): Promise<Conversation[]> 
       lastMessage: lastTeam ? `${lastTeam.sender.name.split(" ")[0]}: ${lastTeam.body}` : null,
       lastAt: lastTeam?.createdAt.toISOString() ?? null,
       lastFromSelf: lastTeam?.senderId === userId,
+      lastDelivery: lastTeam ? await deliveryOf(lastTeam, userId) : null,
       unread: teamUnread,
     },
     ...members.map((m) => {
@@ -136,6 +272,7 @@ export async function conversationList(userId: string): Promise<Conversation[]> 
         lastMessage: t?.body ?? null,
         lastAt: t?.at.toISOString() ?? null,
         lastFromSelf: t?.fromSelf ?? false,
+        lastDelivery: t?.delivery ?? null,
         unread: t?.unread ?? 0,
       };
     }),
