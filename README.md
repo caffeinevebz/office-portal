@@ -229,13 +229,21 @@ Firm Settings → **Official firm email** already holds the account the invoices
 and reminders go out from. Tick **Also read this mailbox** and that same
 account is read as well:
 
-- **On Google** the App Password already saved serves IMAP too, and the host is
-  filled in from the address — there is nothing more to enter.
+- **On Google — including Workspace on your own domain** — there is nothing
+  more to enter. The App Password already saved serves IMAP too, and because
+  Firm Settings has been told the mail goes out through Google, that settles
+  where it comes in: `imap.gmail.com`, whatever the address's domain says. A
+  firm at `office@yourfirm.in` on Workspace fills in nothing.
 - **On your own mail host** give the IMAP host (and port, mailbox address or
   password if they differ). Outlook, Yahoo, Zoho and Rediffmail are recognised
-  from the address like Google is. An unrecognised domain asks for the host
-  rather than guessing at `imap.<domain>` and failing in a way that looks like
-  a wrong password.
+  from the address too. An unrecognised domain asks for the host rather than
+  guessing at `imap.<domain>` and failing in a way that looks like a wrong
+  password.
+- **Test inbox connection** in Firm Settings proves the mailbox answers before
+  you leave the page, and says plainly what to change if it does not: a host
+  that does not exist, a refused port, a password that is not an App Password,
+  a folder that is not there. A host that nearly reads as Google's — a
+  mistyped `imap.gmail.in`, say — is told what it should have been.
 - **Sending** follows the same idea: the SMTP host is settable, so a firm on
   its own mail server sends from it. Left blank it is Google's, as before.
 

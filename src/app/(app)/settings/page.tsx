@@ -532,6 +532,25 @@ function EmailSettingsCard() {
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [testTo, setTestTo] = useState("");
   const [testBusy, setTestBusy] = useState(false);
+  const [inboxBusy, setInboxBusy] = useState(false);
+
+  /** Ask the mailbox whether it will let us in, and say plainly if it will not. */
+  async function testInbox() {
+    setInboxBusy(true);
+    setMsg(null);
+    try {
+      const res = (await apiMutate("/api/mail/sync?test=1", "POST")) as {
+        ok: boolean;
+        message: string;
+      };
+      setMsg({ kind: res.ok ? "ok" : "err", text: res.message });
+    } catch (e) {
+      setMsg({ kind: "err", text: e instanceof Error ? e.message : "Could not reach the mailbox" });
+    } finally {
+      setInboxBusy(false);
+      refresh();
+    }
+  }
 
   // Initialise the form once from the loaded settings.
   if (data && form === null) {
@@ -844,6 +863,20 @@ function EmailSettingsCard() {
                     placeholder="INBOX"
                   />
                 </Field>
+              </div>
+            )}
+
+            {/* Prove the mailbox answers here, at the moment it is set up,
+                rather than leaving it to be discovered from the Mail page. */}
+            {form?.imapEnabled && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button variant="secondary" onClick={testInbox} disabled={inboxBusy}>
+                  <Mail className="h-4 w-4" />
+                  {inboxBusy ? "Checking…" : "Test inbox connection"}
+                </Button>
+                <span className="text-xs text-slate-400">
+                  Save first — the test uses the saved settings.
+                </span>
               </div>
             )}
 

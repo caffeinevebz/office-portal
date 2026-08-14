@@ -2,7 +2,12 @@ import "server-only";
 import { ImapFlow } from "imapflow";
 import { simpleParser, type ParsedMail } from "mailparser";
 import { prisma } from "@/lib/prisma";
-import { getImapSettings, recordSyncOutcome, type ImapConfig } from "@/lib/mail/config";
+import {
+  getImapSettings,
+  recordSyncOutcome,
+  describeConnectionError,
+  type ImapConfig,
+} from "@/lib/mail/config";
 import { matchClient, normaliseAddress } from "@/lib/mail/match";
 
 // Fetching the firm's mail.
@@ -100,7 +105,7 @@ export async function testConnection(): Promise<{ ok: boolean; message: string }
       message: `Connected to ${config.user} — ${box.exists} message${box.exists === 1 ? "" : "s"} in ${config.folder}.`,
     };
   } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Could not connect." };
+    return { ok: false, message: describeConnectionError(e, config) };
   } finally {
     await client?.logout().catch(() => {});
   }
@@ -186,7 +191,7 @@ export async function syncInbox(limit = 100): Promise<SyncResult> {
     await recordSyncOutcome(status);
     return { fetched, matched, skipped, folder: config.folder, status };
   } catch (e) {
-    const status = `Could not read the mailbox: ${e instanceof Error ? e.message : "unknown error"}`;
+    const status = describeConnectionError(e, config);
     await recordSyncOutcome(status, null);
     return { fetched: 0, matched: 0, skipped: 0, folder: config.folder, status };
   } finally {
