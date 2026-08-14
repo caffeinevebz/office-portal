@@ -244,6 +244,19 @@ account is read as well:
   that does not exist, a refused port, a password that is not an App Password,
   a folder that is not there. A host that nearly reads as Google's — a
   mistyped `imap.gmail.in`, say — is told what it should have been.
+- When **nothing answers at all**, the test works out which of the two causes
+  it is instead of listing both. It tries the port directly, and then 443 on
+  the same host: if 443 answers and the mail port does not, the machine running
+  the portal is **not permitted out on that port** — a hosting restriction that
+  no setting here can get past, and it says so rather than sending you back to
+  check a host that was already right.
+
+> **A note on hosting.** Reading a mailbox needs an outbound connection on port
+> 993, which is an ordinary TCP connection rather than a web request. Most
+> hosting allows it; some managed platforms allow only HTTPS. If the test
+> reports the port blocked, IMAP cannot work from that deployment however it is
+> configured — the mailbox has to be reached another way, or the app run
+> somewhere that permits it.
 - **Sending** follows the same idea: the SMTP host is settable, so a firm on
   its own mail server sends from it. Left blank it is Google's, as before.
 
