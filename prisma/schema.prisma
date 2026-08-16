@@ -48,6 +48,8 @@ model Client {
   expenseClaims ExpenseClaim[]
   mail          MailMessage[]
   mailAliases   MailAlias[]
+  observations  AuditObservation[]
+  queryLetters  QueryLetter[]
 }
 
 /// A physical/logical grouping of clients (e.g. a family or business group).
@@ -374,6 +376,10 @@ model Task {
   expenseClaims ExpenseClaim[]
   // Mail filed against this engagement.
   mail          MailMessage[]
+  // Audit working papers raised on this engagement, and the letters they went
+  // out on.
+  observations  AuditObservation[]
+  queryLetters  QueryLetter[]
 
   @@unique([scheduleId, periodKey])
   // The task list is always filtered/sorted along these paths.
@@ -700,6 +706,7 @@ model Organization {
   updatedAt     DateTime @updatedAt
 
   invoices Invoice[]
+  queryLetters QueryLetter[]
 }
 
 /// A billing invoice raised to a client.
@@ -863,4 +870,107 @@ model Document {
 
   clientId String?
   client   Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+/// An audit working paper: a note raised while doing the work.
+///
+/// A firm keeps two kinds apart, and they arise differently. **Vouching**
+/// observations come out of testing a voucher — a bill without support, a
+/// payment to an unfamiliar party — and normally need the client to explain
+/// something. **Ledger scrutiny** notes come out of reading an account and are
+/// usually the firm's own record of what it saw and concluded.
+///
+/// Which kind it is sets the default for `needsClarification`; it does not
+/// decide it. Plenty of vouching notes are settled from the file, and a
+/// scrutiny note occasionally does need the client. The auditor says which,
+/// and only the ones marked do go on a query letter.
+model AuditObservation {
+  id String @id @default(cuid())
+
+  /// "Vouching" or "Ledger scrutiny".
+  kind        String @default("Vouching")
+  /// What was seen, and why it is being recorded. Goes to the client when the
+  /// point is queried, so it is written to be read by them.
+  observation String
+  /// The firm's own view — a working-paper note. Never leaves the office: it
+  /// is kept off the letter and out of every client-facing document.
+  internalNote String?
+
+  // What it was seen on. A vouching note names a voucher, a scrutiny note an
+  // account; both are optional, because a point is worth recording before its
+  // paperwork is to hand.
+  ledgerName    String?
+  voucherNo     String?
+  voucherDate   DateTime?
+  partyName     String?
+  amount        Float?
+  financialYear String?
+
+  /// Whether the client has to answer this one. Not every note does.
+  needsClarification Boolean @default(true)
+  /// Open → Queried (it has gone out on a letter) → Answered → Closed.
+  /// Dropped = settled internally, or no longer worth pursuing.
+  status             String  @default("Open")
+
+  /// What the client said, and when it came back.
+  response    String?
+  respondedAt DateTime?
+  /// How the firm settled it once answered.
+  resolution  String?
+
+  /// Who raised it — held as a name so the paper survives staff records changing.
+  raisedBy  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  /// Denormalised from the task so a client's points can be read across
+  /// engagements, and so they survive the task being re-pointed.
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  /// The letter it went out on, once one has been issued.
+  letterId String?
+  letter   QueryLetter? @relation(fields: [letterId], references: [id], onDelete: SetNull)
+
+  @@index([taskId, kind])
+  @@index([clientId, status])
+  @@index([letterId])
+}
+
+/// A numbered letter to the client asking them to clarify the points chosen
+/// for it. Only observations marked as needing clarification can go on one.
+model QueryLetter {
+  id     String @id @default(cuid())
+  /// PREFIX/QRY/FY/NNN — its own series, so it never touches the invoice one.
+  number String @unique
+
+  subject String?
+  /// Whatever the firm wants said above the list of points.
+  preamble String?
+  issuedAt DateTime  @default(now())
+  /// The date by which the firm has asked for the answers.
+  replyBy  DateTime?
+
+  /// Draft → Sent → Replied (some answers are in) → Closed.
+  status String    @default("Draft")
+  sentAt DateTime?
+  sentTo String?
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  taskId   String?
+  task     Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  /// Which of the firm's letterheads it goes out on.
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  items AuditObservation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId, issuedAt])
+  @@index([taskId])
 }

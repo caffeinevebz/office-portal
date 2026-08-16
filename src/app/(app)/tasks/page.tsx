@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   HelpCircle,
   Landmark,
+  NotebookPen,
   AlertTriangle,
   X,
 } from "lucide-react";
@@ -38,6 +39,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { Loading, EmptyState } from "@/components/ui/EmptyState";
 import { RecurringPanel, AddRecurringButton } from "@/components/RecurringPanel";
 import { TaskQueriesModal } from "@/components/TaskQueries";
+import { AuditNotesModal } from "@/components/AuditNotes";
 import { ChecklistEditor } from "@/components/ChecklistEditor";
 import {
   TASK_CATEGORIES,
@@ -225,6 +227,8 @@ export default function TasksPage() {
   const [openChecklist, setOpenChecklist] = useState<string | null>(null);
   // Task whose client-clarification points are open in the modal.
   const [openQueries, setOpenQueries] = useState<string | null>(null);
+  // Audit task whose working paper (notes & observations) is open.
+  const [openNotes, setOpenNotes] = useState<string | null>(null);
 
   // Keep a task's clarification points in the list without a full refetch.
   function applyQueries(taskId: string, queries: TaskQuery[]) {
@@ -233,6 +237,7 @@ export default function TasksPage() {
 
   // Resolved from the live list so newly added points show immediately.
   const queriesFor = (data ?? []).find((t) => t.id === openQueries) ?? null;
+  const notesFor = (data ?? []).find((t) => t.id === openNotes) ?? null;
 
   async function quickStatus(t: Task, newStatus: string) {
     const updated = (await apiMutate(`/api/tasks/${t.id}`, "PATCH", { status: newStatus })) as Task;
@@ -539,6 +544,21 @@ export default function TasksPage() {
                                 <HelpCircle className="h-3.5 w-3.5" />
                                 {openCount > 0 ? openCount : ""}
                               </button>
+                              {/* Audit working paper: only audits have one. */}
+                              {t.category === "Audit" && (
+                                <button
+                                  onClick={() => setOpenNotes(t.id)}
+                                  className={cn(
+                                    "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs",
+                                    openNotes === t.id
+                                      ? "bg-brand-50 text-brand-700 ring-1 ring-brand-200"
+                                      : "text-slate-400 hover:bg-slate-100",
+                                  )}
+                                  title="Audit notes & observations"
+                                >
+                                  <NotebookPen className="h-3.5 w-3.5" />
+                                </button>
+                              )}
                               {billedNos.length > 0 && (
                                 <Badge tone="green">
                                   <Receipt className="h-3 w-3" />
@@ -722,6 +742,15 @@ export default function TasksPage() {
             setFilingFor(null);
             refresh();
           }}
+        />
+      )}
+
+      {notesFor && (
+        <AuditNotesModal
+          task={notesFor}
+          canManage={canManage}
+          onClose={() => setOpenNotes(null)}
+          onChanged={refresh}
         />
       )}
 

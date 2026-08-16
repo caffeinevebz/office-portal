@@ -83,6 +83,21 @@ export function useResource<T>(url: string | null) {
   return { data: url ? data : null, loading: url ? loading : false, error, refresh, setData };
 }
 
+/**
+ * What to say when the answer did not come from the app. A gateway timeout or
+ * a crashed function is a fact about the request, not about the data, and the
+ * commonest one — the work took longer than the host allows — has an obvious
+ * next step worth naming.
+ */
+function httpMessage(status: number, body: string | null): string {
+  const looksLikePlatformError = !!body && /an error occurred|timed? ?out|gateway/i.test(body);
+  if (status === 504 || (looksLikePlatformError && status >= 500)) {
+    return "That took longer than the server allows and was cut short. Anything already done has been kept — try again to carry on.";
+  }
+  if (status >= 500) return `The server could not complete that (${status}).`;
+  return `Request failed (${status}).`;
+}
+
 /** Send a JSON mutation (POST/PUT/PATCH/DELETE). Throws on non-2xx. */
 export async function apiMutate(
   url: string,
@@ -95,9 +110,22 @@ export async function apiMutate(
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
-  const json = text ? JSON.parse(text) : null;
+  // Not everything that answers is ours. A hosting platform returns its own
+  // plain-text page when a function times out or crashes ("An error occurred
+  // with this application…"), and parsing that as JSON turns a real failure
+  // into "Unexpected token 'A'", which says nothing about what happened.
+  let json: { error?: string } | null = null;
+  let parsed = true;
+  try {
+    json = text ? (JSON.parse(text) as { error?: string }) : null;
+  } catch {
+    parsed = false;
+  }
   if (!res.ok) {
-    throw new Error(json?.error || `Request failed (${res.status})`);
+    throw new Error(json?.error || httpMessage(res.status, parsed ? null : text));
+  }
+  if (!parsed) {
+    throw new Error(httpMessage(res.status, text));
   }
   // A write anywhere may change any list — drop the read cache wholesale.
   swrCache.clear();

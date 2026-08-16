@@ -19,6 +19,7 @@ import {
   ITR_STATUSES,
   RETURN_TYPES,
 } from "./constants";
+import { OBSERVATION_KINDS, OBSERVATION_STATUSES, LETTER_STATUSES } from "./audit-notes";
 
 // Accept only one of the allowed domain values.
 const oneOf = (values: readonly string[], label: string) =>
@@ -570,6 +571,44 @@ export const mailSendSchema = z.object({
   replyToId: optionalText,
   // File the sent copy against this client (else the address decides).
   clientId: optionalText,
+});
+
+/** An audit working-paper note. */
+export const observationCreateSchema = z.object({
+  kind: oneOf(OBSERVATION_KINDS, "kind").default("Vouching"),
+  observation: z.string().trim().min(1, "Write the observation"),
+  // The firm's own view — never leaves the office.
+  internalNote: optionalText,
+  ledgerName: optionalText,
+  voucherNo: optionalText,
+  voucherDate: optionalDate,
+  partyName: optionalText,
+  amount: z.coerce.number().nullish(),
+  financialYear: optionalText,
+  // Absent means "whatever this kind normally is"; present pins it.
+  needsClarification: z.boolean().optional(),
+  status: oneOf(OBSERVATION_STATUSES, "status").optional(),
+  // The client's answer, and how the firm settled it.
+  response: optionalText,
+  resolution: optionalText,
+});
+export const observationUpdateSchema = observationCreateSchema.partial();
+
+/** Raising a query letter from the chosen observations. */
+export const queryLetterCreateSchema = z.object({
+  observationIds: z.array(z.string().trim().min(1)).min(1, "Choose at least one point"),
+  taskId: optionalText,
+  organizationId: optionalText,
+  subject: optionalText,
+  preamble: optionalText,
+  replyBy: optionalDate,
+});
+
+export const queryLetterUpdateSchema = z.object({
+  subject: optionalText,
+  preamble: optionalText,
+  replyBy: optionalDate,
+  status: oneOf(LETTER_STATUSES, "status").optional(),
 });
 
 /** Filing a message against a client / an engagement. */
