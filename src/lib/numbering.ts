@@ -79,3 +79,22 @@ export async function orgForInvoice(organizationId: string | null | undefined) {
   }
   return prisma.organization.findFirst({ where: { isDefault: true } });
 }
+
+/**
+ * Next query-letter number: PREFIX/QRY/FY/NNN, e.g. APSB/QRY/26-27/001.
+ *
+ * Its own series, marked by the QRY segment, so a letter to a client never
+ * consumes — or gets mixed into — an invoice number.
+ */
+export async function nextQueryLetterNumber(
+  org: OrgLike,
+  issuedAt = new Date(),
+): Promise<string> {
+  const base = `${invoicePrefix(org)}/QRY/${fyShort(issuedAt)}/`;
+  const rows = await prisma.queryLetter.findMany({
+    where: { number: { startsWith: base } },
+    select: { number: true },
+  });
+  const seq = maxSeq(rows.map((r) => r.number), base) + 1;
+  return `${base}${String(seq).padStart(3, "0")}`;
+}

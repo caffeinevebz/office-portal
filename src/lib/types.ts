@@ -243,6 +243,60 @@ export type MailSyncState = {
   status: string | null;
 };
 
+// An audit working-paper note raised on an engagement. "Vouching" points come
+// out of testing a voucher and normally need the client to answer; "Ledger
+// scrutiny" notes come out of reading an account and normally do not. Which
+// kind it is only sets the default — needsClarification decides.
+export type AuditObservation = {
+  id: string;
+  kind: "Vouching" | "Ledger scrutiny";
+  observation: string;
+  /** The firm's own view. Never appears on a letter or in any client email. */
+  internalNote: string | null;
+  ledgerName: string | null;
+  voucherNo: string | null;
+  voucherDate: string | null;
+  partyName: string | null;
+  amount: number | null;
+  financialYear: string | null;
+  needsClarification: boolean;
+  status: "Open" | "Queried" | "Answered" | "Closed" | "Dropped";
+  response: string | null;
+  respondedAt: string | null;
+  resolution: string | null;
+  raisedBy: string | null;
+  createdAt: string;
+  letter: { id: string; number: string; status: string; issuedAt: string } | null;
+};
+
+/** A numbered letter asking the client to clarify the points on it. */
+export type QueryLetter = {
+  id: string;
+  number: string;
+  subject: string | null;
+  preamble: string | null;
+  issuedAt: string;
+  replyBy: string | null;
+  status: "Draft" | "Sent" | "Replied" | "Closed";
+  sentAt: string | null;
+  sentTo: string | null;
+  client: { id: string; name: string; email: string | null };
+  task: { id: string; title: string } | null;
+  items: {
+    id: string;
+    kind: string;
+    observation: string;
+    ledgerName: string | null;
+    voucherNo: string | null;
+    voucherDate: string | null;
+    partyName: string | null;
+    amount: number | null;
+    status: string;
+    response: string | null;
+    respondedAt: string | null;
+  }[];
+};
+
 export type ChecklistItem = { label: string; done: boolean };
 
 export type ComplianceSchedule = {
