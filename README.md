@@ -606,6 +606,24 @@ with no way back — so the document appears in the app's own viewer with:
 - **Zoom** — the document has its own zoom and scroll box, so magnifying an
   invoice does not drag the toolbar around with it.
 
+### What the PDFs can print
+
+Every document is set in Helvetica, a standard PDF typeface, which carries
+Latin-1 and a few dozen typographic characters — and nothing else. So the text
+is converted on its way onto the page rather than being refused:
+
+- **`₹` prints as `Rs.`**, the way the rest of the app writes money, and
+  `₹45,000` reads as `Rs. 45,000`.
+- **Bullets, arrows, ticks and crosses** pasted out of Word or Excel become
+  `-`, `->`, `(done)` and `(not done)`.
+- **Accented letters** the typeface lacks reduce to the plain ones, so
+  *Śrī Nārāyaṇ* prints as *Sri Narayan*.
+- **Devanagari, Gujarati and emoji cannot be printed at all** and appear as
+  `?`. The record itself is untouched — it reads normally on screen — and the
+  audit working paper says so at the top of the sheet when it has had to
+  substitute anything. Points meant for a client's letter are best written in
+  English.
+
 Pages are drawn with **pdf.js onto a canvas** rather than embedded in an
 `<iframe>`: phone browsers largely refuse to render a PDF inline (Android
 Chrome hands it to a downloader; iOS Safari shows only the first page), which
