@@ -13,6 +13,7 @@ import {
   X,
   AlertTriangle,
   Lock,
+  Printer,
 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import type { AuditObservation, QueryLetter, Task } from "@/lib/types";
@@ -20,7 +21,9 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
+import { DictatedTextarea } from "@/components/ui/Dictate";
 import { Loading } from "@/components/ui/EmptyState";
+import { VOUCHING_AREAS, UNFILED_VOUCHING } from "@/lib/constants";
 import { formatDate, toDateInput, cn } from "@/lib/format";
 
 // The audit working paper for one engagement.
@@ -45,8 +48,12 @@ const STATUS_TONE: Record<string, string> = {
   Dropped: "bg-slate-100 text-slate-400 ring-slate-200",
 };
 
+/** Notes filed under no area yet — a heading of its own, not a guess. */
+const UNFILED = UNFILED_VOUCHING;
+
 type Draft = {
   kind: Kind;
+  vouchingArea: string;
   observation: string;
   internalNote: string;
   ledgerName: string;
@@ -57,8 +64,11 @@ type Draft = {
   needsClarification: boolean;
 };
 
-const emptyDraft = (kind: Kind): Draft => ({
+// Vouching runs area by area — a morning on cash, then the purchase file — so
+// a new note starts in the area the last one was filed under.
+const emptyDraft = (kind: Kind, area = ""): Draft => ({
   kind,
+  vouchingArea: kind === "Vouching" ? area : "",
   observation: "",
   internalNote: "",
   ledgerName: "",
@@ -72,6 +82,7 @@ const emptyDraft = (kind: Kind): Draft => ({
 
 const payloadOf = (d: Draft) => ({
   kind: d.kind,
+  vouchingArea: d.kind === "Vouching" ? d.vouchingArea || null : null,
   observation: d.observation,
   internalNote: d.internalNote || null,
   ledgerName: d.ledgerName || null,
@@ -98,6 +109,8 @@ export function AuditNotesModal({
 
   const [adding, setAdding] = useState<Kind | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft("Vouching"));
+  const [lastArea, setLastArea] = useState("");
+  const [areaFilter, setAreaFilter] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [reply, setReply] = useState("");
@@ -115,6 +128,44 @@ export function AuditNotesModal({
     }),
     [notes.data],
   );
+
+  // How the vouching divides up: the areas in the order the work is done, and
+  // then whatever has not been filed under one yet.
+  const areaCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of byKind.Vouching) {
+      const key = r.vouchingArea?.trim() || UNFILED;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const ordered = [...VOUCHING_AREAS, UNFILED].filter((a) => counts.has(a));
+    return ordered.map((area) => ({ area, n: counts.get(area)! }));
+  }, [byKind.Vouching]);
+
+  const shownVouching = areaFilter
+    ? byKind.Vouching.filter((r) => (r.vouchingArea?.trim() || UNFILED) === areaFilter)
+    : byKind.Vouching;
+  const vouchingGroups = useMemo(() => {
+    const groups = new Map<string, AuditObservation[]>();
+    for (const r of shownVouching) {
+      const key = r.vouchingArea?.trim() || UNFILED;
+      groups.set(key, [...(groups.get(key) ?? []), r]);
+    }
+    return [...VOUCHING_AREAS, UNFILED]
+      .filter((a) => groups.has(a))
+      .map((area) => ({ area, items: groups.get(area)! }));
+  }, [shownVouching]);
+
+  // Printing gives you what you are looking at: the same narrowing goes to
+  // the PDF, so "print this" and "print everything" are both a press away.
+  const printUrl = () => {
+    const params = new URLSearchParams();
+    if (areaFilter && areaFilter !== UNFILED) {
+      params.set("kind", "Vouching");
+      params.set("area", areaFilter);
+    }
+    const q = params.toString();
+    return `/api/tasks/${task.id}/observations/pdf${q ? `?${q}` : ""}`;
+  };
   // What could go on a letter: wanted from the client, not yet asked, still live.
   const askable = rows.filter(
     (r) => r.needsClarification && !r.letter && r.status !== "Closed" && r.status !== "Dropped",
@@ -150,9 +201,48 @@ export function AuditNotesModal({
       () => {
         setAdding(null);
         setEditing(null);
-        setDraft(emptyDraft(kind));
+        // The next note in this sitting starts in the same area.
+        if (kind === "Vouching") setLastArea(draft.vouchingArea);
+        setDraft(emptyDraft(kind, draft.vouchingArea));
       },
     );
+
+  // Everything a note card needs to act on itself, gathered once so the two
+  // lists (grouped vouching, flat scrutiny) render the same card.
+  const cardProps = {
+    canManage,
+    busy,
+    replyingTo,
+    reply,
+    setReply,
+    onReply: (n: AuditObservation) => {
+      setReplyingTo(replyingTo === n.id ? null : n.id);
+      setReply(n.response ?? "");
+    },
+    onEdit: (n: AuditObservation) => {
+      setEditing(n.id);
+      setAdding(n.kind as Kind);
+      setDraft({
+        kind: n.kind as Kind,
+        vouchingArea: n.vouchingArea ?? "",
+        observation: n.observation,
+        internalNote: n.internalNote ?? "",
+        ledgerName: n.ledgerName ?? "",
+        voucherNo: n.voucherNo ?? "",
+        voucherDate: toDateInput(n.voucherDate) ?? "",
+        partyName: n.partyName ?? "",
+        amount: n.amount != null ? String(n.amount) : "",
+        needsClarification: n.needsClarification,
+      });
+    },
+    onDelete: (id: string) => run(() => apiMutate(`/api/observations/${id}`, "DELETE")),
+    onRecord: (id: string) =>
+      run(
+        () => apiMutate(`/api/observations/${id}`, "PATCH", { response: reply || null }),
+        () => setReplyingTo(null),
+      ),
+    onCancelReply: () => setReplyingTo(null),
+  };
 
   return (
     <Modal
@@ -164,6 +254,14 @@ export function AuditNotesModal({
         <>
           <Button variant="secondary" onClick={onClose} disabled={busy}>
             Close
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => window.open(printUrl(), "_blank", "noopener")}
+            title="Opens the working paper as a PDF — print it or save it from there"
+          >
+            <Printer className="h-4 w-4" />
+            {areaFilter ? `Print ${areaFilter.toLowerCase()}` : "Print / PDF"}
           </Button>
           {canManage && (
             <Button onClick={() => setRaising(true)} disabled={busy || askable.length === 0}>
@@ -222,7 +320,11 @@ export function AuditNotesModal({
                   variant="ghost"
                   onClick={() => {
                     setEditing(null);
-                    setDraft(emptyDraft(kind));
+                    // A filter that is showing one area is also a statement of
+                    // what is being worked on, so a new note starts there.
+                    setDraft(
+                      emptyDraft(kind, areaFilter && areaFilter !== UNFILED ? areaFilter : lastArea),
+                    );
                     setAdding(adding === kind ? null : kind);
                   }}
                 >
@@ -232,9 +334,29 @@ export function AuditNotesModal({
             </div>
             <p className="mb-2 text-xs text-slate-400">
               {kind === "Vouching"
-                ? "Points arising from testing vouchers — these usually need the client to explain something."
+                ? "Points arising from testing vouchers, filed under the area they came from — cash, journal, purchase, sales, bank."
                 : "Points arising from reading the ledgers — usually the firm's own record, but any can be queried."}
             </p>
+
+            {kind === "Vouching" && areaCounts.length > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                <AreaChip
+                  label="All areas"
+                  n={byKind.Vouching.length}
+                  active={!areaFilter}
+                  onClick={() => setAreaFilter(null)}
+                />
+                {areaCounts.map(({ area, n }) => (
+                  <AreaChip
+                    key={area}
+                    label={area}
+                    n={n}
+                    active={areaFilter === area}
+                    onClick={() => setAreaFilter(areaFilter === area ? null : area)}
+                  />
+                ))}
+              </div>
+            )}
 
             {adding === kind && canManage && (
               <NoteForm
@@ -251,160 +373,34 @@ export function AuditNotesModal({
               />
             )}
 
-            {byKind[kind].length === 0 && adding !== kind ? (
+            {kind === "Vouching" ? (
+              vouchingGroups.length === 0 && adding !== kind ? (
+                <p className="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400">
+                  {areaFilter ? `Nothing recorded under ${areaFilter}.` : "Nothing recorded yet."}
+                </p>
+              ) : (
+                vouchingGroups.map((g) => (
+                  <div key={g.area} className="mb-3">
+                    <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
+                      {g.area}
+                      <span className="font-normal text-slate-400">({g.items.length})</span>
+                    </p>
+                    <ul className="space-y-2">
+                      {g.items.map((n) => (
+                        <NoteCard key={n.id} n={n} {...cardProps} />
+                      ))}
+                    </ul>
+                  </div>
+                ))
+              )
+            ) : byKind[kind].length === 0 && adding !== kind ? (
               <p className="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400">
                 Nothing recorded yet.
               </p>
             ) : (
               <ul className="space-y-2">
                 {byKind[kind].map((n) => (
-                  <li
-                    key={n.id}
-                    className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
-                  >
-                    <div className="flex items-start gap-2">
-                      <p className="flex-1 text-sm whitespace-pre-wrap text-slate-800">
-                        {n.observation}
-                      </p>
-                      <span
-                        className={cn(
-                          "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1",
-                          STATUS_TONE[n.status] ?? STATUS_TONE.Open,
-                        )}
-                      >
-                        {n.status}
-                      </span>
-                    </div>
-
-                    {(n.voucherNo || n.ledgerName || n.partyName || n.amount != null || n.voucherDate) && (
-                      <p className="mt-1 text-xs text-slate-500">
-                        {[
-                          n.voucherNo ? `Voucher ${n.voucherNo}` : null,
-                          n.voucherDate ? formatDate(n.voucherDate) : null,
-                          n.ledgerName,
-                          n.partyName,
-                          n.amount != null ? `Rs. ${n.amount.toLocaleString("en-IN")}` : null,
-                        ]
-                          .filter(Boolean)
-                          .join("  ·  ")}
-                      </p>
-                    )}
-
-                    {n.internalNote && (
-                      <p className="mt-1.5 flex items-start gap-1.5 rounded bg-slate-50 px-2 py-1.5 text-xs text-slate-600">
-                        <Lock className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
-                        <span>
-                          <span className="font-medium">Internal — not sent: </span>
-                          {n.internalNote}
-                        </span>
-                      </p>
-                    )}
-
-                    {n.response && (
-                      <p className="mt-1.5 rounded bg-sky-50 px-2 py-1.5 text-xs text-sky-900">
-                        <span className="font-medium">Client: </span>
-                        {n.response}
-                        {n.respondedAt && (
-                          <span className="text-sky-600"> · {formatDate(n.respondedAt)}</span>
-                        )}
-                      </p>
-                    )}
-
-                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                      {n.needsClarification ? (
-                        <Badge tone="amber">Needs clarification</Badge>
-                      ) : (
-                        <Badge tone="slate">No clarification needed</Badge>
-                      )}
-                      {n.letter && (
-                        <a
-                          href={`/api/query-letters/${n.letter.id}/pdf`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-brand-600 hover:underline"
-                        >
-                          <FileText className="h-3 w-3" /> {n.letter.number}
-                        </a>
-                      )}
-                      {n.raisedBy && <span>by {n.raisedBy}</span>}
-                      <span className="ml-auto flex items-center gap-1">
-                        {canManage && (
-                          <>
-                            <button
-                              onClick={() => {
-                                setEditing(n.id);
-                                setAdding(n.kind as Kind);
-                                setDraft({
-                                  kind: n.kind as Kind,
-                                  observation: n.observation,
-                                  internalNote: n.internalNote ?? "",
-                                  ledgerName: n.ledgerName ?? "",
-                                  voucherNo: n.voucherNo ?? "",
-                                  voucherDate: toDateInput(n.voucherDate) ?? "",
-                                  partyName: n.partyName ?? "",
-                                  amount: n.amount != null ? String(n.amount) : "",
-                                  needsClarification: n.needsClarification,
-                                });
-                              }}
-                              className="rounded p-1 hover:bg-slate-100 hover:text-slate-600"
-                              title="Edit"
-                            >
-                              <Pencil className="h-3 w-3" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setReplyingTo(replyingTo === n.id ? null : n.id);
-                                setReply(n.response ?? "");
-                              }}
-                              className="rounded p-1 hover:bg-slate-100 hover:text-slate-600"
-                              title="Record the client's answer"
-                            >
-                              <MessageSquareReply className="h-3 w-3" />
-                            </button>
-                            <button
-                              onClick={() =>
-                                run(() => apiMutate(`/api/observations/${n.id}`, "DELETE"))
-                              }
-                              className="rounded p-1 hover:bg-rose-50 hover:text-rose-600"
-                              title="Delete"
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </button>
-                          </>
-                        )}
-                      </span>
-                    </div>
-
-                    {replyingTo === n.id && canManage && (
-                      <div className="mt-2 rounded-lg bg-slate-50 p-2">
-                        <Textarea
-                          rows={2}
-                          value={reply}
-                          onChange={(e) => setReply(e.target.value)}
-                          placeholder="What the client said…"
-                        />
-                        <div className="mt-1.5 flex justify-end gap-1.5">
-                          <Button variant="ghost" onClick={() => setReplyingTo(null)}>
-                            Cancel
-                          </Button>
-                          <Button
-                            onClick={() =>
-                              run(
-                                () =>
-                                  apiMutate(`/api/observations/${n.id}`, "PATCH", {
-                                    response: reply || null,
-                                  }),
-                                () => setReplyingTo(null),
-                              )
-                            }
-                            disabled={busy}
-                          >
-                            <Check className="h-3.5 w-3.5" /> Record
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </li>
+                  <NoteCard key={n.id} n={n} {...cardProps} />
                 ))}
               </ul>
             )}
@@ -479,6 +475,170 @@ export function AuditNotesModal({
 
 /* ------------------------------------------------------------------ */
 
+/** One area of the vouching, with how many notes are filed under it. */
+function AreaChip({
+  label,
+  n,
+  active,
+  onClick,
+}: {
+  label: string;
+  n: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors",
+        active
+          ? "bg-brand-600 text-white ring-brand-600"
+          : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50",
+      )}
+    >
+      {label}
+      <span className={cn("ml-1", active ? "text-brand-100" : "text-slate-400")}>{n}</span>
+    </button>
+  );
+}
+
+type CardProps = {
+  canManage: boolean;
+  busy: boolean;
+  replyingTo: string | null;
+  reply: string;
+  setReply: (v: string) => void;
+  onReply: (n: AuditObservation) => void;
+  onEdit: (n: AuditObservation) => void;
+  onDelete: (id: string) => void;
+  onRecord: (id: string) => void;
+  onCancelReply: () => void;
+};
+
+/** One note as it reads in the file: what was seen, where it stands, what came back. */
+function NoteCard({ n, ...p }: { n: AuditObservation } & CardProps) {
+  return (
+    <li className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="flex items-start gap-2">
+        <p className="flex-1 text-sm whitespace-pre-wrap text-slate-800">{n.observation}</p>
+        <span
+          className={cn(
+            "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1",
+            STATUS_TONE[n.status] ?? STATUS_TONE.Open,
+          )}
+        >
+          {n.status}
+        </span>
+      </div>
+
+      {(n.voucherNo || n.ledgerName || n.partyName || n.amount != null || n.voucherDate) && (
+        <p className="mt-1 text-xs text-slate-500">
+          {[
+            n.voucherNo ? `Voucher ${n.voucherNo}` : null,
+            n.voucherDate ? formatDate(n.voucherDate) : null,
+            n.ledgerName,
+            n.partyName,
+            n.amount != null ? `Rs. ${n.amount.toLocaleString("en-IN")}` : null,
+          ]
+            .filter(Boolean)
+            .join("  ·  ")}
+        </p>
+      )}
+
+      {n.internalNote && (
+        <p className="mt-1.5 flex items-start gap-1.5 rounded bg-slate-50 px-2 py-1.5 text-xs text-slate-600">
+          <Lock className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
+          <span>
+            <span className="font-medium">Internal — not sent: </span>
+            {n.internalNote}
+          </span>
+        </p>
+      )}
+
+      {n.response && (
+        <p className="mt-1.5 rounded bg-sky-50 px-2 py-1.5 text-xs text-sky-900">
+          <span className="font-medium">Client: </span>
+          {n.response}
+          {n.respondedAt && <span className="text-sky-600"> · {formatDate(n.respondedAt)}</span>}
+        </p>
+      )}
+
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+        {n.needsClarification ? (
+          <Badge tone="amber">Needs clarification</Badge>
+        ) : (
+          <Badge tone="slate">No clarification needed</Badge>
+        )}
+        {n.letter && (
+          <a
+            href={`/api/query-letters/${n.letter.id}/pdf`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-brand-600 hover:underline"
+          >
+            <FileText className="h-3 w-3" /> {n.letter.number}
+          </a>
+        )}
+        {n.raisedBy && <span>by {n.raisedBy}</span>}
+        <span className="ml-auto flex items-center gap-1">
+          {p.canManage && (
+            <>
+              <button
+                onClick={() => p.onEdit(n)}
+                className="rounded p-1 hover:bg-slate-100 hover:text-slate-600"
+                title="Edit"
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+              <button
+                onClick={() => p.onReply(n)}
+                className="rounded p-1 hover:bg-slate-100 hover:text-slate-600"
+                title="Record the client's answer"
+              >
+                <MessageSquareReply className="h-3 w-3" />
+              </button>
+              <button
+                onClick={() => p.onDelete(n.id)}
+                className="rounded p-1 hover:bg-rose-50 hover:text-rose-600"
+                title="Delete"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </>
+          )}
+        </span>
+      </div>
+
+      {p.replyingTo === n.id && p.canManage && (
+        <div className="mt-2 rounded-lg bg-slate-50 p-2">
+          {/* The reply is usually read off the phone or a letter, so it can be
+              dictated as easily as the observation itself. */}
+          <DictatedTextarea
+            rows={2}
+            value={p.reply}
+            onValue={p.setReply}
+            placeholder="What the client said…"
+            label="Dictate the client's answer"
+          />
+          <div className="mt-1.5 flex justify-end gap-1.5">
+            <Button variant="ghost" onClick={p.onCancelReply}>
+              Cancel
+            </Button>
+            <Button onClick={() => p.onRecord(n.id)} disabled={p.busy}>
+              <Check className="h-3.5 w-3.5" /> Record
+            </Button>
+          </div>
+        </div>
+      )}
+    </li>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
 function NoteForm({
   draft,
   setDraft,
@@ -501,11 +661,16 @@ function NoteForm({
 
   return (
     <div className="mb-3 rounded-lg border border-brand-200 bg-brand-50/40 p-3">
-      <Field label="Observation" required>
-        <Textarea
+      <Field
+        label="Observation"
+        required
+        hint="Press the mic to dictate it instead of typing — the words appear as you speak."
+      >
+        <DictatedTextarea
           rows={2}
           value={draft.observation}
-          onChange={(e) => set("observation", e.target.value)}
+          onValue={(v) => set("observation", v)}
+          label="Dictate the observation"
           placeholder={
             vouching
               ? "e.g. Payment of Rs. 45,000 to Shreeji Traders supported only by a proforma invoice."
@@ -516,6 +681,23 @@ function NoteForm({
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {vouching ? (
           <>
+            <Field
+              label="Vouching area"
+              className="sm:col-span-2"
+              hint="Where in the vouching it arose — the working paper is filed under this."
+            >
+              <Select
+                value={draft.vouchingArea}
+                onChange={(e) => set("vouchingArea", e.target.value)}
+              >
+                <option value="">Not stated yet</option>
+                {VOUCHING_AREAS.map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+              </Select>
+            </Field>
             <Field label="Voucher no.">
               <Input value={draft.voucherNo} onChange={(e) => set("voucherNo", e.target.value)} />
             </Field>
@@ -552,10 +734,11 @@ function NoteForm({
         className="mt-3"
         hint="The firm's own view — never printed on a letter or sent to the client"
       >
-        <Textarea
+        <DictatedTextarea
           rows={2}
           value={draft.internalNote}
-          onChange={(e) => set("internalNote", e.target.value)}
+          onValue={(v) => set("internalNote", v)}
+          label="Dictate the internal note"
         />
       </Field>
       <label className="mt-3 flex items-start gap-2">

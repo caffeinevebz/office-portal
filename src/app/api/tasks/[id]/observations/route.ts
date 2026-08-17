@@ -36,6 +36,9 @@ export const POST = route(async (req, ctx: Ctx) => {
   const observation = await prisma.auditObservation.create({
     data: {
       ...data,
+      // Only vouching is filed area-wise; a scrutiny note goes under its
+      // account head, so an area sent with one is dropped rather than stored.
+      vouchingArea: data.kind === "Vouching" ? (data.vouchingArea ?? null) : null,
       // Whether the client owes an answer follows the kind unless the auditor
       // has said otherwise — a vouching point normally asks, a scrutiny note
       // normally does not.

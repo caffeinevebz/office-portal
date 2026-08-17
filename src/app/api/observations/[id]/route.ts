@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { ok, fail, parse, route } from "@/lib/api";
+import { ok, fail, parseFields, route } from "@/lib/api";
 import { requirePermission } from "@/lib/auth/session";
 import { observationUpdateSchema } from "@/lib/validation";
 import { OBSERVATION_SELECT } from "@/lib/audit-notes";
@@ -15,30 +15,42 @@ type Ctx = { params: Promise<{ id: string }> };
 export const PATCH = route(async (req, ctx: Ctx) => {
   await requirePermission("manageTasks");
   const { id } = await ctx.params;
-  const data = await parse(req, observationUpdateSchema);
+  // Only what the caller actually sent may be written. A parsed partial still
+  // carries the schema's defaults, so spreading it wholesale would stamp
+  // kind: "Vouching" onto a scrutiny note every time someone typed a reply.
+  const { data, sent } = await parseFields(req, observationUpdateSchema);
+  const given = Object.fromEntries(
+    Object.entries(data).filter(([k]) => sent(k)),
+  ) as Partial<typeof data>;
 
   const existing = await prisma.auditObservation.findUnique({
     where: { id },
-    select: { status: true, response: true, letterId: true },
+    select: { kind: true, status: true, response: true, letterId: true },
   });
   if (!existing) return fail("Observation not found", 404);
 
-  const answering = !!data.response?.trim() && !existing.response?.trim();
+  // A scrutiny note has no vouching area, so one cannot be left behind on a
+  // note that has just been changed from vouching to scrutiny.
+  const kind = given.kind ?? existing.kind;
+  const area = kind === "Vouching" ? given.vouchingArea : null;
+
+  const answering = !!given.response?.trim() && !existing.response?.trim();
   const observation = await prisma.auditObservation.update({
     where: { id },
     data: {
-      ...data,
+      ...given,
+      ...(sent("vouchingArea") || kind !== "Vouching" ? { vouchingArea: area ?? null } : {}),
       ...(answering
         ? {
             respondedAt: new Date(),
             // An explicit status in the same request still wins — someone
             // recording a reply *and* closing the point means both.
-            status: data.status ?? "Answered",
+            status: given.status ?? "Answered",
           }
         : {}),
       // Clearing the answer takes the point back to where it was.
-      ...(data.response === null && existing.response
-        ? { respondedAt: null, status: data.status ?? (existing.letterId ? "Queried" : "Open") }
+      ...(given.response === null && existing.response
+        ? { respondedAt: null, status: given.status ?? (existing.letterId ? "Queried" : "Open") }
         : {}),
     },
     select: OBSERVATION_SELECT,
