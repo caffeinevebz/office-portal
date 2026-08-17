@@ -271,6 +271,34 @@ export type AuditObservation = {
   letter: { id: string; number: string; status: string; issuedAt: string } | null;
 };
 
+/**
+ * An audit engagement as the Audit Notes page lists it: the task, plus how its
+ * working paper stands, so the list itself answers "which one is waiting on
+ * the client?" without opening anything.
+ */
+export type AuditEngagement = {
+  id: string;
+  title: string;
+  taskType: string | null;
+  financialYear: string | null;
+  status: string;
+  dueDate: string | null;
+  client: { id: string; name: string } | null;
+  assignee: { id: string; name: string } | null;
+  counts: {
+    notes: number;
+    vouching: number;
+    scrutiny: number;
+    needsClarification: number;
+    queried: number;
+    answered: number;
+    settled: number;
+    letters: number;
+    lettersOut: number;
+  };
+  lastNoteAt: string | null;
+};
+
 /** A numbered letter asking the client to clarify the points on it. */
 export type QueryLetter = {
   id: string;

@@ -16,13 +16,14 @@ import {
   Printer,
 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
-import type { AuditObservation, QueryLetter, Task } from "@/lib/types";
+import type { AuditObservation, QueryLetter } from "@/lib/types";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { DictatedTextarea } from "@/components/ui/Dictate";
 import { Loading } from "@/components/ui/EmptyState";
+import { PdfViewer } from "@/components/PdfViewer";
 import { VOUCHING_AREAS, UNFILED_VOUCHING } from "@/lib/constants";
 import { formatDate, toDateInput, cn } from "@/lib/format";
 
@@ -80,6 +81,10 @@ const emptyDraft = (kind: Kind, area = ""): Draft => ({
   needsClarification: kind === "Vouching",
 });
 
+/** What the working paper is called when it is saved or shared. */
+const filenameFor = (title: string, area: string | null) =>
+  `${["Audit observations", title, area].filter(Boolean).join(" - ").replace(/[^\w\s.-]/g, "").replace(/\s+/g, "-")}.pdf`;
+
 const payloadOf = (d: Draft) => ({
   kind: d.kind,
   vouchingArea: d.kind === "Vouching" ? d.vouchingArea || null : null,
@@ -93,13 +98,16 @@ const payloadOf = (d: Draft) => ({
   needsClarification: d.needsClarification,
 });
 
+/** All the panel needs of an engagement — the register's Task satisfies it. */
+export type NotesTask = { id: string; title: string };
+
 export function AuditNotesModal({
   task,
   canManage,
   onClose,
   onChanged,
 }: {
-  task: Task;
+  task: NotesTask;
   canManage: boolean;
   onClose: () => void;
   onChanged: () => void;
@@ -116,6 +124,12 @@ export function AuditNotesModal({
   const [reply, setReply] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const [raising, setRaising] = useState(false);
+  // The document being read. PDFs open inside the app rather than in a new
+  // tab: a popup blocker or the installed app swallows window.open, and the
+  // button then looks broken.
+  const [viewing, setViewing] = useState<{ src: string; title: string; filename: string } | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -242,6 +256,12 @@ export function AuditNotesModal({
         () => setReplyingTo(null),
       ),
     onCancelReply: () => setReplyingTo(null),
+    onOpenLetter: (letter: { id: string; number: string }) =>
+      setViewing({
+        src: `/api/query-letters/${letter.id}/pdf`,
+        title: `Query letter ${letter.number}`,
+        filename: `${letter.number.replace(/\//g, "-")}.pdf`,
+      }),
   };
 
   return (
@@ -257,8 +277,14 @@ export function AuditNotesModal({
           </Button>
           <Button
             variant="secondary"
-            onClick={() => window.open(printUrl(), "_blank", "noopener")}
-            title="Opens the working paper as a PDF — print it or save it from there"
+            onClick={() =>
+              setViewing({
+                src: printUrl(),
+                title: `Audit observations — ${task.title}`,
+                filename: filenameFor(task.title, areaFilter),
+              })
+            }
+            title="Opens the working paper — read it here, then print or save it"
           >
             <Printer className="h-4 w-4" />
             {areaFilter ? `Print ${areaFilter.toLowerCase()}` : "Print / PDF"}
@@ -418,14 +444,18 @@ export function AuditNotesModal({
                 key={l.id}
                 className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs"
               >
-                <a
-                  href={`/api/query-letters/${l.id}/pdf`}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  onClick={() =>
+                    setViewing({
+                      src: `/api/query-letters/${l.id}/pdf`,
+                      title: `Query letter ${l.number}`,
+                      filename: `${l.number.replace(/\//g, "-")}.pdf`,
+                    })
+                  }
                   className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline"
                 >
                   <FileText className="h-3.5 w-3.5" /> {l.number}
-                </a>
+                </button>
                 <span className="text-slate-400">
                   {l.items.length} point{l.items.length === 1 ? "" : "s"} · {formatDate(l.issuedAt)}
                 </span>
@@ -467,6 +497,17 @@ export function AuditNotesModal({
           }}
           picked={picked}
           setPicked={setPicked}
+        />
+      )}
+
+      {/* Kept as a sibling of the dialog's own content: the viewer covers the
+          screen, so it belongs over the panel rather than inside it. */}
+      {viewing && (
+        <PdfViewer
+          src={viewing.src}
+          title={viewing.title}
+          filename={viewing.filename}
+          onClose={() => setViewing(null)}
         />
       )}
     </Modal>
@@ -516,6 +557,7 @@ type CardProps = {
   onDelete: (id: string) => void;
   onRecord: (id: string) => void;
   onCancelReply: () => void;
+  onOpenLetter: (letter: { id: string; number: string }) => void;
 };
 
 /** One note as it reads in the file: what was seen, where it stands, what came back. */
@@ -573,14 +615,12 @@ function NoteCard({ n, ...p }: { n: AuditObservation } & CardProps) {
           <Badge tone="slate">No clarification needed</Badge>
         )}
         {n.letter && (
-          <a
-            href={`/api/query-letters/${n.letter.id}/pdf`}
-            target="_blank"
-            rel="noreferrer"
+          <button
+            onClick={() => p.onOpenLetter(n.letter!)}
             className="inline-flex items-center gap-1 text-brand-600 hover:underline"
           >
             <FileText className="h-3 w-3" /> {n.letter.number}
-          </a>
+          </button>
         )}
         {n.raisedBy && <span>by {n.raisedBy}</span>}
         <span className="ml-auto flex items-center gap-1">
@@ -780,7 +820,7 @@ function RaiseLetterModal({
   onClose,
   onRaised,
 }: {
-  task: Task;
+  task: NotesTask;
   askable: AuditObservation[];
   picked: string[];
   setPicked: (ids: string[]) => void;

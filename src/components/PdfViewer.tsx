@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Download, ExternalLink, MessageCircle, Minus, Plus, Share2 } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ArrowLeft, Download, ExternalLink, MessageCircle, Minus, Plus, Printer, Share2 } from "lucide-react";
 import { cn } from "@/lib/format";
 
 type Props = {
@@ -144,7 +145,41 @@ export function PdfViewer({ src, title, filename, onWhatsapp, onClose }: Props) 
     }
   }
 
-  return (
+  /**
+   * Hand the document to the browser's print dialog.
+   *
+   * The pages on screen are canvases, so printing the page itself would print
+   * a screenshot; the PDF goes into a hidden frame and that is what prints.
+   * The frame is left in place for a while — removing it while the dialog is
+   * open cancels the job.
+   */
+  function print() {
+    if (!url) return;
+    const frame = document.createElement("iframe");
+    frame.setAttribute("aria-hidden", "true");
+    frame.dataset.testid = "pdf-print-frame";
+    frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0";
+    frame.src = url;
+    frame.onload = () => {
+      try {
+        frame.contentWindow?.focus();
+        frame.contentWindow?.print();
+      } catch {
+        setShared("This browser would not open the print dialog — use Download and print the file.");
+      }
+      window.setTimeout(() => frame.remove(), 60_000);
+    };
+    document.body.appendChild(frame);
+  }
+
+  // Rendered into <body>, like the modals: opened from inside a dialog, a
+  // fixed overlay left in place would be positioned against that dialog's
+  // blurred backdrop rather than the viewport, and end up boxed inside it.
+  // The viewer only ever appears after a press, so there is no server render
+  // to keep in step.
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-50 flex flex-col bg-slate-900/95 backdrop-blur-sm sm:p-4">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white shadow-2xl sm:mx-auto sm:w-full sm:max-w-4xl sm:rounded-xl">
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
@@ -197,6 +232,7 @@ export function PdfViewer({ src, title, filename, onWhatsapp, onClose }: Props) 
                 testId="pdf-whatsapp"
               />
             )}
+            <ToolbarButton onClick={print} icon={Printer} label="Print" testId="pdf-print" />
             <a
               href={url ?? src}
               download={filename}
@@ -272,7 +308,8 @@ export function PdfViewer({ src, title, filename, onWhatsapp, onClose }: Props) 
           </a>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

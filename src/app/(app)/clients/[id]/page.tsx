@@ -16,6 +16,7 @@ import {
   Pencil,
   Trash2,
   Building2,
+  NotebookPen,
 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import { useAuth } from "@/lib/auth/context";
@@ -194,7 +195,20 @@ export default function ClientDetailPage() {
                         {t.assignee ? ` · ${t.assignee.name}` : ""}
                       </p>
                     </div>
-                    <Badge tone={TASK_STATUS_TONE[t.status]}>{t.status}</Badge>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {/* An audit carries a working paper; reach it from the
+                          client rather than hunting the task register. */}
+                      {t.category === "Audit" && (
+                        <Link
+                          href={`/audit-notes?task=${t.id}`}
+                          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50"
+                          title="Audit notes & observations"
+                        >
+                          <NotebookPen className="h-3.5 w-3.5" /> Notes
+                        </Link>
+                      )}
+                      <Badge tone={TASK_STATUS_TONE[t.status]}>{t.status}</Badge>
+                    </div>
                   </li>
                 );
               })}
