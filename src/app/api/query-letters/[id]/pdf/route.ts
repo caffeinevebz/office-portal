@@ -28,6 +28,7 @@ export const GET = route(async (_req, ctx: Ctx) => {
           voucherDate: true,
           partyName: true,
           amount: true,
+          documentsRequired: true,
         },
       },
     },
@@ -40,6 +41,8 @@ export const GET = route(async (_req, ctx: Ctx) => {
     preamble: letter.preamble,
     issuedAt: letter.issuedAt,
     replyBy: letter.replyBy,
+    revision: letter.revision,
+    revisedAt: letter.revisedAt,
     client: {
       name: letter.client.name,
       address: letter.client.address,

@@ -67,6 +67,7 @@ export const OBSERVATION_SELECT = {
   partyName: true,
   amount: true,
   financialYear: true,
+  documentsRequired: true,
   needsClarification: true,
   status: true,
   response: true,
@@ -92,6 +93,7 @@ export type Selection = {
     partyName: string | null;
     amount: number | null;
     financialYear: string | null;
+    documentsRequired: unknown;
   }[];
   /** The ones that will not, each with the reason. */
   ineligible: Ineligible[];
@@ -122,6 +124,7 @@ export async function selectForLetter(ids: string[]): Promise<Selection> {
       partyName: true,
       amount: true,
       financialYear: true,
+      documentsRequired: true,
       needsClarification: true,
       status: true,
       clientId: true,
@@ -168,10 +171,21 @@ export async function selectForLetter(ids: string[]): Promise<Selection> {
  * a client reading the email and a client reading the attachment see one
  * letter rather than two.
  */
+/** The papers a note asks for, if the column holds a usable list. */
+export function documentsOf(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((v) => String(v).trim()).filter(Boolean);
+}
+
 export function letterBody(
   letter: { number: string; preamble: string | null; replyBy: Date | null },
   clientName: string,
-  items: { observation: string; voucherNo: string | null; ledgerName: string | null }[],
+  items: {
+    observation: string;
+    voucherNo: string | null;
+    ledgerName: string | null;
+    documentsRequired?: unknown;
+  }[],
   firmName: string,
 ): string {
   const by = letter.replyBy
@@ -188,7 +202,14 @@ export function letterBody(
         : it.ledgerName
           ? ` (${it.ledgerName})`
           : "";
-      return `${i + 1}. ${it.observation}${where}`;
+      // What the client actually has to send, spelled out under the point —
+      // "please clarify" and "please send us these three papers" are
+      // different asks, and the second one is the one that gets answered.
+      const papers = documentsOf(it.documentsRequired);
+      const wanted = papers.length
+        ? `\n   Documents to be furnished: ${papers.map((d, n) => `(${n + 1}) ${d}`).join("; ")}`
+        : "";
+      return `${i + 1}. ${it.observation}${where}${wanted}`;
     })
     .join("\n\n");
 

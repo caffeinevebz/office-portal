@@ -1,6 +1,7 @@
 import "server-only";
 import { toLetterhead } from "@/lib/org";
 import { VOUCHING_AREAS, UNFILED_VOUCHING } from "@/lib/constants";
+import { documentsOf } from "@/lib/audit-notes";
 import {
   A4,
   MARGIN,
@@ -44,6 +45,7 @@ export type ObservationRow = {
   kind: string;
   vouchingArea: string | null;
   observation: string;
+  documentsRequired?: unknown;
   internalNote: string | null;
   ledgerName: string | null;
   voucherNo: string | null;
@@ -313,9 +315,14 @@ export async function buildObservationsPdf(input: ObservationsInput): Promise<Ui
       const resolutionLines = o.resolution
         ? wrap(`Settled: ${o.resolution}`, reg, 8, bodyW - 10)
         : [];
+      const papers = documentsOf(o.documentsRequired);
+      const paperLines = papers.length
+        ? wrap(`Documents wanted: ${papers.join("; ")}`, reg, 8, bodyW - 10)
+        : [];
       const body =
         lines.length * 12 +
         detailLines.length * 10 +
+        (paperLines.length ? paperLines.length * 10 + 6 : 0) +
         (internalLines.length ? internalLines.length * 10 + 6 : 0) +
         (replyLines.length ? replyLines.length * 10 + 6 : 0) +
         (resolutionLines.length ? resolutionLines.length * 10 + 6 : 0) +
@@ -328,6 +335,7 @@ export async function buildObservationsPdf(input: ObservationsInput): Promise<Ui
         o,
         lines,
         detailLines,
+        paperLines,
         internalLines,
         replyLines,
         resolutionLines,
@@ -337,7 +345,16 @@ export async function buildObservationsPdf(input: ObservationsInput): Promise<Ui
 
     groupHeading(group.heading, group.items.length, false, measured[0]?.height ?? 0);
 
-    for (const { o, lines, detailLines, internalLines, replyLines, resolutionLines, height } of measured) {
+    for (const {
+      o,
+      lines,
+      detailLines,
+      paperLines,
+      internalLines,
+      replyLines,
+      resolutionLines,
+      height,
+    } of measured) {
       n += 1;
 
       // A note is kept whole: splitting an observation across a page break
@@ -368,6 +385,7 @@ export async function buildObservationsPdf(input: ObservationsInput): Promise<Ui
           ly -= 10;
         }
       };
+      if (paperLines.length) block(paperLines, MUTED);
       if (internalLines.length) block(internalLines, FAINT);
       if (replyLines.length) block(replyLines, INK);
       if (resolutionLines.length) block(resolutionLines);

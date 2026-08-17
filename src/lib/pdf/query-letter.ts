@@ -1,5 +1,6 @@
 import "server-only";
 import { toLetterhead } from "@/lib/org";
+import { documentsOf } from "@/lib/audit-notes";
 import {
   A4,
   MARGIN,
@@ -39,6 +40,8 @@ export type LetterItem = {
   voucherDate: Date | null;
   partyName: string | null;
   amount: number | null;
+  /** The papers the client is asked to produce on this point. */
+  documentsRequired?: unknown;
 };
 
 export type LetterInput = {
@@ -47,6 +50,9 @@ export type LetterInput = {
   preamble: string | null;
   issuedAt: Date;
   replyBy: Date | null;
+  /** 1 for a letter issued once; higher when points were added after it went. */
+  revision?: number;
+  revisedAt?: Date | null;
   client: { name: string; address: string | null; contactPerson: string | null };
   task: { title: string; financialYear: string | null } | null;
   organization: Organization | null;
@@ -77,8 +83,20 @@ export async function buildQueryLetterPdf(letter: LetterInput): Promise<Uint8Arr
   y -= 6;
 
   // Reference and date, facing each other.
-  text(page, `Ref: ${letter.number}`, { x: MARGIN, y, size: 9.5, font: bold });
-  text(page, fmt(letter.issuedAt), { x: right, y, size: 9.5, font: reg, align: "right" });
+  const revision = letter.revision ?? 1;
+  text(page, `Ref: ${letter.number}${revision > 1 ? `  ·  Revision ${revision}` : ""}`, {
+    x: MARGIN,
+    y,
+    size: 9.5,
+    font: bold,
+  });
+  text(page, fmt(letter.revisedAt ?? letter.issuedAt), {
+    x: right,
+    y,
+    size: 9.5,
+    font: reg,
+    align: "right",
+  });
   y -= 22;
 
   // Addressee.
@@ -129,6 +147,19 @@ export async function buildQueryLetterPdf(letter: LetterInput): Promise<Uint8Arr
     text(page, line, { x: MARGIN, y, size: 9.5, font: reg });
     y -= 12.5;
   }
+  // A client holding the earlier letter must be told which one to work from.
+  if (revision > 1) {
+    y -= 4;
+    for (const line of wrap(
+      `This letter replaces our letter of even reference issued on ${fmt(letter.issuedAt)} and carries the further points since raised. Kindly answer against this one.`,
+      bold,
+      9,
+      width,
+    )) {
+      text(page, line, { x: MARGIN, y, size: 9, font: bold, color: MUTED });
+      y -= 12;
+    }
+  }
   y -= 12;
 
   // ── the points ────────────────────────────────────────────────────────────
@@ -164,7 +195,22 @@ export async function buildQueryLetterPdf(letter: LetterInput): Promise<Uint8Arr
     const lines = wrap(it.observation, reg, 9, bodyW);
     const detail = particulars(it);
     const detailLines = detail ? wrap(detail, reg, 8, bodyW) : [];
-    const height = Math.max(lines.length * 12 + detailLines.length * 10 + 14, 46);
+    // The papers wanted on this point, set apart from the observation: a
+    // client scanning the letter for what to send should find a list, not a
+    // sentence to re-read.
+    const papers = documentsOf(it.documentsRequired);
+    const paperLines = papers.length
+      ? wrap(
+          `Documents to be furnished: ${papers.map((d, n) => `(${n + 1}) ${d}`).join("  ")}`,
+          reg,
+          8.5,
+          bodyW - 8,
+        )
+      : [];
+    const height = Math.max(
+      lines.length * 12 + detailLines.length * 10 + (paperLines.length ? paperLines.length * 11 + 6 : 0) + 14,
+      46,
+    );
 
     if (y - height < FOOTER_FLOOR) newPage();
 
@@ -179,6 +225,13 @@ export async function buildQueryLetterPdf(letter: LetterInput): Promise<Uint8Arr
     for (const line of detailLines) {
       text(page, line, { x: MARGIN + NUM_W, y: ly, size: 8, font: reg, color: FAINT });
       ly -= 10;
+    }
+    if (paperLines.length) {
+      ly -= 4;
+      for (const line of paperLines) {
+        text(page, line, { x: MARGIN + NUM_W + 6, y: ly, size: 8.5, font: bold, color: MUTED });
+        ly -= 11;
+      }
     }
 
     // The rule the client writes their answer on. It has to be visible to be

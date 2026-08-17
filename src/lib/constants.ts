@@ -302,6 +302,19 @@ export type VouchingArea = (typeof VOUCHING_AREAS)[number];
 /** How a note with no area yet is headed — never guessed into "Other". */
 export const UNFILED_VOUCHING = "Area not stated";
 
+// The papers most often asked for on an audit query, offered as one-press
+// additions on a note. Anything else can be typed in.
+export const COMMON_QUERY_DOCUMENTS = [
+  "Supporting bill / invoice",
+  "Ledger confirmation from the party",
+  "Bank statement for the period",
+  "Copy of the agreement",
+  "Board resolution",
+  "Reconciliation statement",
+  "Proof of delivery / receipt",
+  "TDS certificate",
+] as const;
+
 // Default work-programme for each audit sub-category (editable per task).
 export const AUDIT_CHECKLISTS: Record<string, string[]> = {
   "Statutory Audit": [

@@ -59,6 +59,7 @@ export const GET = route(async (req, ctx: Ctx) => {
       voucherDate: true,
       partyName: true,
       amount: true,
+      documentsRequired: true,
       needsClarification: true,
       status: true,
       response: true,

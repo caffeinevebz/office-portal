@@ -294,6 +294,16 @@ narrowed to. It opens in the app's own document viewer — with **Print**,
 **Share**, **Download** and zoom — rather than in a new tab, which a phone
 browser or the installed app silently refuses to open.
 
+### The papers the client has to send
+
+A note can name the **documents to be furnished** on it — the confirmation, the
+agreement, the bank statement, the missing bill. They are listed under the
+point on the query letter (and in its email), numbered so a client can answer
+against them, because *"please clarify"* without naming the paper is what makes
+a client write back asking what the firm wants. Common ones are one press away;
+anything else is typed in. Naming a paper marks the point as needing the
+client, since asking for a document **is** asking the client.
+
 ### Which points reach the client
 
 Not every note needs an answer, so **the kind sets the default and the auditor
@@ -314,6 +324,23 @@ The letter will not carry a point that is **not marked for the client**,
 **already asked on an earlier letter**, or **closed**; each refusal says which,
 rather than the point being quietly dropped and then waited on. Internal notes
 are never printed, and the PDF route does not even read that column.
+
+### Adding to a letter rather than raising another
+
+More points nearly always turn up after the first letter goes. A second
+reference for the same audit means the client answers two documents and the
+firm chases two, so points can be **added to the letter they belong on**:
+raising asks *where these points go* — a new letter, or one already raised.
+
+- A letter still in **draft** simply takes them.
+- A letter that has **gone** is re-issued: the revision steps up, the letter
+  prints *"Revision 2"* against its reference and says on its face that it
+  replaces the earlier one, and it drops back to draft so somebody has to send
+  it again. A client holding the old copy is told which to answer.
+- A point can be taken **off** a draft; once the letter has gone, the point is
+  marked **Dropped** instead, so the record of what was asked stays intact.
+- The same goes for wording: a sent letter cannot be quietly reworded, but it
+  can be **amended as a revision**, which again has to be sent.
 
 Once a letter goes out its points read **Queried**. Typing the client's answer
 against a point marks it **Answered** and stamps the date without anyone

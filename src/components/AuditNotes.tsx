@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Lock,
   Printer,
+  Paperclip,
 } from "lucide-react";
 import { useResource, apiMutate } from "@/lib/useApi";
 import type { AuditObservation, QueryLetter } from "@/lib/types";
@@ -24,7 +25,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { DictatedTextarea } from "@/components/ui/Dictate";
 import { Loading } from "@/components/ui/EmptyState";
 import { PdfViewer } from "@/components/PdfViewer";
-import { VOUCHING_AREAS, UNFILED_VOUCHING } from "@/lib/constants";
+import { VOUCHING_AREAS, UNFILED_VOUCHING, COMMON_QUERY_DOCUMENTS } from "@/lib/constants";
 import { formatDate, toDateInput, cn } from "@/lib/format";
 
 // The audit working paper for one engagement.
@@ -55,6 +56,7 @@ const UNFILED = UNFILED_VOUCHING;
 type Draft = {
   kind: Kind;
   vouchingArea: string;
+  documents: string[];
   observation: string;
   internalNote: string;
   ledgerName: string;
@@ -70,6 +72,7 @@ type Draft = {
 const emptyDraft = (kind: Kind, area = ""): Draft => ({
   kind,
   vouchingArea: kind === "Vouching" ? area : "",
+  documents: [],
   observation: "",
   internalNote: "",
   ledgerName: "",
@@ -88,6 +91,7 @@ const filenameFor = (title: string, area: string | null) =>
 const payloadOf = (d: Draft) => ({
   kind: d.kind,
   vouchingArea: d.kind === "Vouching" ? d.vouchingArea || null : null,
+  documentsRequired: d.documents,
   observation: d.observation,
   internalNote: d.internalNote || null,
   ledgerName: d.ledgerName || null,
@@ -239,6 +243,7 @@ export function AuditNotesModal({
       setDraft({
         kind: n.kind as Kind,
         vouchingArea: n.vouchingArea ?? "",
+        documents: n.documentsRequired ?? [],
         observation: n.observation,
         internalNote: n.internalNote ?? "",
         ledgerName: n.ledgerName ?? "",
@@ -461,7 +466,13 @@ export function AuditNotesModal({
                 </span>
                 <Badge tone={l.status === "Sent" ? "amber" : l.status === "Replied" ? "green" : "slate"}>
                   {l.status}
+                  {l.revision > 1 ? ` · rev ${l.revision}` : ""}
                 </Badge>
+                {l.status === "Draft" && l.revision > 1 && (
+                  <span className="text-amber-700">
+                    revised after issue — send it again so the client has the whole list
+                  </span>
+                )}
                 {l.sentTo && <span className="text-slate-400">to {l.sentTo}</span>}
                 {canManage && l.status === "Draft" && (
                   <Button
@@ -488,6 +499,7 @@ export function AuditNotesModal({
         <RaiseLetterModal
           task={task}
           askable={askable}
+          letters={letters.data ?? []}
           onClose={() => setRaising(false)}
           onRaised={(msg) => {
             setRaising(false);
@@ -590,6 +602,22 @@ function NoteCard({ n, ...p }: { n: AuditObservation } & CardProps) {
         </p>
       )}
 
+      {(n.documentsRequired ?? []).length > 0 && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1">
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500">
+            <Paperclip className="h-3 w-3" /> To furnish:
+          </span>
+          {(n.documentsRequired ?? []).map((d) => (
+            <span
+              key={d}
+              className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] text-brand-700 ring-1 ring-brand-200"
+            >
+              {d}
+            </span>
+          ))}
+        </div>
+      )}
+
       {n.internalNote && (
         <p className="mt-1.5 flex items-start gap-1.5 rounded bg-slate-50 px-2 py-1.5 text-xs text-slate-600">
           <Lock className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
@@ -674,6 +702,89 @@ function NoteCard({ n, ...p }: { n: AuditObservation } & CardProps) {
         </div>
       )}
     </li>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * The papers the client has to produce on this point.
+ *
+ * A scrutiny note usually ends in a request for something specific — the
+ * confirmation, the agreement, the bank statement — and "please clarify"
+ * without naming the paper is what makes a client write back asking what the
+ * firm wants. Typed in, or added from the list a firm asks for most.
+ */
+function DocumentsField({
+  items,
+  onChange,
+}: {
+  items: string[];
+  onChange: (items: string[]) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const add = (label: string) => {
+    const value = label.trim();
+    if (!value || items.includes(value)) return;
+    onChange([...items, value]);
+    setDraft("");
+  };
+
+  return (
+    <Field
+      label="Documents to be furnished"
+      className="mt-3"
+      hint="Listed under this point on the query letter, so the client knows exactly what to send"
+    >
+      {items.length > 0 && (
+        <ul className="mb-2 flex flex-wrap gap-1.5">
+          {items.map((d) => (
+            <li
+              key={d}
+              className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-xs text-brand-800 ring-1 ring-brand-200"
+            >
+              {d}
+              <button
+                type="button"
+                onClick={() => onChange(items.filter((x) => x !== d))}
+                className="rounded-full p-0.5 hover:bg-brand-100"
+                aria-label={`Remove ${d}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex gap-2">
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              add(draft);
+            }
+          }}
+          placeholder="e.g. Confirmation of balance from Shreeji Traders"
+        />
+        <Button variant="secondary" onClick={() => add(draft)} disabled={!draft.trim()}>
+          <Plus className="h-3.5 w-3.5" /> Add
+        </Button>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1">
+        {COMMON_QUERY_DOCUMENTS.filter((d) => !items.includes(d)).map((d) => (
+          <button
+            key={d}
+            type="button"
+            onClick={() => add(d)}
+            className="rounded-full px-2 py-0.5 text-[11px] text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-slate-700"
+          >
+            + {d}
+          </button>
+        ))}
+      </div>
+    </Field>
   );
 }
 
@@ -769,6 +880,20 @@ function NoteForm({
           />
         </Field>
       </div>
+      <DocumentsField
+        items={draft.documents}
+        onChange={(documents) =>
+          // Asking for a paper *is* asking the client, so the point is marked
+          // for clarification the moment the first one goes on. Untick it if
+          // the papers are only for the firm's own file.
+          setDraft({
+            ...draft,
+            documents,
+            needsClarification: documents.length > 0 ? true : draft.needsClarification,
+          })
+        }
+      />
+
       <Field
         label="Internal note"
         className="mt-3"
@@ -815,6 +940,7 @@ function NoteForm({
 function RaiseLetterModal({
   task,
   askable,
+  letters,
   picked,
   setPicked,
   onClose,
@@ -822,6 +948,7 @@ function RaiseLetterModal({
 }: {
   task: NotesTask;
   askable: AuditObservation[];
+  letters: QueryLetter[];
   picked: string[];
   setPicked: (ids: string[]) => void;
   onClose: () => void;
@@ -830,6 +957,13 @@ function RaiseLetterModal({
   // Everything askable starts ticked: the auditor marked these as needing an
   // answer, so the letter asking for them is the expected next step.
   const [ids, setIds] = useState<string[]>(picked.length ? picked : askable.map((a) => a.id));
+  // More points nearly always turn up after the first letter goes out. Putting
+  // them on the letter they belong to beats a second reference the client has
+  // to answer separately — so an open letter can be chosen instead of a new one.
+  const open = letters.filter((l) => l.status !== "Closed");
+  const [target, setTarget] = useState<string>("new");
+  const chosen = open.find((l) => l.id === target) ?? null;
+  const reissues = !!chosen && chosen.status !== "Draft";
   const [subject, setSubject] = useState("");
   const [preamble, setPreamble] = useState("");
   const [replyBy, setReplyBy] = useState("");
@@ -844,6 +978,28 @@ function RaiseLetterModal({
     setBusy(true);
     setErr(null);
     try {
+      if (chosen) {
+        const added = (await apiMutate(`/api/query-letters/${chosen.id}/items`, "POST", {
+          observationIds: ids,
+        })) as { message: string; ineligible: { reason: string }[] };
+        let note = added.message;
+        if (added.ineligible.length)
+          note += ` ${added.ineligible.length} left off (${added.ineligible[0].reason}).`;
+        if (sendNow) {
+          const sent = (await apiMutate(`/api/query-letters/${chosen.id}/send`, "POST")) as {
+            status: string;
+            to: string;
+          };
+          note +=
+            sent.status === "Simulated"
+              ? " Recorded, but not actually emailed — no mail credentials are configured."
+              : ` Emailed to ${sent.to}.`;
+        }
+        setPicked([]);
+        onRaised(note);
+        return;
+      }
+
       const { letter, ineligible } = (await apiMutate("/api/query-letters", "POST", {
         observationIds: ids,
         taskId: task.id,
@@ -868,7 +1024,7 @@ function RaiseLetterModal({
       setPicked([]);
       onRaised(note);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Could not raise the letter");
+      setErr(e instanceof Error ? e.message : "That did not work");
     } finally {
       setBusy(false);
     }
@@ -879,7 +1035,7 @@ function RaiseLetterModal({
       open
       onClose={onClose}
       size="lg"
-      title="Raise a query letter"
+      title={chosen ? `Add points to letter ${chosen.number}` : "Raise a query letter"}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={busy}>
@@ -887,7 +1043,15 @@ function RaiseLetterModal({
           </Button>
           <Button onClick={raise} disabled={busy || ids.length === 0}>
             <Send className="h-4 w-4" />
-            {busy ? "Working…" : sendNow ? `Raise & send (${ids.length})` : `Raise (${ids.length})`}
+            {busy
+              ? "Working…"
+              : chosen
+                ? sendNow
+                  ? `Add & send (${ids.length})`
+                  : `Add (${ids.length})`
+                : sendNow
+                  ? `Raise & send (${ids.length})`
+                  : `Raise (${ids.length})`}
           </Button>
         </>
       }
@@ -901,6 +1065,33 @@ function RaiseLetterModal({
         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         Only the points below go to the client. Internal notes are never included.
       </p>
+
+      {open.length > 0 && (
+        <Field
+          label="Where these points go"
+          className="mb-3"
+          hint="Adding to a letter already raised keeps the client answering one document"
+        >
+          <Select value={target} onChange={(e) => setTarget(e.target.value)}>
+            <option value="new">Raise a new letter</option>
+            {open.map((l) => (
+              <option key={l.id} value={l.id}>
+                Add to {l.number} · {l.status.toLowerCase()}
+                {l.revision > 1 ? ` (revision ${l.revision})` : ""} · {l.items.length} point
+                {l.items.length === 1 ? "" : "s"}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
+
+      {reissues && chosen && (
+        <p className="mb-3 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-900 ring-1 ring-sky-200">
+          Letter {chosen.number} has already gone to the client. Adding to it re-issues it as{" "}
+          <strong>revision {chosen.revision + 1}</strong> — the letter says it replaces the earlier
+          one, and it goes back to draft so it can be sent again with the whole list on it.
+        </p>
+      )}
 
       <ul className="mb-4 max-h-64 space-y-1.5 overflow-y-auto">
         {askable.map((a) => (
@@ -919,6 +1110,12 @@ function RaiseLetterModal({
                   {a.voucherNo ? ` · Voucher ${a.voucherNo}` : ""}
                   {a.ledgerName ? ` · ${a.ledgerName}` : ""}
                 </span>
+                {(a.documentsRequired ?? []).length > 0 && (
+                  <span className="mt-1 block text-xs text-brand-700">
+                    <Paperclip className="mr-1 inline h-3 w-3" />
+                    {(a.documentsRequired ?? []).join(", ")}
+                  </span>
+                )}
               </span>
             </label>
           </li>
@@ -926,6 +1123,18 @@ function RaiseLetterModal({
       </ul>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {chosen ? (
+          <Field label="Send now" hint="Emails the letter with the PDF attached">
+            <Select
+              value={sendNow ? "yes" : "no"}
+              onChange={(e) => setSendNow(e.target.value === "yes")}
+            >
+              <option value="yes">Add and email the letter</option>
+              <option value="no">Add and leave it in draft</option>
+            </Select>
+          </Field>
+        ) : (
+          <>
         <Field label="Subject" className="sm:col-span-2" hint="Blank uses the engagement's name">
           <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
         </Field>
@@ -945,6 +1154,8 @@ function RaiseLetterModal({
         >
           <Textarea rows={3} value={preamble} onChange={(e) => setPreamble(e.target.value)} />
         </Field>
+          </>
+        )}
       </div>
     </Modal>
   );
