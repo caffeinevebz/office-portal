@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { UNFILED_VOUCHING } from "@/lib/constants";
 
 // Audit working papers, and the letter that turns some of them into questions.
 //
@@ -20,6 +21,20 @@ import { prisma } from "@/lib/prisma";
 
 export const OBSERVATION_KINDS = ["Vouching", "Ledger scrutiny"] as const;
 export type ObservationKind = (typeof OBSERVATION_KINDS)[number];
+
+// The vouching areas live with the other shared enums, because the form needs
+// them in the browser and this file is server-only.
+export { VOUCHING_AREAS, UNFILED_VOUCHING, type VouchingArea } from "@/lib/constants";
+
+/**
+ * Where a note files in the working paper. Vouching is filed area-wise; a
+ * scrutiny note is filed under the account head it came from, and one with
+ * neither sits in a bucket of its own rather than being guessed into an area.
+ */
+export function fileUnder(o: { kind: string; vouchingArea?: string | null; ledgerName?: string | null }): string {
+  if (o.kind === "Vouching") return o.vouchingArea?.trim() || UNFILED_VOUCHING;
+  return o.ledgerName?.trim() || "Ledgers not named";
+}
 
 /** Open → Queried → Answered → Closed, with Dropped for one let go. */
 export const OBSERVATION_STATUSES = [
@@ -43,6 +58,7 @@ export const defaultNeedsClarification = (kind: string) => kind !== "Ledger scru
 export const OBSERVATION_SELECT = {
   id: true,
   kind: true,
+  vouchingArea: true,
   observation: true,
   internalNote: true,
   ledgerName: true,

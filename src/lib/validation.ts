@@ -18,6 +18,7 @@ import {
   ITR_REGIMES,
   ITR_STATUSES,
   RETURN_TYPES,
+  VOUCHING_AREAS,
 } from "./constants";
 import { OBSERVATION_KINDS, OBSERVATION_STATUSES, LETTER_STATUSES } from "./audit-notes";
 
@@ -576,6 +577,9 @@ export const mailSendSchema = z.object({
 /** An audit working-paper note. */
 export const observationCreateSchema = z.object({
   kind: oneOf(OBSERVATION_KINDS, "kind").default("Vouching"),
+  // The area of the vouching it arose in. Empty is allowed — an area is often
+  // settled after the point is written down.
+  vouchingArea: oneOf(VOUCHING_AREAS, "vouching area").nullish(),
   observation: z.string().trim().min(1, "Write the observation"),
   // The firm's own view — never leaves the office.
   internalNote: optionalText,

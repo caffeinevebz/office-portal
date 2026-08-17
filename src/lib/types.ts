@@ -250,6 +250,8 @@ export type MailSyncState = {
 export type AuditObservation = {
   id: string;
   kind: "Vouching" | "Ledger scrutiny";
+  /** Which area of the vouching it arose in. Only vouching notes carry one. */
+  vouchingArea: string | null;
   observation: string;
   /** The firm's own view. Never appears on a letter or in any client email. */
   internalNote: string | null;

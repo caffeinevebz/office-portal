@@ -284,6 +284,24 @@ export const AUDIT_SUBCATEGORIES = [
   "Corporate Secretarial/Compliance Audit",
 ] as const;
 
+// The areas an audit team divides its vouching over. A working paper is filed
+// area-wise — cash first, then journals, then the trading cycle — so a note is
+// recorded against the area it arose in and the file reads the way the work
+// was done. Only vouching observations carry one; a ledger scrutiny note is
+// filed under the account head it came from.
+export const VOUCHING_AREAS = [
+  "Cash",
+  "Journal",
+  "Purchase",
+  "Sales vouching & reconciliation",
+  "Bank reconciliation",
+  "Other vouching",
+] as const;
+export type VouchingArea = (typeof VOUCHING_AREAS)[number];
+
+/** How a note with no area yet is headed — never guessed into "Other". */
+export const UNFILED_VOUCHING = "Area not stated";
+
 // Default work-programme for each audit sub-category (editable per task).
 export const AUDIT_CHECKLISTS: Record<string, string[]> = {
   "Statutory Audit": [

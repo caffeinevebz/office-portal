@@ -234,6 +234,44 @@ carries what it was seen on (voucher number, date, party, ledger, amount), the
 observation itself, and — separately — an **internal note**, which is the
 firm's own view and **never leaves the office**.
 
+### Filed by the area it came from
+
+Vouching is not one job but several, so a vouching note is filed under the area
+it arose in: **Cash · Journal · Purchase · Sales vouching & reconciliation ·
+Bank reconciliation · Other vouching**. The panel groups the notes under those
+headings with a count each, and the headings double as filters — press *Bank
+reconciliation* and only that area's points remain. A note written before its
+area is settled sits under **Area not stated** rather than being guessed into
+*Other*, and can be filed later. Because vouching runs area by area — a morning
+on cash, then the purchase file — **the next note starts in the area the last
+one was filed under**, and a note added while an area is filtered starts there.
+
+Ledger scrutiny notes carry no area; they are filed under the **account head**
+they came from.
+
+### Dictating a note
+
+Every observation box, the internal note and the client's reply carry a **mic**.
+Press it and speak: phrases land in the box as they are recognised, what is
+still being heard shows underneath in grey, and you can keep typing over it. The
+recognition is the **browser's own** — nothing is uploaded by the portal and no
+audio is stored — which means it works in **Chrome and Edge**; where a browser
+has no speech recognition the mic says so instead of failing when pressed. A
+microphone the browser has blocked is reported with what to do about it.
+
+### Printing the working paper
+
+**Print / PDF** in the panel runs off the office copy on the firm's letterhead:
+the notes filed under their area and account-head headings, each with its
+particulars, where it stands, which letter it went out on and who raised it —
+plus, because this one is internal, the **internal notes and the client's
+answers**. It is headed and footed *not for circulation to the client* on every
+page, counts the file at the top (how many need clarification, how many are
+awaiting a reply, how many are settled), and ends with prepared-by and a line
+for the reviewer. **It prints what you are looking at**: with an area filtered,
+the button reads *Print bank reconciliation* and the sheet says what it was
+narrowed to.
+
 ### Which points reach the client
 
 Not every note needs an answer, so **the kind sets the default and the auditor

@@ -889,6 +889,10 @@ model AuditObservation {
 
   /// "Vouching" or "Ledger scrutiny".
   kind        String @default("Vouching")
+  /// Which area of the vouching it arose in — cash, journal, purchase, sales,
+  /// bank reconciliation or other. Only vouching notes carry one; a scrutiny
+  /// note is filed under its account head instead.
+  vouchingArea String?
   /// What was seen, and why it is being recorded. Goes to the client when the
   /// point is queried, so it is written to be read by them.
   observation String
