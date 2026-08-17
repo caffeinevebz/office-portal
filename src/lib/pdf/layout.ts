@@ -30,6 +30,90 @@ export type Pdf = {
   bold: PDFFont;
 };
 
+// ── what the standard fonts can print ──────────────────────────────────────
+//
+// Helvetica is a standard PDF font, and standard fonts are encoded WinAnsi:
+// Latin-1 plus a couple of dozen typographic characters. Hand pdf-lib anything
+// outside that — a rupee sign typed into an observation, a bullet or an arrow
+// pasted out of Word, a note written in Hindi — and it *throws*, which used to
+// take the whole document down with it. A document that prints "Rs." where the
+// author typed "₹" is right; a document that refuses to print is not.
+
+/** The characters above U+00FF that WinAnsi can still encode (0x80–0x9F). */
+const WIN_ANSI_HIGH = "€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ";
+
+/** Unencodable slots inside Latin-1's range: controls and WinAnsi's gaps. */
+const UNUSABLE = /[\x00-\x1F\x7F\u0081\u008D\u008F\u0090\u009D\u00AD]/g;
+
+/** Sensible stand-ins for what people actually type and paste. */
+const SUBSTITUTIONS: [RegExp, string][] = [
+  // A rupee sign against a figure reads as "Rs. 45,000", the way the rest
+  // of the app writes money.
+  [/[\u20B9\u20A8]\s*(?=[\d(])/g, "Rs. "],
+  [/[\u20B9\u20A8]/g, "Rs."],
+  [/[\u21D2\u2192\u2794\u279C\u27A4]/g, "->"],
+  [/[\u21D0\u2190]/g, "<-"],
+  [/[\u2194\u21D4]/g, "<->"],
+  [/[\u2022\u2023\u25AA\u25AB\u25CF\u25CB\u25E6\u2219]/g, "-"],
+  [/[\u2713\u2714\u2611]/g, "(done)"],
+  [/[\u2717\u2718\u2612]/g, "(not done)"],
+  [/\u2116/g, "No."],
+  [/\u2153/g, "1/3"],
+  [/\u2154/g, "2/3"],
+  [/\u215B/g, "1/8"],
+  [/[\u2010\u2011\u2012]/g, "-"],
+  [/\u2044/g, "/"],
+  // Direction marks and zero-width joiners carry no ink; drop them.
+  [/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, ""],
+];
+
+const encodable = (ch: string) => ch.codePointAt(0)! <= 0xff || WIN_ANSI_HIGH.includes(ch);
+
+/**
+ * Make a string printable by a standard PDF font, without throwing.
+ *
+ * Substitutions first, then accents that WinAnsi lacks are stripped by
+ * decomposing ("Śrī" → "Sri"). Whatever is left that cannot be printed at all —
+ * Devanagari, Gujarati, emoji — becomes a single "?" per run, so the sheet says
+ * *something is here that could not be printed* rather than quietly losing it.
+ */
+export function pdfSafe(str: string): string {
+  let out = str.normalize("NFC");
+  for (const [re, rep] of SUBSTITUTIONS) out = out.replace(re, rep);
+  out = out.replace(UNUSABLE, " ");
+  let safe = "";
+  let pending = "";
+  const flush = () => {
+    if (pending) safe += "?";
+    pending = "";
+  };
+  for (const ch of out) {
+    if (encodable(ch)) {
+      flush();
+      safe += ch;
+      continue;
+    }
+    // An accented letter WinAnsi does not carry may still reduce to one it does.
+    const bare = ch.normalize("NFKD").replace(/\p{M}/gu, "");
+    if (bare && [...bare].every(encodable)) {
+      flush();
+      safe += bare;
+    } else {
+      pending += ch;
+    }
+  }
+  flush();
+  return safe;
+}
+
+/** Whether printing this string would have to substitute anything. */
+export const printsWholly = (str: string | null | undefined) =>
+  !str || pdfSafe(str) === str;
+
+/** Width of a string as it will actually be printed. */
+export const widthOf = (font: PDFFont, str: string, size: number) =>
+  font.widthOfTextAtSize(pdfSafe(str), size);
+
 export async function createA4(): Promise<Pdf> {
   const doc = await PDFDocument.create();
   const page = doc.addPage([A4.width, A4.height]);
@@ -50,15 +134,20 @@ type TextOpts = {
 /** Draw a single line of text with optional right/center alignment. */
 export function text(page: PDFPage, str: string, opts: TextOpts) {
   const size = opts.size ?? 9;
+  // Everything the app prints comes through here, so this is the one place
+  // that has to make it printable.
+  const safe = pdfSafe(str);
   let x = opts.x;
-  if (opts.align === "right") x -= opts.font.widthOfTextAtSize(str, size);
-  if (opts.align === "center") x -= opts.font.widthOfTextAtSize(str, size) / 2;
-  page.drawText(str, { x, y: opts.y, size, font: opts.font, color: opts.color ?? INK });
+  if (opts.align === "right") x -= opts.font.widthOfTextAtSize(safe, size);
+  if (opts.align === "center") x -= opts.font.widthOfTextAtSize(safe, size) / 2;
+  page.drawText(safe, { x, y: opts.y, size, font: opts.font, color: opts.color ?? INK });
 }
 
 /** Greedy word wrap to a pixel width. */
 export function wrap(str: string, font: PDFFont, size: number, maxWidth: number): string[] {
-  const words = str.split(/\s+/).filter(Boolean);
+  // Wrapped against what will be drawn, not what was typed: "Rs." is wider
+  // than "₹", so measuring the original would overrun the column.
+  const words = pdfSafe(str).split(/\s+/).filter(Boolean);
   const lines: string[] = [];
   let cur = "";
   for (const w of words) {
@@ -92,7 +181,7 @@ export function money(n: number): string {
 /** Large diagonal status watermark (drawn before content). */
 export function watermark(page: PDFPage, label: string, color: RGB) {
   const size = 92;
-  page.drawText(label, {
+  page.drawText(pdfSafe(label), {
     x: 120,
     y: 260,
     size,
@@ -150,12 +239,12 @@ export async function firmHeader(pdf: Pdf, title: string, lh: Letterhead): Promi
   const GAP = 18;
   const available = A4.width - MARGIN - textX;
   let titleSize = 15;
-  while (titleSize > 9 && bold.widthOfTextAtSize(title, titleSize) > available * 0.5) {
+  while (titleSize > 9 && widthOf(bold, title, titleSize) > available * 0.5) {
     titleSize -= 0.5;
   }
-  const titleWidth = bold.widthOfTextAtSize(title, titleSize);
+  const titleWidth = widthOf(bold, title, titleSize);
   let nameSize = 19;
-  while (nameSize > 11 && bold.widthOfTextAtSize(lh.name, nameSize) > available - titleWidth - GAP) {
+  while (nameSize > 11 && widthOf(bold, lh.name, nameSize) > available - titleWidth - GAP) {
     nameSize -= 0.5;
   }
   text(page, lh.name, { x: textX, y, size: nameSize, font: bold, color: INK });

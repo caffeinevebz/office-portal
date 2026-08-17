@@ -17,6 +17,7 @@ import {
   money,
   firmHeader,
   stampPageNumbers,
+  printsWholly,
 } from "@/lib/pdf/layout";
 import type { Organization } from "@prisma/client";
 import type { PDFPage } from "pdf-lib";
@@ -198,6 +199,27 @@ export async function buildObservationsPdf(input: ObservationsInput): Promise<Ui
     text(page, line, { x: MARGIN, y, size: 8.5, font: reg, color: MUTED });
     y -= 11;
   }
+  // Helvetica cannot print Devanagari, Gujarati or an emoji, so those come out
+  // as "?". Say so on the sheet — a reader comparing it against the screen
+  // should know the note itself is intact and it is the printing that fell
+  // short, not the record.
+  const substituted = input.rows.some((r) =>
+    [r.observation, r.internalNote, r.response, r.resolution, r.ledgerName, r.partyName].some(
+      (v) => !printsWholly(v),
+    ),
+  );
+  if (substituted) {
+    for (const line of wrap(
+      'Some characters in these notes cannot be printed in this typeface and appear as "?". The notes themselves are unchanged on screen.',
+      reg,
+      8,
+      width,
+    )) {
+      text(page, line, { x: MARGIN, y, size: 8, font: reg, color: FAINT });
+      y -= 10;
+    }
+  }
+
   const narrowed = [
     input.filter?.kind ? `${input.filter.kind} only` : null,
     input.filter?.area ? `area: ${input.filter.area}` : null,
@@ -291,14 +313,26 @@ export async function buildObservationsPdf(input: ObservationsInput): Promise<Ui
       const resolutionLines = o.resolution
         ? wrap(`Settled: ${o.resolution}`, reg, 8, bodyW - 10)
         : [];
-      const height =
+      const body =
         lines.length * 12 +
         detailLines.length * 10 +
         (internalLines.length ? internalLines.length * 10 + 6 : 0) +
         (replyLines.length ? replyLines.length * 10 + 6 : 0) +
         (resolutionLines.length ? resolutionLines.length * 10 + 6 : 0) +
         16;
-      return { o, lines, detailLines, internalLines, replyLines, resolutionLines, height };
+      // The status column on the right runs to four lines, and a one-line
+      // observation is shorter than that — so the row is as deep as whichever
+      // side needs more, or the two notes print on top of each other.
+      const meta = 21 + (o.letter ? 10 : 0) + (o.raisedBy ? 10 : 0) + 8;
+      return {
+        o,
+        lines,
+        detailLines,
+        internalLines,
+        replyLines,
+        resolutionLines,
+        height: Math.max(body, meta),
+      };
     });
 
     groupHeading(group.heading, group.items.length, false, measured[0]?.height ?? 0);
