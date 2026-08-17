@@ -589,6 +589,13 @@ export const observationCreateSchema = z.object({
   partyName: optionalText,
   amount: z.coerce.number().nullish(),
   financialYear: optionalText,
+  // The papers the client must produce on this point. A Json column, so an
+  // absent value is a no-op and an empty list is how the ask is withdrawn.
+  documentsRequired: z
+    .array(z.string().trim().min(1, "Name the document"))
+    .max(20, "That is more papers than one point should ask for")
+    .nullish()
+    .transform((v) => v ?? undefined),
   // Absent means "whatever this kind normally is"; present pins it.
   needsClarification: z.boolean().optional(),
   status: oneOf(OBSERVATION_STATUSES, "status").optional(),
@@ -608,11 +615,20 @@ export const queryLetterCreateSchema = z.object({
   replyBy: optionalDate,
 });
 
+/** Adding points to a letter that already exists. */
+export const queryLetterItemsSchema = z.object({
+  observationIds: z.array(z.string().trim().min(1)).min(1, "Choose at least one point"),
+});
+
 export const queryLetterUpdateSchema = z.object({
   subject: optionalText,
   preamble: optionalText,
   replyBy: optionalDate,
   status: oneOf(LETTER_STATUSES, "status").optional(),
+  // Reword a letter that has already gone. Refused without this, because the
+  // firm's copy would then disagree with the client's; with it, the letter is
+  // re-issued as a revision and has to be sent again.
+  revise: z.boolean().optional(),
 });
 
 /** Filing a message against a client / an engagement. */

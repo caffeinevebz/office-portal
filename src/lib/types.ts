@@ -261,6 +261,8 @@ export type AuditObservation = {
   partyName: string | null;
   amount: number | null;
   financialYear: string | null;
+  /** Papers the client must furnish on this point; printed on the letter. */
+  documentsRequired: string[] | null;
   needsClarification: boolean;
   status: "Open" | "Queried" | "Answered" | "Closed" | "Dropped";
   response: string | null;
@@ -308,6 +310,10 @@ export type QueryLetter = {
   issuedAt: string;
   replyBy: string | null;
   status: "Draft" | "Sent" | "Replied" | "Closed";
+  /** Steps up when points are added to (or the wording changed on) a letter
+   *  that had already gone; it goes back to Draft to be sent again. */
+  revision: number;
+  revisedAt: string | null;
   sentAt: string | null;
   sentTo: string | null;
   client: { id: string; name: string; email: string | null };
@@ -321,6 +327,7 @@ export type QueryLetter = {
     voucherDate: string | null;
     partyName: string | null;
     amount: number | null;
+    documentsRequired: string[] | null;
     status: string;
     response: string | null;
     respondedAt: string | null;

@@ -910,6 +910,12 @@ model AuditObservation {
   amount        Float?
   financialYear String?
 
+  /// The specific papers the client has to produce on this point — a ledger
+  /// confirmation, the agreement, the bank statement. Held as a list of
+  /// labels and printed under the point on the query letter, because "please
+  /// clarify" and "please send us these three papers" are different asks.
+  documentsRequired Json?
+
   /// Whether the client has to answer this one. Not every note does.
   needsClarification Boolean @default(true)
   /// Open → Queried (it has gone out on a letter) → Answered → Closed.
@@ -959,6 +965,12 @@ model QueryLetter {
 
   /// Draft → Sent → Replied (some answers are in) → Closed.
   status String    @default("Draft")
+  /// How many times it has been issued. Points found after a letter has gone
+  /// are added to it and the letter re-issued as a revision, rather than the
+  /// client collecting a second reference for the same audit — so the firm's
+  /// copy and the client's can be made to agree again.
+  revision  Int       @default(1)
+  revisedAt DateTime?
   sentAt DateTime?
   sentTo String?
 

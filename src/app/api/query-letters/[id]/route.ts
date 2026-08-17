@@ -13,6 +13,8 @@ const LETTER_SELECT = {
   issuedAt: true,
   replyBy: true,
   status: true,
+  revision: true,
+  revisedAt: true,
   sentAt: true,
   sentTo: true,
   client: { select: { id: true, name: true, email: true } },
@@ -28,6 +30,7 @@ const LETTER_SELECT = {
       voucherDate: true,
       partyName: true,
       amount: true,
+      documentsRequired: true,
       status: true,
       response: true,
       respondedAt: true,
@@ -51,22 +54,32 @@ export const PATCH = route(async (req, ctx: Ctx) => {
 
   const existing = await prisma.queryLetter.findUnique({
     where: { id },
-    select: { status: true, number: true },
+    select: { status: true, number: true, revision: true },
   });
   if (!existing) return fail("Query letter not found", 404);
+
   // Once it has gone, its wording is what the client received. Rewriting it
-  // would leave the firm's copy disagreeing with theirs.
-  const rewording = data.subject !== undefined || data.preamble !== undefined;
-  if (rewording && existing.status !== "Draft") {
+  // silently would leave the firm's copy disagreeing with theirs — so a
+  // reword after issue has to be asked for, and it re-issues the letter as a
+  // revision that somebody must send again.
+  const { revise, ...fields } = data;
+  const rewording = fields.subject !== undefined || fields.preamble !== undefined;
+  const issued = existing.status !== "Draft";
+  if (rewording && issued && !revise) {
     return fail(
-      `Letter ${existing.number} has already gone to the client, so its wording cannot be changed.`,
+      `Letter ${existing.number} has already gone to the client. Amend it as a revision if the wording has to change — it will need sending again.`,
       409,
     );
   }
 
   const letter = await prisma.queryLetter.update({
     where: { id },
-    data,
+    data: {
+      ...fields,
+      ...(rewording && issued
+        ? { revision: existing.revision + 1, revisedAt: new Date(), status: "Draft" }
+        : {}),
+    },
     select: LETTER_SELECT,
   });
   return ok(letter);
