@@ -229,6 +229,25 @@ apart because they arise differently and are read differently:
   entry, a balance outstanding for years. Usually these are the firm's own
   record of what it looked at and concluded.
 
+### Getting to them
+
+**Audit Notes** is its own page in the sidebar: every audit engagement the firm
+has, with the state of its working paper on the row — how many notes, how many
+are marked for the client, how many are **awaiting a reply**, how many letters
+have gone. The engagements with points sitting with a client sort to the top,
+because those are the ones somebody is waiting on. Filters read the same way:
+*Awaiting the client · Being written up · Not started*, with a search by client
+and a year picker. One press opens the working paper; another prints it.
+
+Three ways in, so nobody has to hunt for the task first:
+
+- the **sidebar**, for the auditor who lives in the notes all week;
+- the **notebook icon** on an audit row in the task register, as before;
+- **Notes** against an audit on the client's own page.
+
+Opening one puts the engagement in the address — `/audit-notes?task=…` — so a
+link to a particular working paper can be bookmarked or sent to a colleague.
+
 Both live on the audit task, under **Audit notes** on the row. Each note
 carries what it was seen on (voucher number, date, party, ledger, amount), the
 observation itself, and — separately — an **internal note**, which is the
@@ -261,7 +280,8 @@ microphone the browser has blocked is reported with what to do about it.
 
 ### Printing the working paper
 
-**Print / PDF** in the panel runs off the office copy on the firm's letterhead:
+**Print / PDF** — in the panel, or straight from the Audit Notes list — runs
+off the office copy on the firm's letterhead:
 the notes filed under their area and account-head headings, each with its
 particulars, where it stands, which letter it went out on and who raised it —
 plus, because this one is internal, the **internal notes and the client's
@@ -270,7 +290,9 @@ page, counts the file at the top (how many need clarification, how many are
 awaiting a reply, how many are settled), and ends with prepared-by and a line
 for the reviewer. **It prints what you are looking at**: with an area filtered,
 the button reads *Print bank reconciliation* and the sheet says what it was
-narrowed to.
+narrowed to. It opens in the app's own document viewer — with **Print**,
+**Share**, **Download** and zoom — rather than in a new tab, which a phone
+browser or the installed app silently refuses to open.
 
 ### Which points reach the client
 
@@ -602,6 +624,9 @@ with no way back — so the document appears in the app's own viewer with:
   (`navigator.share` with files), so it can go to WhatsApp, mail, Drive or
   anywhere else the phone offers. Shown only where the device supports it;
   **Download** is always there, so a document is never a dead end.
+- **Print** — hands the PDF itself to the browser's print dialog. The pages on
+  screen are canvases, so printing the page would print a screenshot; the
+  document goes into a hidden frame and that is what prints.
 - **WhatsApp** — opens the send dialog with this document attached.
 - **Zoom** — the document has its own zoom and scroll box, so magnifying an
   invoice does not drag the toolbar around with it.
