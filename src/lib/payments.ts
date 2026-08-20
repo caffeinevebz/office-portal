@@ -53,6 +53,8 @@ export function statusFor(settlement: Settlement, fallback: string): string {
   if (settlement.fullyPaid) return "Paid";
   if (settlement.received > 0) return "Partly Paid";
   // No money in: an invoice that had been marked Paid falls back to Sent.
+  // Draft and Approved are left alone — a bill nobody has been sent cannot
+  // become "Sent" because a receipt was removed from it.
   return fallback === "Paid" || fallback === "Partly Paid" ? "Sent" : fallback;
 }
 

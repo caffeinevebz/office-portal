@@ -5,6 +5,7 @@ import { whatsappDocumentSchema } from "@/lib/validation";
 import { getWhatsappConfig, sendWhatsappDocument, waLink, waNumber } from "@/lib/notify";
 import { buildDocument } from "@/lib/pdf/document";
 import { shareUrl } from "@/lib/share-link";
+import { INVOICE_UNISSUED } from "@/lib/constants";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -79,12 +80,29 @@ export const POST = route(async (req, ctx: Ctx) => {
     },
   });
 
+  // Sending the invoice itself moves it on, the same as emailing it does. A
+  // receipt is not the bill, so it leaves the status where it is.
+  let invoiceStatus: string | null = null;
+  if (data.kind === "invoice") {
+    const current = await prisma.invoice.findUnique({ where: { id }, select: { status: true } });
+    if (current && INVOICE_UNISSUED.has(current.status)) {
+      const moved = await prisma.invoice.update({
+        where: { id },
+        data: { status: "Sent" },
+        select: { status: true },
+      });
+      invoiceStatus = moved.status;
+    }
+  }
+
   return ok({
     status,
     to: digits,
     live: cfg.live,
     filename,
     title,
+    // What the bill now reads as, when the send moved it on.
+    invoiceStatus,
     // The link is what makes the document reachable on the hand-off path; it
     // is also handy on the live path as a fallback the sender can paste.
     shareUrl: link,
