@@ -3,7 +3,7 @@ import { ok, route } from "@/lib/api";
 import { requireUser } from "@/lib/auth/session";
 import { roleHasPermission } from "@/lib/auth/effective";
 import { invoiceGross } from "@/lib/format";
-import { TASK_STATUSES, TASK_CATEGORIES, effectivePriority } from "@/lib/constants";
+import { TASK_STATUSES, TASK_CATEGORIES, INVOICE_UNISSUED, effectivePriority } from "@/lib/constants";
 import type { Prisma } from "@prisma/client";
 
 const gross = (i: { amount: number; taxRate: number; gstMode: string }) =>
@@ -92,8 +92,10 @@ export const GET = route(async () => {
   // is still owed on every raised bill, collected is what has come in.
   const receivedOn = (i: (typeof invoices)[number]) =>
     (i.payments ?? []).reduce((s, p) => s + (p.amount || 0), 0);
+  // A bill that has been written up or passed but not yet sent is not money
+  // anyone owes yet, so it stays out of receivables until it goes.
   const outstanding = invoices
-    .filter((i) => i.status !== "Draft")
+    .filter((i) => !INVOICE_UNISSUED.has(i.status))
     .reduce((sum, i) => sum + Math.max(0, gross(i) - receivedOn(i)), 0);
   const collected = invoices.reduce((sum, i) => sum + receivedOn(i), 0);
 

@@ -55,10 +55,17 @@ export function route<A extends unknown[]>(
     } catch (e) {
       if (e instanceof Response) return e;
       console.error(e);
-      const message =
-        e instanceof Error && e.message.includes("Unique constraint")
-          ? "A record with those details already exists"
-          : "Internal server error";
+      // Database failures that are really about the *data* deserve words, not
+      // "Internal server error" — which tells the person at the desk nothing
+      // and sends them back to us.
+      const text = e instanceof Error ? e.message : "";
+      const message = text.includes("Unique constraint")
+        ? "A record with those details already exists"
+        : /Record to update not found|Record to delete does not exist|No record was found/i.test(text)
+          ? "Something here was changed or removed by someone else. Reload the page and try again."
+          : /Foreign key constraint/i.test(text)
+            ? "This points at a record that no longer exists. Reload the page and try again."
+            : "Internal server error";
       return fail(message, 500);
     }
   };

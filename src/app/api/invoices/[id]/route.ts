@@ -45,8 +45,12 @@ async function applyUpdate(
     await prisma.invoice.update({ where: { id }, data: rest as Prisma.InvoiceUncheckedUpdateInput });
   }
 
+  // The edit form re-sends the bill's *current* status on every save. Reading
+  // that as an instruction is what made a part-paid invoice impossible to edit
+  // at all, and made correcting an amount on a paid one record a receipt
+  // nobody had taken. Only an actual change of status means anything here.
   let paymentId: string | undefined;
-  if (typeof status === "string") {
+  if (typeof status === "string" && status !== current.status) {
     const fresh = await prisma.invoice.findUnique({ where: { id }, include: { payments: true } });
     const { outstanding } = settlementOf(fresh!, fresh!.payments);
     if (status === "Paid") {
@@ -84,22 +88,90 @@ function readInvoice(id: string) {
   return prisma.invoice.findUnique({ where: { id }, include: INVOICE_INCLUDE });
 }
 
+/**
+ * Check what the edit points at before writing any of it.
+ *
+ * A saved invoice names a client, perhaps a trade name and a billing firm, and
+ * its lines may bill tasks. Any of those can have been deleted or re-pointed
+ * since the form was opened, and handing a dead id to the database turns a
+ * save into "Internal server error" — which tells the person at the desk
+ * nothing at all. Each one is checked here and answered in words.
+ */
+async function checkReferences(
+  id: string,
+  data: { clientId?: string; tradeNameId?: string | null; organizationId?: string | null; invoiceNumber?: string | null },
+): Promise<string | null> {
+  const [client, tradeName, org, clash] = await Promise.all([
+    data.clientId
+      ? prisma.client.findUnique({ where: { id: data.clientId }, select: { id: true } })
+      : null,
+    data.tradeNameId
+      ? prisma.tradeName.findUnique({ where: { id: data.tradeNameId }, select: { id: true } })
+      : null,
+    data.organizationId
+      ? prisma.organization.findUnique({ where: { id: data.organizationId }, select: { id: true } })
+      : null,
+    data.invoiceNumber
+      ? prisma.invoice.findFirst({
+          where: { invoiceNumber: data.invoiceNumber, id: { not: id } },
+          select: { id: true },
+        })
+      : null,
+  ]);
+  if (data.clientId && !client) {
+    return "That client is no longer on the register. Reload the page and pick the client again.";
+  }
+  if (data.tradeNameId && !tradeName) {
+    return "The firm / trade name this bill was raised under no longer exists. Reload the page and choose again.";
+  }
+  if (data.organizationId && !org) {
+    return "The billing firm on this invoice no longer exists. Reload the page and choose again.";
+  }
+  if (clash) {
+    return `Invoice number ${data.invoiceNumber} already belongs to another bill. Use a different number.`;
+  }
+  return null;
+}
+
 export const PUT = route(async (req, ctx: Ctx) => {
   await requirePermission("manageInvoices");
   const { id } = await ctx.params;
   const { lineItems, ...data } = await parse(req, invoiceUpdateSchema);
+
+  const problem = await checkReferences(id, data);
+  if (problem) return fail(problem, 409);
+
   // Sync line items when the form provides them, and keep `amount` = their sum.
   if (lineItems) {
     await prisma.$transaction(async (tx) => {
       const existing = await tx.invoiceLineItem.findMany({ where: { invoiceId: id }, select: { id: true } });
-      const keep = new Set(lineItems.filter((l) => l.id).map((l) => l.id));
+      const mine = new Set(existing.map((e) => e.id));
+      // A line whose id is not on this invoice any more — a stale form, or a
+      // row someone else removed — is taken as a new line rather than as a
+      // reason to refuse the whole save. The words the user typed are real
+      // even when the id behind them is not.
+      const lines = lineItems.map((l) => (l.id && mine.has(l.id) ? l : { ...l, id: undefined }));
+      // Likewise a task that has since been deleted: bill the line, drop the link.
+      const wanted = [...new Set(lines.flatMap((l) => l.taskIds ?? []))];
+      const alive = wanted.length
+        ? new Set(
+            (await tx.task.findMany({ where: { id: { in: wanted } }, select: { id: true } })).map(
+              (t) => t.id,
+            ),
+          )
+        : new Set<string>();
+
+      const keep = new Set(lines.filter((l) => l.id).map((l) => l.id));
       const remove = existing.filter((e) => !keep.has(e.id)).map((e) => e.id);
       if (remove.length) await tx.invoiceLineItem.deleteMany({ where: { id: { in: remove } } });
-      for (const { id: lid, taskIds, ...fields } of lineItems) {
+      for (const line of lines) {
+        const { id: lid, taskIds: sent, ...fields } = line;
+        const taskIds = sent?.filter((t) => alive.has(t));
         // Lead task stays on taskId; the full set lives on the m-n relation.
+        const lead = (fields.taskId && alive.has(fields.taskId) ? fields.taskId : null) ?? taskIds?.[0] ?? null;
         const data = {
           ...fields,
-          taskId: fields.taskId || taskIds?.[0] || null,
+          taskId: lead,
           tasks: taskIds ? { set: taskIds.map((tid) => ({ id: tid })) } : undefined,
         };
         if (lid) await tx.invoiceLineItem.update({ where: { id: lid }, data });
@@ -107,7 +179,7 @@ export const PUT = route(async (req, ctx: Ctx) => {
           await tx.invoiceLineItem.create({
             data: {
               ...fields,
-              taskId: fields.taskId || taskIds?.[0] || null,
+              taskId: lead,
               tasks: taskIds?.length ? { connect: taskIds.map((tid) => ({ id: tid })) } : undefined,
               invoiceId: id,
             },

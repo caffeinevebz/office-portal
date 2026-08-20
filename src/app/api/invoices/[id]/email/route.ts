@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { INVOICE_UNISSUED } from "@/lib/constants";
 import { ok, fail, route } from "@/lib/api";
 import { requirePermission } from "@/lib/auth/session";
 import { buildInvoicePdf, taxBreakdown } from "@/lib/pdf/invoice";
@@ -56,9 +57,10 @@ export const POST = route(async (_req, ctx: Ctx) => {
     },
   });
 
-  // Emailing a draft moves it into the billing pipeline.
+  // Emailing the bill *is* sending it: a draft or an approved bill moves on to
+  // Sent by the act of going out, so nobody has to remember to set it.
   let updated = invoice;
-  if (invoice.status === "Draft") {
+  if (INVOICE_UNISSUED.has(invoice.status)) {
     updated = await prisma.invoice.update({
       where: { id },
       data: { status: "Sent" },

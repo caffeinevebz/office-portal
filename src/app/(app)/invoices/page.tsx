@@ -594,7 +594,11 @@ export default function InvoicesPage() {
             kind: waFor.kind,
             src: docSrc(waFor),
           }}
-          onClose={() => setWaFor(null)}
+          onClose={() => {
+            setWaFor(null);
+            // Sending the bill moves it to Sent; the row should say so.
+            refresh();
+          }}
         />
       )}
 
@@ -642,6 +646,11 @@ function invoicePillClass(status: string) {
       return "bg-emerald-100 text-emerald-700 ring-emerald-200";
     case "Sent":
       return "bg-blue-100 text-blue-700 ring-blue-200";
+    case "Approved":
+      // Passed for issue, but not yet with the client.
+      return "bg-brand-100 text-brand-700 ring-brand-200";
+    case "Partly Paid":
+      return "bg-amber-100 text-amber-800 ring-amber-200";
     case "Overdue":
       return "bg-rose-100 text-rose-700 ring-rose-200";
     default:

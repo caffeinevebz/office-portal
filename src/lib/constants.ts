@@ -586,10 +586,22 @@ export function canApproveRole(role?: string | null): boolean {
 
 // "Partly Paid" is never chosen by hand — it is what an invoice becomes once
 // some, but not all, of it has been received.
-export const INVOICE_STATUSES = ["Draft", "Sent", "Partly Paid", "Paid", "Overdue"] as const;
+// A bill's life: written up, passed by whoever signs it off, sent to the
+// client, then settled — in one payment or several.
+export const INVOICE_STATUSES = [
+  "Draft",
+  "Approved",
+  "Sent",
+  "Partly Paid",
+  "Paid",
+  "Overdue",
+] as const;
+
+/** Statuses nobody has to be sent to the client to reach. */
+export const INVOICE_UNISSUED = new Set(["Draft", "Approved"]);
 
 /** The statuses a user may set directly; the rest follow from the payments. */
-export const INVOICE_STATUSES_SETTABLE = ["Draft", "Sent", "Overdue"] as const;
+export const INVOICE_STATUSES_SETTABLE = ["Draft", "Approved", "Sent", "Overdue"] as const;
 
 // Fee = professional fees; Reimbursement = out-of-pocket expenses billed to
 // the client (own EXP number series, excluded from the fee receipt register).
@@ -809,6 +821,7 @@ export const PRIORITY_TONE: Record<string, keyof typeof TONE> = {
 
 export const INVOICE_STATUS_TONE: Record<string, keyof typeof TONE> = {
   Draft: "slate",
+  Approved: "indigo",
   Sent: "blue",
   "Partly Paid": "amber",
   Paid: "green",
