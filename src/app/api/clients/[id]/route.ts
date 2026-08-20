@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { prisma, TX_BUDGET } from "@/lib/prisma";
 import { ok, fail, parse, route } from "@/lib/api";
 import { requireUser, requirePermission } from "@/lib/auth/session";
 import { clientUpdateSchema } from "@/lib/validation";
@@ -72,7 +72,9 @@ export const PUT = route(async (req, ctx: Ctx) => {
         else await tx.gstRegistration.create({ data: { ...values, clientId: id } });
       }
     }
-  });
+    // A client with several concerns and several GSTINs writes a row apiece,
+    // and every one of them is a round trip to a hosted database.
+  }, TX_BUDGET);
   const client = await prisma.client.findUnique({
     where: { id },
     include: {

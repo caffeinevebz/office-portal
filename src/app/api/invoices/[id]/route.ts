@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+import { prisma, TX_BUDGET } from "@/lib/prisma";
 import { ok, fail, parse, route } from "@/lib/api";
 import { requirePermission } from "@/lib/auth/session";
 import { invoiceUpdateSchema, invoicePaymentSchema } from "@/lib/validation";
@@ -142,50 +142,103 @@ export const PUT = route(async (req, ctx: Ctx) => {
   if (problem) return fail(problem, 409);
 
   // Sync line items when the form provides them, and keep `amount` = their sum.
+  //
+  // Everything that only *reads* happens before the transaction opens, and
+  // only lines that actually changed are written. Against a hosted database
+  // each query is a network round trip, and a transaction that spends its
+  // budget waiting expires mid-write — which is what turned saving an invoice
+  // with several lines into "Internal server error".
   if (lineItems) {
-    await prisma.$transaction(async (tx) => {
-      const existing = await tx.invoiceLineItem.findMany({ where: { invoiceId: id }, select: { id: true } });
-      const mine = new Set(existing.map((e) => e.id));
-      // A line whose id is not on this invoice any more — a stale form, or a
-      // row someone else removed — is taken as a new line rather than as a
-      // reason to refuse the whole save. The words the user typed are real
-      // even when the id behind them is not.
-      const lines = lineItems.map((l) => (l.id && mine.has(l.id) ? l : { ...l, id: undefined }));
-      // Likewise a task that has since been deleted: bill the line, drop the link.
-      const wanted = [...new Set(lines.flatMap((l) => l.taskIds ?? []))];
-      const alive = wanted.length
-        ? new Set(
-            (await tx.task.findMany({ where: { id: { in: wanted } }, select: { id: true } })).map(
-              (t) => t.id,
-            ),
-          )
-        : new Set<string>();
-
-      const keep = new Set(lines.filter((l) => l.id).map((l) => l.id));
-      const remove = existing.filter((e) => !keep.has(e.id)).map((e) => e.id);
-      if (remove.length) await tx.invoiceLineItem.deleteMany({ where: { id: { in: remove } } });
-      for (const line of lines) {
-        const { id: lid, taskIds: sent, ...fields } = line;
-        const taskIds = sent?.filter((t) => alive.has(t));
-        // Lead task stays on taskId; the full set lives on the m-n relation.
-        const lead = (fields.taskId && alive.has(fields.taskId) ? fields.taskId : null) ?? taskIds?.[0] ?? null;
-        const data = {
-          ...fields,
-          taskId: lead,
-          tasks: taskIds ? { set: taskIds.map((tid) => ({ id: tid })) } : undefined,
-        };
-        if (lid) await tx.invoiceLineItem.update({ where: { id: lid }, data });
-        else
-          await tx.invoiceLineItem.create({
-            data: {
-              ...fields,
-              taskId: lead,
-              tasks: taskIds?.length ? { connect: taskIds.map((tid) => ({ id: tid })) } : undefined,
-              invoiceId: id,
-            },
-          });
-      }
+    const existing = await prisma.invoiceLineItem.findMany({
+      where: { invoiceId: id },
+      select: {
+        id: true,
+        description: true,
+        amount: true,
+        sacCode: true,
+        taskId: true,
+        tasks: { select: { id: true } },
+      },
     });
+    const mine = new Map(existing.map((e) => [e.id, e]));
+    // A line whose id is not on this invoice any more — a stale form, or a
+    // row someone else removed — is taken as a new line rather than as a
+    // reason to refuse the whole save. The words the user typed are real
+    // even when the id behind them is not.
+    const lines = lineItems.map((l) => (l.id && mine.has(l.id) ? l : { ...l, id: undefined }));
+    // Likewise a task that has since been deleted: bill the line, drop the link.
+    const wanted = [...new Set(lines.flatMap((l) => l.taskIds ?? []))];
+    const alive = wanted.length
+      ? new Set(
+          (
+            await prisma.task.findMany({ where: { id: { in: wanted } }, select: { id: true } })
+          ).map((t) => t.id),
+        )
+      : new Set<string>();
+
+    const keep = new Set(lines.filter((l) => l.id).map((l) => l.id));
+    const remove = existing.filter((e) => !keep.has(e.id)).map((e) => e.id);
+
+    type Write = { id?: string; fields: Record<string, unknown>; taskIds: string[] | undefined; lead: string | null };
+    const writes: Write[] = [];
+    for (const line of lines) {
+      const { id: lid, taskIds: sent, ...fields } = line;
+      const taskIds = sent?.filter((t) => alive.has(t));
+      // Lead task stays on taskId; the full set lives on the m-n relation.
+      const lead = (fields.taskId && alive.has(fields.taskId) ? fields.taskId : null) ?? taskIds?.[0] ?? null;
+      if (lid) {
+        // Nothing to write for a line nobody touched — the common case when
+        // one line is reworded and the rest are sent back unchanged.
+        const was = mine.get(lid)!;
+        const sameTasks =
+          taskIds === undefined ||
+          (taskIds.length === was.tasks.length &&
+            taskIds.every((t) => was.tasks.some((x) => x.id === t)));
+        if (
+          was.description === fields.description &&
+          was.amount === fields.amount &&
+          (was.sacCode ?? null) === (fields.sacCode ?? null) &&
+          was.taskId === lead &&
+          sameTasks
+        ) {
+          continue;
+        }
+      }
+      writes.push({ id: lid, fields: { ...fields, taskId: lead }, taskIds, lead });
+    }
+    // New lines that link no task can go in one statement rather than one each.
+    const bulk = writes.filter((w) => !w.id && !w.taskIds?.length);
+    const single = writes.filter((w) => w.id || w.taskIds?.length);
+
+    if (remove.length || writes.length) {
+      await prisma.$transaction(async (tx) => {
+        if (remove.length) await tx.invoiceLineItem.deleteMany({ where: { id: { in: remove } } });
+        if (bulk.length) {
+          await tx.invoiceLineItem.createMany({
+            data: bulk.map((w) => ({ ...(w.fields as { description: string; amount: number }), invoiceId: id })),
+          });
+        }
+        for (const w of single) {
+          if (w.id) {
+            await tx.invoiceLineItem.update({
+              where: { id: w.id },
+              data: {
+                ...w.fields,
+                tasks: w.taskIds ? { set: w.taskIds.map((tid) => ({ id: tid })) } : undefined,
+              },
+            });
+          } else {
+            await tx.invoiceLineItem.create({
+              data: {
+                ...(w.fields as { description: string; amount: number }),
+                tasks: w.taskIds?.length ? { connect: w.taskIds.map((tid) => ({ id: tid })) } : undefined,
+                invoiceId: id,
+              },
+            });
+          }
+        }
+      }, TX_BUDGET);
+    }
     data.amount = lineItems.reduce((s, l) => s + (l.amount || 0), 0);
   }
   const result = await applyUpdate(id, data as Record<string, unknown>);

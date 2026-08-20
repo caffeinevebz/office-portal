@@ -587,6 +587,16 @@ while, someone else changed the bill) is kept as what it is: the words that were
 typed, saved as a new line. A task deleted since the bill was raised has its
 link dropped and the line still bills.
 
+**A long bill saves as quickly as a short one.** The database sits on another
+machine in production, so every statement is a round trip; writing a row per
+line inside one transaction spent its whole budget waiting and the transaction
+expired mid-save — an invoice of ten lines could not be saved at all. Now only
+the lines that actually changed are written, new ones go in a single statement,
+and everything that merely *reads* happens before the transaction opens. A bill
+of twenty-five lines edited line by line saves comfortably. If the database is
+ever genuinely too slow to answer, the save is rolled back whole and says so —
+nothing is half-written.
+
 ## Part payments (settling a bill in instalments)
 
 Clients rarely settle a professional-fee bill in one go — something on account

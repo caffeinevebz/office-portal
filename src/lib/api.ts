@@ -59,13 +59,25 @@ export function route<A extends unknown[]>(
       // "Internal server error" — which tells the person at the desk nothing
       // and sends them back to us.
       const text = e instanceof Error ? e.message : "";
+      const code = (e as { code?: string })?.code ?? "";
+      // A transaction that ran out of time, a connection pool with nothing
+      // free, a database that did not answer: nothing was written, and the
+      // person at the desk needs to know it is worth simply trying again.
+      if (code === "P2028" || code === "P2024" || code === "P1001" || code === "P1002") {
+        return fail(
+          "The database was slow to answer, so the save was rolled back — nothing was changed. Please try again.",
+          503,
+        );
+      }
       const message = text.includes("Unique constraint")
         ? "A record with those details already exists"
         : /Record to update not found|Record to delete does not exist|No record was found/i.test(text)
           ? "Something here was changed or removed by someone else. Reload the page and try again."
           : /Foreign key constraint/i.test(text)
             ? "This points at a record that no longer exists. Reload the page and try again."
-            : "Internal server error";
+            : `Internal server error${
+                e instanceof Error && e.name !== "Error" ? ` (${e.name}${code ? ` ${code}` : ""})` : ""
+              }`;
       return fail(message, 500);
     }
   };
