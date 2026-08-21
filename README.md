@@ -684,6 +684,16 @@ with no way back — so the document appears in the app's own viewer with:
 - **Zoom** — the document has its own zoom and scroll box, so magnifying an
   invoice does not drag the toolbar around with it.
 
+### Long names on a bill
+
+The billed-to block shares its line with the invoice facts (number, date, place
+of supply), so it is bounded by that column: a long client name — *Shree
+Siddhivinayak Multi-State Co-operative Credit Society Limited, Pune* — is
+stepped down a size or two and then **wrapped**, rather than running under
+*Invoice Date*. A name with nothing to break at is split between letters as a
+last resort, so it stays on the sheet whole either way. The same wrapping
+serves every document, since they all set their text through one helper.
+
 ### What the PDFs can print
 
 Every document is set in Helvetica, a standard PDF typeface, which carries

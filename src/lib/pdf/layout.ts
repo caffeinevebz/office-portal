@@ -151,6 +151,27 @@ export function wrap(str: string, font: PDFFont, size: number, maxWidth: number)
   const lines: string[] = [];
   let cur = "";
   for (const w of words) {
+    // A single token wider than the column — a run-on company name, a long
+    // reference — cannot be broken at a space, so it is broken between
+    // letters. Better a name split across two lines than one running off the
+    // edge and across whatever is printed beside it.
+    if (font.widthOfTextAtSize(w, size) > maxWidth) {
+      if (cur) {
+        lines.push(cur);
+        cur = "";
+      }
+      let chunk = "";
+      for (const ch of w) {
+        if (chunk && font.widthOfTextAtSize(chunk + ch, size) > maxWidth) {
+          lines.push(chunk);
+          chunk = ch;
+        } else {
+          chunk += ch;
+        }
+      }
+      cur = chunk;
+      continue;
+    }
     const probe = cur ? `${cur} ${w}` : w;
     if (font.widthOfTextAtSize(probe, size) <= maxWidth) {
       cur = probe;

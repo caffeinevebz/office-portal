@@ -25,6 +25,7 @@ import {
   firmHeader,
   signatureAndFooter,
   stampPageNumbers,
+  widthOf,
 } from "./layout";
 
 export type InvoiceForPdf = Invoice & {
@@ -149,25 +150,39 @@ export async function buildInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> {
     fy -= 13;
   }
 
+  // The billed-to block shares its line with the invoice facts on the right,
+  // so it gets the width up to that column and no more. A long client name —
+  // "Bright Future Charitable Trust for Rural Education" — is stepped down a
+  // size or two and then wrapped, rather than running under "Invoice Date".
+  const billedW = factsX - MARGIN - 16;
+
   y -= 14;
-  text(page, c.name, { x: MARGIN, y, size: 11, font: bold });
-  y -= 13;
+  let nameSize = 11;
+  while (nameSize > 9 && widthOf(bold, c.name, nameSize) > billedW) nameSize -= 0.5;
+  for (const line of wrap(c.name, bold, nameSize, billedW)) {
+    text(page, line, { x: MARGIN, y, size: nameSize, font: bold });
+    y -= nameSize + 2;
+  }
   if (c.address) {
-    for (const line of wrap(c.address, reg, 8.5, 250)) {
+    for (const line of wrap(c.address, reg, 8.5, billedW)) {
       text(page, line, { x: MARGIN, y, size: 8.5, font: reg, color: MUTED });
       y -= 11;
     }
   }
   if (c.contactPerson) {
-    text(page, `Attn: ${c.contactPerson}`, { x: MARGIN, y, size: 8.5, font: reg, color: MUTED });
-    y -= 11;
+    for (const line of wrap(`Attn: ${c.contactPerson}`, reg, 8.5, billedW)) {
+      text(page, line, { x: MARGIN, y, size: 8.5, font: reg, color: MUTED });
+      y -= 11;
+    }
   }
   const ids = [c.pan ? `PAN: ${c.pan}` : null, c.gstin ? `GSTIN: ${c.gstin}` : null]
     .filter(Boolean)
     .join("   ");
   if (ids) {
-    text(page, ids, { x: MARGIN, y, size: 8.5, font: reg, color: MUTED });
-    y -= 11;
+    for (const line of wrap(ids, reg, 8.5, billedW)) {
+      text(page, line, { x: MARGIN, y, size: 8.5, font: reg, color: MUTED });
+      y -= 11;
+    }
   }
 
   y = Math.min(y, fy) - 18;
@@ -203,8 +218,14 @@ export async function buildInvoicePdf(inv: InvoiceForPdf): Promise<Uint8Array> {
     page.drawRectangle({ x: third, y: A4.height - 6, width: third, height: 6, color: ACCENT });
     page.drawRectangle({ x: third * 2, y: A4.height - 6, width: third, height: 6, color: FERN });
     let ny = A4.height - 56;
-    text(page, lh.name, { x: MARGIN, y: ny, size: 11, font: bold });
-    text(page, `${title} ${inv.invoiceNumber} (continued)`, {
+    // The firm's name and the continuation label share this line, so the name
+    // is stepped down until both fit rather than running into it.
+    const contd = `${title} ${inv.invoiceNumber} (continued)`;
+    const room = right - MARGIN - widthOf(reg, contd, 9) - 16;
+    let firmSize = 11;
+    while (firmSize > 8 && widthOf(bold, lh.name, firmSize) > room) firmSize -= 0.5;
+    text(page, lh.name, { x: MARGIN, y: ny, size: firmSize, font: bold });
+    text(page, contd, {
       x: right, y: ny, size: 9, font: reg, color: MUTED, align: "right",
     });
     ny -= 20;
